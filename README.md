@@ -1,4 +1,4 @@
-# netcdf-example
+# mfa-TDA
 Workflow example using mfa-TDA
 
 # Instructions for Building and Running
