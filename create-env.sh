@@ -14,10 +14,8 @@ echo "activating spack environment"
 spack env activate $SPACKENV
 
 spack add mpich@4
-spack add hdf5@1.14+hl+mpi
 spack add tbb
 spack add eigen
-spack add highfive
 spack add mfa~examples~tests thread=tbb
 
 
