@@ -4,14 +4,6 @@ rm -f CMakeCache.txt
 
 cmake .. \
 -DCMAKE_CXX_FLAGS="-flto=auto" \
--DMFA_PATH=$HOME/mfa/install \
 -Dmfa_thread=tbb
-# -DCMAKE_INSTALL_DATADIR=$HOME/mfa/install/share 
-# -Deigen_thread=false \
-# -Ds3d_infile=/Users/guanqun/datasets/flame/6_small.xyz \
-# -DKOKKOS_INCLUDE_DIRS=/Users/guanqun/software/kokkos/build/include \
-# -DKOKKOS_LIBRARY=/Users/guanqun/software/kokkos/build/lib/libkokkos.a \
-# -DOPENMP_INCLUDE_DIRS=/opt/homebrew/include \
-# -DOPENMP_LIBRARY=/opt/homebrew/lib/libomp.a
 
 make -j

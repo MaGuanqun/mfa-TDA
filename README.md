@@ -47,7 +47,6 @@ cd build
 rm CMakeCache.txt
 cmake .. \
 -DCMAKE_CXX_FLAGS="-flto=auto" \
--DMFA_PATH=$HOME/mfa/install \
 -Dmfa_thread=tbb
 make -j
 ```
