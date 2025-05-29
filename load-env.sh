@@ -15,6 +15,8 @@ export HIGHFIVE_PATH=$(spack location -i highfive)
 
 # Optional: extend your library path if you plan to run compiled executables
 if [[ "$OSTYPE" == "darwin"* ]]; then
+    export DYLD_LIBRARY_PATH=$HDF5_PATH/lib:$TBB_PATH/lib:$DYLD_LIBRARY_PATH
+else
     export LD_LIBRARY_PATH=$HDF5_PATH/lib:$TBB_PATH/lib:$LD_LIBRARY_PATH
 fi
 

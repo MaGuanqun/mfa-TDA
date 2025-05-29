@@ -18,7 +18,7 @@ spack add hdf5@1.14+hl+mpi
 spack add tbb
 spack add eigen
 spack add highfive
-spack add mfa~examples~tests
+spack add mfa~examples~tests thread=tbb
 
 
 # Optional: add other dependencies you may need
@@ -28,7 +28,7 @@ spack add mfa~examples~tests
 
 # install
 echo "installing dependencies in environment"
-spack install mfa~examples~tests mfa_thread=tbb   # install separately so that MFA_PATH is set for later packages
+spack install mfa~examples~tests thread=tbb   # install separately so that MFA_PATH is set for later packages
 export MFA_PATH=`spack location -i mfa`
 
 
