@@ -1,3 +1,4 @@
 add_subdirectory            (convert)
 add_subdirectory              (critical_point)
 add_subdirectory            (contour)
+add_subdirectory            (encode)

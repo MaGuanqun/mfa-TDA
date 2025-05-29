@@ -174,8 +174,10 @@ int main(int argc, char** argv)
                 double min_ = local_domain_range.minCoeff();
                 auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
                 VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
-                same_root_epsilon *= min_;
+
                 VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
+
+                same_root_epsilon *= Span_size.minCoeff();
                 // double min_span_size = Span_size.minCoeff()/64.0;
                 // if(min_span_size<same_root_epsilon)
                 // {

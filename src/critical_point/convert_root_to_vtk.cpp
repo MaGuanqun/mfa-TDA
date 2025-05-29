@@ -223,6 +223,12 @@ int main(int argc, char** argv)
 
         }
          std::cout<<" mfa min max are: "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
+
+        Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
+        auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
+        VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
+        VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
+        same_root_epsilon *= Span_size.minCoeff();
     });
 
    
