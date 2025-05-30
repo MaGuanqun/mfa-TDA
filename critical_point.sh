@@ -9,7 +9,7 @@ convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
 convert_cpt_to_vtk="./build/src/critical_point/convert_cpt_to_vtk"
 
 
-data_type="sinc"
+data_type="cesm"
 data_path="./build/src/${data_type}/"
 output_file_prefix="./build/src/${data_type}/"
 
@@ -19,7 +19,7 @@ raw_data_file="./build/src/ori_data/FLDSC_1_1800_3600.dat" #rti #dd07g_xxsmall_l
 
 # "${analytical}" -d 3 -m 2 -q 3 -v 90 -n 200 -i "${data_type}" -f "${mfa_file}"
 
-# "${gridded_2d}" -d 3 -q 2 -f "${raw_data_file}" -i "${data_type}" -o "${mfa_file}" -a 1 -e "1.0e-2"
+"${gridded_2d}" -d 3 -q 2 -f "${raw_data_file}" -i "${data_type}" -o "${mfa_file}" -a 0 -e "1.0e-2"
 
 
 

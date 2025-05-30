@@ -6,10 +6,10 @@
 #include "domain_args.hpp"
 
 // Define list of example keywords
-set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18"};
+set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian1","gaussian2","ackley","schwefel","expotential_function"};
 set<string> datasets_4d = {"tornado4d"};
 set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado"};
-set<string> datasets_2d = {"cesm"};
+set<string> datasets_2d = {"cesm","vortex_street","boussinesq","hurricane_isabel"};
 set<string> datasets_unstructured = {"edelta", "climate", "nuclear", "nasa"};
 
 // REMOVE:
@@ -113,6 +113,175 @@ void sinc(const VectorX<T>& domain_pt, VectorX<T>& output_pt, DomainArgs& args, 
         output_pt(l) = retval * (1+l);
     }
 
+    return;
+}
+
+//sin(5x)/(5x)+sin(5y)/(5y)+sin(5z)/(5z)
+template<typename T>
+void sinc_sum(const VectorX<T>&  domain_pt,VectorX<T>& output_pt,
+        DomainArgs&  args)
+{
+    T coe = 5;
+    DomainArgs* a = &args;
+
+    T retval = 0.0;
+    for (auto i = 0; i < domain_pt.size(); i++)
+    {
+        if (domain_pt(i) != 0.0)
+        {
+
+            retval += 5.0*sin(coe * domain_pt(i)) / (coe *domain_pt(i));
+            
+        }
+        else
+        {
+            retval += 5.0;
+        }               
+    }
+    retval *= a->s[0];
+
+    output_pt(0) = retval;
+    return;
+}
+
+
+    //sin(3x+2)/(3x+2)+sin(3y+2)/(3y+2)+sin(3z+2)/(3z+2)
+template<typename T>
+void sinc_sum_2(const VectorX<T>&  domain_pt,VectorX<T>& output_pt,
+        DomainArgs&  args)
+{
+    T coe = 3;
+    DomainArgs* a = &args;
+
+    T retval = 0.0;
+    for (auto i = 0; i < domain_pt.size(); i++)
+    {
+        if ((coe *domain_pt(i)+2.0) != 0.0)
+        {
+
+            retval += 5.0*sin(coe * domain_pt(i)+2.0) / (coe *domain_pt(i)+2.0);
+            
+        }
+        else
+        {
+            retval += 5.0;
+        }               
+    }
+    retval *= a->s[0];
+
+    output_pt(0) = retval;
+
+    return;
+}
+
+
+//ackley function https://www.sfu.ca/~ssurjano/ackley.html
+template<typename T>
+void ackley(const VectorX<T>&   domain_pt,VectorX<T>& output_pt,DomainArgs& args)
+{
+    T a=20;
+    T b=0.2;
+    T c=2.0*M_PI;
+    T d=domain_pt.size();
+
+    T term_0=-b*sqrt(domain_pt.squaredNorm()/d);
+    T term_1=0.0;
+    for(int i=0;i<domain_pt.size();i++)
+    {
+        term_1+=cos(c*domain_pt[i]);
+    }
+    
+    output_pt(0)= args.s[0] *(-a*exp(term_0)-exp(term_1/d)+a+M_E);
+    return;
+
+}
+
+
+
+// only for 2d domain
+template<typename T>
+void expotential_function(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+{
+    T x = domain_pt(0);
+    T y = domain_pt(1);
+
+    T f = exp(-(8.0*(x + 0.4)*(x + 0.4) + 4*y*y)) + exp(-8.0*(x-0.5)*(x-0.5)-4.0*y*y)+exp(-8.0*x*x-4.0*(y-0.77)*(y-0.77))+exp(-8.0*x*x-4.0*(y-1.5)*(y-1.5))+0.2*exp(-0.3*x*x-0.3*(y-0.5)*(y-0.5));
+    
+    output_pt(0) = f;
+
+    return;
+
+}
+
+template<typename T>
+void gaussian1(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+{
+    T x = domain_pt(0);
+    T y = domain_pt(1);
+
+    T x0=0.5;
+    T y0=0.4;
+    T sigma=0.1;
+    T f = 0.25*exp(-(x-x0)*(x-x0)/(2*sigma*sigma)-(y-y0)*(y-y0)/(2*sigma*sigma));
+    output_pt(0) = f;
+    return;
+
+}
+
+
+template<typename T>
+void gaussian2(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+{
+    T x = domain_pt(0);
+    T y = domain_pt(1);
+
+    T x0=0.3;
+    T y0=0.2;
+    T sigma=0.1;
+
+    T x1=0.75;
+    T y1=0.25;
+    T sigma2=0.12;
+
+    T f = 0.25*exp(-(x-x0)*(x-x0)/(2*sigma*sigma)-(y-y0)*(y-y0)/(2*sigma*sigma))
+    +0.5*exp(-(x-x1)*(x-x1)/(2*sigma2*sigma2)-(y-y1)*(y-y1)/(2*sigma2*sigma2));
+
+    output_pt(0) = f;
+    return;
+
+}
+
+
+template<typename T>
+void schwefel(const VectorX<T>&domain_pt,VectorX<T>& output_pt, DomainArgs& args)
+{
+    T a=418.9829;
+    T d=domain_pt.size();
+
+    T term_1=0.0;
+    for(int i=0;i<domain_pt.size();i++)
+    {
+        term_1+=domain_pt[i]*sin(sqrt(abs(domain_pt[i])));
+    }
+    
+    output_pt(0) = args.s[0]*0.5 *(a*d-term_1);
+    return;
+
+}
+
+template<typename T>
+void rastrigin(const VectorX<T>&   domain_pt,VectorX<T>& output_pt, DomainArgs& args)
+{
+    T a=10;
+    T retval = a*domain_pt.size();
+    for(int i=0;i<domain_pt.size();i++)
+    {
+        retval += domain_pt[i]*domain_pt[i]-a*cos(2.0*M_PI*domain_pt[i]);
+    }
+
+    retval *= 0.1;
+
+    output_pt(0)=args.s[0] *retval;
     return;
 }
 
@@ -390,6 +559,14 @@ void evaluate_function(string fun, const VectorX<T>& domain_pt, VectorX<T>& outp
     else if (fun == "f16")      return f16(         domain_pt, output_pt, args, k);
     else if (fun == "f17")      return f17(         domain_pt, output_pt, args, k);
     else if (fun == "f18")      return f18(         domain_pt, output_pt, args, k);
+    else if (fun == "sinc_sum") return sinc_sum(    domain_pt, output_pt, args);
+    else if (fun == "sinc_sum_2") return sinc_sum_2(domain_pt, output_pt, args);
+    else if (fun == "ackley")    return ackley(      domain_pt, output_pt, args);
+    else if (fun == "schwefel")  return schwefel(   domain_pt, output_pt, args);
+    else if (fun == "rastrigin") return rastrigin(  domain_pt, output_pt, args);
+    else if (fun == "gaussian1") return gaussian1(  domain_pt, output_pt);
+    else if (fun == "gaussian2") return gaussian2(  domain_pt, output_pt);
+    else if (fun == "expotential_function") return expotential_function(domain_pt, output_pt);
     else
     {
         cerr << "Invalid function name in evaluate_function. Aborting." << endl;
@@ -398,5 +575,8 @@ void evaluate_function(string fun, const VectorX<T>& domain_pt, VectorX<T>& outp
 
     return;
 }
+
+
+
 
 #endif // _MFA_EX_FNS

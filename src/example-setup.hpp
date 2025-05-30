@@ -146,6 +146,48 @@ using namespace std;
             dom_bounds.min = {-0.95, -0.95, -0.95, -0.95};
             dom_bounds.max = { 0.95,  0.95,  0.95,  0.95};
         }
+        else if(input == "sinc_sum" || input == "sinc_sum_2")
+        {
+            for (int i = 0; i < dom_bounds.min.dimension(); i++)
+            {
+                dom_bounds.min[i] = -2.0 * M_PI;
+                dom_bounds.max[i] =  2.0 * M_PI;
+            }
+        }
+        else if(input == "rastrigin")
+        {
+            for (int i = 0; i < dom_bounds.min.dimension(); i++)
+            {
+                dom_bounds.min[i] = -6.0;
+                dom_bounds.max[i] = 6.0;
+            }
+        }
+        else if(input=="gaussian1" || input == "gaussian2")
+        {
+            dom_bounds.min = {0.1, 0.0};
+            dom_bounds.max = { 0.9, 0.6};
+        }
+        else if(input == "ackley")
+        {
+            for (int i = 0; i < dom_bounds.min.dimension(); i++)
+            {
+                dom_bounds.min[i] = -2.0;
+                dom_bounds.max[i] = 2.0;
+            }
+        }
+        else if(input == "schwefel")
+        {
+            for (int i = 0; i < dom_bounds.min.dimension(); i++)
+            {
+                dom_bounds.min[i] = -10.5 * M_PI * 10.5*M_PI;
+                dom_bounds.max[i] = 10.5 * M_PI * 10.5*M_PI;
+            }
+        }
+        else if(input == "expotential_function")
+        {
+            dom_bounds.min = {-1.0, -0.8};
+            dom_bounds.max = { 1.0, 2.3};
+        }
         else if (datasets_4d.count(input) || datasets_3d.count(input) || datasets_2d.count(input) || datasets_unstructured.count(input))
         {
             for (int i = 0; i < dom_bounds.min.dimension(); i++)
@@ -153,7 +195,7 @@ using namespace std;
                 dom_bounds.min[i] = 0.0;
                 dom_bounds.max[i] = 1.0;
             }
-        }
+        }        
         else
         {
             cerr << "Unrecognized input in set_dom_bounds(). Exiting." << endl;
@@ -297,6 +339,76 @@ using namespace std;
             for (int i = 0; i < d_args.model_dims.size()-1; i++)
                 d_args.s[i] = 10.0 * (i + 1);
         }
+         if(input == "sinc_sum" || input == "sinc_sum_2")
+        {
+            d_args.min.assign(dom_dim, -2.0 * M_PI);
+            d_args.max.assign(dom_dim,  2.0 * M_PI);
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+        }
+
+        if(input == "rastrigin")
+        {
+            d_args.min.assign(dom_dim, -6.0);
+            d_args.max.assign(dom_dim,  6.0);
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+        }
+
+        if(input == "gaussian1" || input == "gaussian2")
+        {
+            d_args.min.resize(dom_dim);
+            d_args.max.resize(dom_dim);
+
+            d_args.min[0]               = 0.1;
+            d_args.max[0]               = 0.9;
+            d_args.min[1]               = 0.0;
+            d_args.max[1]               = 0.6;
+
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+        }
+
+        if(input == "ackley")
+        {
+            d_args.min.assign(dom_dim, -2.0);
+            d_args.max.assign(dom_dim,  2.0);
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+        }
+
+        if(input == "schwefel")
+        {
+            d_args.min.assign(dom_dim, -10.5 * M_PI * 10.5*M_PI);
+            d_args.max.assign(dom_dim,  10.5 * M_PI * 10.5*M_PI);
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+        }
+
+        if(input == "expotential_function")
+        {
+
+            d_args.full_dom_pts = {(int)(ndomp/3*2), ndomp};      // Hard-coded to full data set size
+            d_args.ndom_pts = d_args.full_dom_pts;
+            
+            if (!adaptive)
+            {
+                vars_nctrl[0] = (int)(vars_nctrl[0]/3*2);
+            }
+        
+            d_args.min.resize(dom_dim);
+            d_args.max.resize(dom_dim);
+            d_args.min[0]               = -1.0;
+            d_args.max[0]               = 1.0;
+            d_args.min[1]               = -0.8;
+            d_args.max[1]               = 2.3;
+
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);                 // scaling factor on range
+
+
+        }
+
 
         // Marschner-Lobb function [M&L]: Marschner & Lobb, IEEE Vis 1994
         // only defined for 3d domain
@@ -451,10 +563,54 @@ using namespace std;
 
             if (!adaptive)
             {
-                vars_nctrl = {600, 300};
+                vars_nctrl = {204, 104};
             }
         }
 
+
+        if (input == "vortex_street")
+        {
+            d_args.full_dom_pts = {640, 80};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {160, 20};
+            }
+
+            d_args.min.resize(2);
+            d_args.max.resize(2);
+            d_args.min[0] = -0.5;    d_args.max[0] = 7.5;
+            d_args.min[1] = -0.5;    d_args.max[1] =0.5;
+        }
+
+
+        if(input=="boussinesq")
+         {
+            d_args.full_dom_pts = {150, 450};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {50, 150};
+            }
+
+            d_args.min.resize(2);
+            d_args.max.resize(2);
+            d_args.min[0] = -0.5;    d_args.max[0] =0.5;
+            d_args.min[1] = -0.5;    d_args.max[1] =2.5;
+        }
+
+        if(input=="hurricane_isabel")
+        {
+            d_args.full_dom_pts = {500, 500};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {166, 166};
+            }
+        }
         // EDelta Wing dataset (unstructured):  edelta/edelta.txt
         if (input == "edelta")
         {

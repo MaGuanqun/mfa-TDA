@@ -60,6 +60,7 @@ namespace mfa_extend
     {
         VectorX<T> domain_range = b->core_maxs - b->core_mins;
         VectorX<T> param = (point-b->core_mins).cwiseQuotient(domain_range);
+        cpt.resize(b->mfa->nvars());
         b->mfa->DecodeVar(0,param,cpt,derivs);
 
         if (derivs.size() > 0)
