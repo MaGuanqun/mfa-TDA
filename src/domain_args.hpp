@@ -25,6 +25,7 @@ struct DomainArgs
         
         min.assign(dom_dim, 0);
         max.assign(dom_dim, 1);
+        set_domain_range = false; 
         r = 0;
         t = 0;
         n = 0;
@@ -49,7 +50,7 @@ struct DomainArgs
     bool                multiblock;                 // multiblock domain, get bounds from block
     bool                structured;                 // input data lies on unstructured grid
     int                 rand_seed;                  // seed for generating random data. -1: no randomization, 0: choose seed at random
-
+    bool             set_domain_range;              // the data itself has a domain range
     void updateModelDims(vector<int> mdims)
     {
         int nvars = mdims.size() - 1;

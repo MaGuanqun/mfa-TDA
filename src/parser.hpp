@@ -289,7 +289,7 @@ struct MFAParser
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "gaussian1" || input == "gaussian2")
+        if(input == "gaussian_mixture1" || input == "gaussian_mixture2")
         {
             d_args.min.resize(dom_dim);
             d_args.max.resize(dom_dim);
@@ -319,7 +319,7 @@ struct MFAParser
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "expotential_function")
+        if(input == "gaussian_pair")
         {
 
             d_args.full_dom_pts = {(int)(ndomp/3*2), ndomp};      // Hard-coded to full data set size
@@ -505,6 +505,7 @@ struct MFAParser
             d_args.max.resize(2);
             d_args.min[0] = -0.5;    d_args.max[0] = 7.5;
             d_args.min[1] = -0.5;    d_args.max[1] =0.5;
+            d_args.set_domain_range=true;
         }
 
 
@@ -522,6 +523,7 @@ struct MFAParser
             d_args.max.resize(2);
             d_args.min[0] = -0.5;    d_args.max[0] =0.5;
             d_args.min[1] = -0.5;    d_args.max[1] =2.5;
+            d_args.set_domain_range=true;
         }
 
         if(input=="hurricane_isabel")

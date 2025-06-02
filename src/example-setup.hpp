@@ -162,7 +162,7 @@ using namespace std;
                 dom_bounds.max[i] = 6.0;
             }
         }
-        else if(input=="gaussian1" || input == "gaussian2")
+        else if(input=="gaussian_mixture1" || input == "gaussian_mixture2")
         {
             dom_bounds.min = {0.1, 0.0};
             dom_bounds.max = { 0.9, 0.6};
@@ -183,7 +183,7 @@ using namespace std;
                 dom_bounds.max[i] = 10.5 * M_PI * 10.5*M_PI;
             }
         }
-        else if(input == "expotential_function")
+        else if(input == "gaussian_pair")
         {
             dom_bounds.min = {-1.0, -0.8};
             dom_bounds.max = { 1.0, 2.3};
@@ -355,7 +355,7 @@ using namespace std;
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "gaussian1" || input == "gaussian2")
+        if(input == "gaussian_mixture1" || input == "gaussian_mixture2")
         {
             d_args.min.resize(dom_dim);
             d_args.max.resize(dom_dim);
@@ -385,7 +385,7 @@ using namespace std;
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "expotential_function")
+        if(input == "gaussian_pair")
         {
 
             d_args.full_dom_pts = {(int)(ndomp/3*2), ndomp};      // Hard-coded to full data set size
@@ -582,6 +582,7 @@ using namespace std;
             d_args.max.resize(2);
             d_args.min[0] = -0.5;    d_args.max[0] = 7.5;
             d_args.min[1] = -0.5;    d_args.max[1] =0.5;
+            d_args.set_domain_range=true;
         }
 
 
@@ -599,6 +600,7 @@ using namespace std;
             d_args.max.resize(2);
             d_args.min[0] = -0.5;    d_args.max[0] =0.5;
             d_args.min[1] = -0.5;    d_args.max[1] =2.5;
+            d_args.set_domain_range=true;
         }
 
         if(input=="hurricane_isabel")

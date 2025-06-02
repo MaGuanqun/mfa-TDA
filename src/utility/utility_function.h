@@ -120,6 +120,11 @@ namespace utility
             return;
         }
 
+        if (vec.empty()) {
+            std::cerr << "Warning: Tried to save empty vector to CSV: " << filename << std::endl;
+            return;
+        }
+
         for(int i=0;i<vec[0].size();i++)
         {
             file << "x" << i << ",";
@@ -146,6 +151,11 @@ namespace utility
         
         if (!file.is_open()) {
             std::cerr << "Failed to open file: " << filename << std::endl;
+            return;
+        }
+
+        if (vec.empty()) {
+            std::cerr << "Warning: Tried to save empty vector to CSV: " << filename << std::endl;
             return;
         }
 

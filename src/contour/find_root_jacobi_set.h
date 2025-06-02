@@ -73,7 +73,7 @@ namespace find_root_jacobi_set
         compute_hessian(p,b,f_second_deriv);
 
         MatrixX<T> g_second_deriv(p.size(),p.size());
-        compute_hessian(p,b,g_second_deriv);
+        compute_hessian(p,b2,g_second_deriv);
 
 
         h_first_deriv[0]=f_first_deriv[0]*g_second_deriv.data()[1]+g_first_deriv[1]*f_second_deriv.data()[0]-f_first_deriv[1]*g_second_deriv.data()[0]-g_first_deriv[0]*f_second_deriv.data()[1];

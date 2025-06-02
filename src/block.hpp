@@ -1188,6 +1188,7 @@ struct Block : public BlockBase<T, U>
 
         // extent of domain is just lower left and upper right corner, which in row-major order
         // is the first point and the last point
+ 
         bounds_mins(0) = input->domain(0, 0);
         bounds_mins(1) = input->domain(0, 1);
         bounds_mins(2) = input->domain(0, 2);
@@ -1201,7 +1202,9 @@ struct Block : public BlockBase<T, U>
             core_mins(i) = bounds_mins(i);
             core_maxs(i) = bounds_maxs(i);
         }
+        
 
+        
         input->set_domain_params();
 
         // initialize MFA models (geometry, vars, etc)
@@ -1242,6 +1245,8 @@ struct Block : public BlockBase<T, U>
             tot_ndom_pts    *= ndom_pts(i);
         }
 
+
+
         // Construct point set to contain input
         if (args.structured)
             input = new mfa::PointSet<T>(dom_dim, mdims, tot_ndom_pts, ndom_pts);
@@ -1259,8 +1264,12 @@ struct Block : public BlockBase<T, U>
             fprintf(stderr, "Error: unable to read file\n");
             exit(0);
         }
+
+
         for (size_t i = 0; i < val.size(); i++)
             input->domain(i, 2) = val[i];
+        
+
 
         // rest is hard-coded for 3d
 
@@ -1275,27 +1284,64 @@ struct Block : public BlockBase<T, U>
 
         // set domain values (just equal to i, j; ie, dx, dy = 1, 1)
         int n = 0;
-        for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++)
-            for (size_t i = 0; i < (size_t)(ndom_pts(0)); i++)
-            {
-                input->domain(n, 0) = i;
-                input->domain(n, 1) = j;
-                n++;
-            }
-
-        // extents
-        bounds_mins(0) = 0.0;
-        bounds_mins(1) = 0.0;
-        bounds_maxs(0) = input->domain(tot_ndom_pts - 1, 0);
-        bounds_maxs(1) = input->domain(tot_ndom_pts - 1, 1);
-        core_mins.resize(dom_dim);
-        core_maxs.resize(dom_dim);
-        for (int i = 0; i < dom_dim; i++)
+        if(a->set_domain_range)
         {
-            core_mins(i) = bounds_mins(i);
-            core_maxs(i) = bounds_maxs(i);
+            VectorX<T> d(this->dom_dim);               // step in domain points in each dimension
+            VectorX<T> p0(this->dom_dim);              // starting point in each dimension                     // number of ghost points in current dimension
+            for (int i = 0; i < this->dom_dim; i++)
+            {
+                d(i) = (this->core_maxs(i) - this->core_mins(i)) / (ndom_pts(i) - 1);
+                p0(i) = this->core_mins(i);
+            }
+            mfa::VolIterator vol_it(ndom_pts);
+            // current index of domain point in each dim, initialized to 0s
+            // flattened loop over all the points in a domain
+            while (!vol_it.done())
+            {
+                int j = (int)vol_it.cur_iter();
+                // compute geometry coordinates of domain point
+                for (auto i = 0; i < this->dom_dim; i++)
+                    input->domain(j, i) = p0(i) + vol_it.idx_dim(i) * d(i);
+
+                vol_it.incr_iter();
+            }
+        }
+        else
+        {
+            for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++)
+                for (size_t i = 0; i < (size_t)(ndom_pts(0)); i++)
+                {
+                    input->domain(n, 0) = i;
+                    input->domain(n, 1) = j;
+                    n++;
+                }
         }
 
+        // extents
+        if(!a->set_domain_range)
+        {
+            bounds_mins(0) = 0.0;
+            bounds_mins(1) = 0.0;
+            bounds_maxs(0) = input->domain(tot_ndom_pts - 1, 0);
+            bounds_maxs(1) = input->domain(tot_ndom_pts - 1, 1);
+            core_mins.resize(dom_dim);
+            core_maxs.resize(dom_dim);
+            for (int i = 0; i < dom_dim; i++)
+            {
+                core_mins(i) = bounds_mins(i);
+                core_maxs(i) = bounds_maxs(i);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < dom_dim; i++)
+            {
+                bounds_mins(i)  = args.min[i];
+                bounds_maxs(i)  = args.max[i];
+                core_mins(i)    = args.min[i];
+                core_maxs(i)    = args.max[i];
+            }
+        }
         input->set_domain_params();
 
         // initialize MFA models (geometry, vars, etc)

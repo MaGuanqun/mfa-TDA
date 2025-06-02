@@ -20,7 +20,7 @@ set_z_to_zero="./src/python/set_z_to_zero.py"
 
 # data_type="schwefel" #"sinc_sum"
 data_type="sinc_sum"
-# data_type="expotential_function"
+# data_type="gaussian_pair"
 # save_folder="expotential"
 
 sinc_origin_data="./build/src/ori_func_sample/sinc_sum_2d_triangles.vtk"
@@ -85,9 +85,13 @@ elif [ "${data_type}" = "schwefel" ]; then
 elif [ "${data_type}" = "sinc_sum" ]; then
     value1="0.33"
     value2="0.79"
-elif [ "${data_type}" = "expotential_function" ]; then
+elif [ "${data_type}" = "gaussian_pair" ]; then
     value1="1.05"
 fi
+
+
+same_root_epsilon=$(awk "BEGIN {print 1 / ${step_size2}}")
+echo "Same root epsilon: ${same_root_epsilon}"
 
 
 
@@ -101,9 +105,9 @@ fi
 
 "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
 
-"${compute_critical_point}" -l 1 -f "${mfa_file}" -i "${control_points}" -o "${critical_point_file}" -e "${step_size}"
+"${compute_critical_point}" -l 1 -f "${mfa_file}" -i "${control_points}" -o "${critical_point_file}" -e "${same_root_epsilon}"
 
-"${convert_root_to_vtk}" -i "${mfa_file}" -o "${critical_point_csv_file}" -f "${critical_point_file}" -e "${step_size}"
+"${convert_root_to_vtk}" -i "${mfa_file}" -o "${critical_point_csv_file}" -f "${critical_point_file}" -e "${same_root_epsilon}"
 
 # "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value1}_${step_size}.obj" -z "${step_size}" -v "${value1}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value1}.dat"
 

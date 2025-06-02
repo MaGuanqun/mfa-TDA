@@ -198,18 +198,19 @@ int main(int argc, char** argv)
                 Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
                 std::vector<std::vector<VectorXi>> selected_span;//[vars,span index]
                 auto start_time = std::chrono::high_resolution_clock::now();
-
-
-                double min_ = local_domain_range.minCoeff();
                 auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
                 VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
-                same_root_epsilon *= min_;
                 VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-                double min_span_size = Span_size.minCoeff()/10.0;
-                if(min_span_size<same_root_epsilon)
-                {
-                    same_root_epsilon = min_span_size;
-                }
+
+                double min_ = Span_size.minCoeff();
+     
+
+                same_root_epsilon *= min_;
+                // double min_span_size = Span_size.minCoeff()/10.0;
+                // if(min_span_size<same_root_epsilon)
+                // {
+                //     same_root_epsilon = min_span_size;
+                // }
 
                 selected_span.clear();
 

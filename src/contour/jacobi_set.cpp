@@ -57,8 +57,6 @@ int main(int argc, char** argv)
     string infile2 = "approx2.mfa";               // diy input file
     // string inControlPoint = "derivative_control_point.dat";
     string inCriticalPoint = "critical_point.dat";
-    string inCriticalPoint2 = "critical_point2.dat";
-    string root_file = "root_point.dat";
 
     // default command line arguments
     //int  deriv     = 1;                         // which derivative to take (1st, 2nd, ...)
@@ -111,12 +109,9 @@ int main(int argc, char** argv)
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('g', "infile2",  infile2,  " diy input file name");
     ops >> opts::Option('j', "inCriticalPoint",  inCriticalPoint,  " diy input critical point file name");
-    ops >> opts::Option('c', "inCriticalPoint2",  inCriticalPoint2,  " diy input critical point file name");
     ops >> opts::Option('h', "help",    help,    " show help");
-    ops >> opts::Option('r', "root_file", root_file,    " root");
     ops >> opts::Option('t', "isosurface_file", isosurface_file, " file name of isosurface points");
     ops >> opts::Option('b', "ridge_valley_graph_file", ridge_valley_graph_file, " file name of ridge valley graph");
-    ops >> opts::Option('e', "same_root_epsilon", epsilon, " epsilon for reaching start point");
     ops >> opts::Option('i', "input_point",    input_point_string,       " input point, by \"x1-x2-y1-y2-z1-z2-...\"");
     ops >> opts::Option('z', "step_size",    step_size,       " step size");
     ops >> opts::Option('v', "point_func_value",    point_func_value,       " value of the point need to be extracted");
@@ -290,6 +285,8 @@ int main(int argc, char** argv)
 
             tbb::affinity_partitioner ap;
 
+            std::cout<<"root_finding_epsilon "<<root_finding_epsilon<<std::endl;
+
             tbb::parallel_for(tbb::blocked_range<size_t>(0,spanned_block_num),
             [&](const tbb::blocked_range<size_t>& range)
             {
@@ -364,14 +361,13 @@ int main(int argc, char** argv)
 
             std::vector<VectorXd> ori_critical_points;
             connect_rv_graph::read_critical_point(inCriticalPoint,ori_critical_points,true);
-            connect_rv_graph::read_critical_point(inCriticalPoint2,ori_critical_points,true);
-
 
 
             std::vector<VectorXd> critical_points;
-            spatial_hashing::find_all_unique_root(ori_critical_points, critical_points,step_size);
-
-
+            if(!ori_critical_points.empty())
+            {
+                spatial_hashing::find_all_unique_root(ori_critical_points, critical_points,step_size);
+            }
 
             connect_rv_graph::connect_ridge_valley_graph(ridge_valley_in_span,critical_points,b,spanned_block_num, span_num,
             valid_span_index,
