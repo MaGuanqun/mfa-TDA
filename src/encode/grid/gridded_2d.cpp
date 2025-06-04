@@ -129,10 +129,20 @@ int main(int argc, char** argv)
     // Create data set for modeling. Input keywords are defined in example_signals.hpp
     if (datasets_2d.count(input) == 1)
     {
-        master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
-        { 
-            b->read_2d_scalar_data(cp, mfa_info, d_args); 
-        });
+        if(input=="s3d")
+        {
+            master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
+            { 
+                b->read_2d_slice_3d_vector_data(cp, mfa_info, d_args); 
+            });
+        }
+        else
+        {
+            master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
+            { 
+                b->read_2d_scalar_data(cp, mfa_info, d_args); 
+            });
+        }
     }
     else
     {

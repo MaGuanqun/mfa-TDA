@@ -162,7 +162,7 @@ using namespace std;
                 dom_bounds.max[i] = 6.0;
             }
         }
-        else if(input=="gaussian_mixture1" || input == "gaussian_mixture2")
+        else if(input=="gaussian_pair1" || input == "gaussian_pair2")
         {
             dom_bounds.min = {0.1, 0.0};
             dom_bounds.max = { 0.9, 0.6};
@@ -183,7 +183,7 @@ using namespace std;
                 dom_bounds.max[i] = 10.5 * M_PI * 10.5*M_PI;
             }
         }
-        else if(input == "gaussian_pair")
+        else if(input == "gaussian_mixture")
         {
             dom_bounds.min = {-1.0, -0.8};
             dom_bounds.max = { 1.0, 2.3};
@@ -355,7 +355,7 @@ using namespace std;
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "gaussian_mixture1" || input == "gaussian_mixture2")
+        if(input == "gaussian_pair1" || input == "gaussian_pair2")
         {
             d_args.min.resize(dom_dim);
             d_args.max.resize(dom_dim);
@@ -385,7 +385,7 @@ using namespace std;
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "gaussian_pair")
+        if(input == "gaussian_mixture")
         {
 
             d_args.full_dom_pts = {(int)(ndomp/3*2), ndomp};      // Hard-coded to full data set size
@@ -465,18 +465,19 @@ using namespace std;
             d_args.max = { 0.95,  0.95,  0.95,  0.95};
         }
 
+
         // S3D dataset:  flame/6_small.xyz
         if (input == "s3d")
         {
             d_args.full_dom_pts = {704, 540, 550};  // Hard-coded to full data set size
             d_args.ndom_pts = d_args.full_dom_pts;
 
-            // if (!adaptive)
-            // {
-            //     if (dom_dim >= 1) vars_nctrl[0] = 140;
-            //     if (dom_dim >= 2) vars_nctrl[1] = 108;
-            //     if (dom_dim >= 3) vars_nctrl[2] = 110;
-            // }
+            if (!adaptive)
+            {
+                if (dom_dim >= 1) vars_nctrl[0] = 140;
+                if (dom_dim >= 2) vars_nctrl[1] = 108;
+                if (dom_dim >= 3) vars_nctrl[2] = 110;
+            }
 
             // for testing, hard-code a subset of a 3d domain, 1/2 the size in each dim and centered
             // in this case, actual size is just under 1/2 size in each dim to satisfy DIY's (MPI's)

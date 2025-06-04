@@ -19,9 +19,9 @@ extract_ttk_js="./src/python/extract_jacobi_set.py"
 count_betti_num="./src/contour/count_betti_num.py"
 
 # data_type="hurricane_isabel"
-data_type="vortex_street"
-# data_type="gaussian_mixture"
-# data_type="boussinesq"
+# data_type="vortex_street"
+# data_type="gaussian_pair"
+data_type="boussinesq"
 save_folder="${data_type}"
 
 extension="ply"
@@ -91,14 +91,14 @@ elif [ "${data_type}" = "vortex_street" ]; then
     raw_data_file2="./build/src/vortex_street/velocity_t1501.bin" 
     root_finding_epsilon="1e-10"
     trace_split_grad_square_threshold="1e-4"
-elif [ "${data_type}" = "gaussian_mixture" ]; then
+elif [ "${data_type}" = "gaussian_pair" ]; then
     root_finding_epsilon="1e-10"
     trace_split_grad_square_threshold="1e-4"
 fi
 
 
 
-if [ "${data_type}" = "gaussian_mixture" ]; then
+if [ "${data_type}" = "gaussian_pair" ]; then
     "${analytical}" -d 3 -m 2 -n 101 -v 21 -q 4 -s 0.0 -i "${data_type}1" -f "${mfa_file}"
     "${analytical}" -d 3 -m 2 -n 101 -v 21 -q 4 -s 0.0 -i "${data_type}2" -f "${mfa_file2}"
 else
@@ -113,7 +113,7 @@ fi
 same_root_epsilon=$(awk "BEGIN {print 1 / ${step_size2}}")
 echo "Same root epsilon: ${same_root_epsilon}"
 
-"${compute_critical_point_jacobi_set}" -l 1 -f "${mfa_file}" -g "${mfa_file2}" -i "${control_points}" -j "${control_points2}" -o "${critical_point_jacobi_set}" -v "1e-6" -t 1e-10 -e "${same_root_epsilon}"
+# "${compute_critical_point_jacobi_set}" -l 1 -f "${mfa_file}" -g "${mfa_file2}" -i "${control_points}" -j "${control_points2}" -o "${critical_point_jacobi_set}" -v "1e-6" -t 1e-10 -e "${same_root_epsilon}"
 
 
 # "${convert_root_to_vtk}" -i "${mfa_file}" -o "${critical_point_jacobi_set_csv_file}" -f "${critical_point_jacobi_set}" -e "${same_root_epsilon}"
@@ -160,7 +160,7 @@ echo "Same root epsilon: ${same_root_epsilon}"
 
 
 # "${write_two_value}" -f "${mfa_file}" -g "${mfa_file2}" -t "${mfa_file}.vtk" -m 2 -d 3 -u "${step_size}"
-"${write_two_value}" -f "${mfa_file}" -g "${mfa_file2}" -t "${mfa_file}_up.vtk" -m 2 -d 3 -u "${step_size2}"
+# "${write_two_value}" -f "${mfa_file}" -g "${mfa_file2}" -t "${mfa_file}_up.vtk" -m 2 -d 3 -u "${step_size2}"
 
 
 # 4.5589 for ackley
@@ -176,7 +176,7 @@ conda activate mfa
 
 # python "${extract_ttk_js}" "${mfa_file}.vtk" "./build/src/${save_folder}/js_ttk_${step_size}.obj" "./build/src/${save_folder}/js_ttk_${step_size}.bin"
 
-python "${extract_ttk_js}" "${mfa_file}_up.vtk" "./build/src/${save_folder}/js_ttk_${step_size2}.obj" "./build/src/${save_folder}/js_ttk_${step_size2}.bin"
+# python "${extract_ttk_js}" "${mfa_file}_up.vtk" "./build/src/${save_folder}/js_ttk_${step_size2}.obj" "./build/src/${save_folder}/js_ttk_${step_size2}.bin"
 
 # python "${count_betti_num}" "${ridge_valley_file1}${step_size}.obj"
 python "${count_betti_num}" "${ridge_valley_file1}${step_size2}.obj"
@@ -197,7 +197,7 @@ python "${count_betti_num}" "${ridge_valley_file1}${step_size2}.obj"
 # python "${count_betti_num}" "${ridge_valley_file2}"
 
 # python "${count_betti_num}" "./build/src/${save_folder}/js_ttk_${step_size}.obj"
-python "${count_betti_num}" "./build/src/${save_folder}/js_ttk_${step_size2}.obj"
+# python "${count_betti_num}" "./build/src/${save_folder}/js_ttk_${step_size2}.obj"
 # 
 # ttk_contour_error_file="./build/src/contour/compute_function_error"
 # "${ttk_contour_error_file}" -f "${mfa_file}" -g "${mfa_file2}"  -r "./build/src/${save_folder}/js_ttk_${step_size}.bin" -s "./build/src/${save_folder}/js_ttk_${step_size}_error.dat" -z "2"

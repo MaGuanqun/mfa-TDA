@@ -289,7 +289,7 @@ struct MFAParser
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "gaussian_mixture1" || input == "gaussian_mixture2")
+        if(input == "gaussian_pair1" || input == "gaussian_pair2")
         {
             d_args.min.resize(dom_dim);
             d_args.max.resize(dom_dim);
@@ -319,7 +319,7 @@ struct MFAParser
                 d_args.s[i] = 1.0 * (i + 1);  
         }
 
-        if(input == "gaussian_pair")
+        if(input == "gaussian_mixture")
         {
 
             d_args.full_dom_pts = {(int)(ndomp/3*2), ndomp};      // Hard-coded to full data set size

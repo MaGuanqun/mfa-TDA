@@ -6,10 +6,10 @@
 #include "domain_args.hpp"
 
 // Define list of example keywords
-set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian_mixture1","gaussian_mixture2","ackley","schwefel","gaussian_pair"};
+set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian_pair1","gaussian_pair2","ackley","schwefel","gaussian_mixture"};
 set<string> datasets_4d = {"tornado4d"};
 set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado"};
-set<string> datasets_2d = {"cesm","vortex_street","boussinesq","hurricane_isabel"};
+set<string> datasets_2d = {"cesm","vortex_street","boussinesq","hurricane_isabel","s3d"};
 set<string> datasets_unstructured = {"edelta", "climate", "nuclear", "nasa"};
 
 // REMOVE:
@@ -200,7 +200,7 @@ void ackley(const VectorX<T>&   domain_pt,VectorX<T>& output_pt,DomainArgs& args
 
 // only for 2d domain
 template<typename T>
-void gaussian_pair(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+void gaussian_mixture(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 {
     T x = domain_pt(0);
     T y = domain_pt(1);
@@ -214,7 +214,7 @@ void gaussian_pair(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 }
 
 template<typename T>
-void gaussian_mixture1(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+void gaussian_pair1(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 {
     T x = domain_pt(0);
     T y = domain_pt(1);
@@ -230,7 +230,7 @@ void gaussian_mixture1(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 
 
 template<typename T>
-void gaussian_mixture2(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+void gaussian_pair2(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 {
     T x = domain_pt(0);
     T y = domain_pt(1);
@@ -564,9 +564,9 @@ void evaluate_function(string fun, const VectorX<T>& domain_pt, VectorX<T>& outp
     else if (fun == "ackley")    return ackley(      domain_pt, output_pt, args);
     else if (fun == "schwefel")  return schwefel(   domain_pt, output_pt, args);
     else if (fun == "rastrigin") return rastrigin(  domain_pt, output_pt, args);
-    else if (fun == "gaussian_mixture1") return gaussian_mixture1(  domain_pt, output_pt);
-    else if (fun == "gaussian_mixture2") return gaussian_mixture2(  domain_pt, output_pt);
-    else if (fun == "gaussian_pair") return gaussian_pair(domain_pt, output_pt);
+    else if (fun == "gaussian_pair1") return gaussian_pair1(  domain_pt, output_pt);
+    else if (fun == "gaussian_pair2") return gaussian_pair2(  domain_pt, output_pt);
+    else if (fun == "gaussian_mixture") return gaussian_mixture(domain_pt, output_pt);
     else
     {
         cerr << "Invalid function name in evaluate_function. Aborting." << endl;

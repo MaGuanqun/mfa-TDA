@@ -3,7 +3,7 @@ echo "Start Runing Script"
 analytical="./build/src/encode/analytical/analytical"
 gridded_2d="./build/src/encode/grid/gridded_2d"
 
-contour="./build/src/contour/isocontour"
+contour="./build/src/contour/contour"
 write_vtk="./build/src/convert/write_vtk"
 convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
 
@@ -19,8 +19,8 @@ extract_ttk_contour="./src/python/extract_contour.py"
 set_z_to_zero="./src/python/set_z_to_zero.py"
 
 # data_type="schwefel" #"sinc_sum"
-data_type="sinc_sum"
-# data_type="gaussian_pair"
+# data_type="sinc_sum"
+# data_type="gaussian_mixture"
 # save_folder="expotential"
 
 sinc_origin_data="./build/src/ori_func_sample/sinc_sum_2d_triangles.vtk"
@@ -28,7 +28,7 @@ sinc_origin_data="./build/src/ori_func_sample/sinc_sum_2d_triangles.vtk"
 schwefel_origin_data="./build/src/ori_func_sample/schwefel_2d_triangles.vtk"
 
 # data_type="cesm"
-# data_type="s3d"
+data_type="s3d"
 save_folder="${data_type}"
 
 
@@ -50,7 +50,7 @@ critical_point_csv_file="./build/src/${save_folder}/${data_type}_rt.csv"
 
 trace_split_grad_square_threshold="1e-4"
 step_size="2"
-step_size2="4"
+step_size2="16"
 step_size3="8"
 step_size4="16"
 step_size5="32"
@@ -76,7 +76,7 @@ if [ "${data_type}" = "cesm" ]; then
     raw_data_file="./build/src/ori_data/FLDSC_1_1800_3600.dat" 
 elif [ "${data_type}" = "s3d" ]; then
     value1="30" #50,60
-    value2="60"
+    value2="30"
     value3="60"
     raw_data_file="./build/src/ori_data/6_small.xyz" 
 elif [ "${data_type}" = "schwefel" ]; then
@@ -85,7 +85,7 @@ elif [ "${data_type}" = "schwefel" ]; then
 elif [ "${data_type}" = "sinc_sum" ]; then
     value1="0.33"
     value2="0.79"
-elif [ "${data_type}" = "gaussian_pair" ]; then
+elif [ "${data_type}" = "gaussian_mixture" ]; then
     value1="1.05"
 fi
 
@@ -95,56 +95,56 @@ echo "Same root epsilon: ${same_root_epsilon}"
 
 
 
-if [ "${data_type}" = "schwefel" ]; then
-"${analytical}" -d 3 -m 2 -n 301 -v 75 -q 4 -s 0.0 -i "${data_type}" -f "${mfa_file}"
-elif [ "${data_type}" = "sinc_sum" ]; then
-"${analytical}" -d 3 -m 2 -n 151 -v 31 -q 4 -s 0.0 -i "${data_type}" -f "${mfa_file}"
-else 
-"${gridded_2d}" -d 3 -f "${raw_data_file}" -i "${data_type}" -q 4 -a 0 -o "${mfa_file}"
-fi
+# if [ "${data_type}" = "schwefel" ]; then
+# "${analytical}" -d 3 -m 2 -n 301 -v 75 -q 4 -s 0.0 -i "${data_type}" -f "${mfa_file}"
+# elif [ "${data_type}" = "sinc_sum" ]; then
+# "${analytical}" -d 3 -m 2 -n 151 -v 31 -q 4 -s 0.0 -i "${data_type}" -f "${mfa_file}"
+# else 
+# "${gridded_2d}" -d 3 -f "${raw_data_file}" -i "${data_type}" -q 4 -a 0 -o "${mfa_file}"
+# fi
 
-"${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
+# "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
 
-"${compute_critical_point}" -l 1 -f "${mfa_file}" -i "${control_points}" -o "${critical_point_file}" -e "${same_root_epsilon}"
+# "${compute_critical_point}" -l 1 -f "${mfa_file}" -i "${control_points}" -o "${critical_point_file}" -e "${same_root_epsilon}"
 
-"${convert_root_to_vtk}" -i "${mfa_file}" -o "${critical_point_csv_file}" -f "${critical_point_file}" -e "${same_root_epsilon}"
+# "${convert_root_to_vtk}" -i "${mfa_file}" -o "${critical_point_csv_file}" -f "${critical_point_file}" -e "${same_root_epsilon}"
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value1}_${step_size}.obj" -z "${step_size}" -v "${value1}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value1}.dat"
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value1}_${step_size}.obj" -z "${step_size}" -v "${value1}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value1}.dat"
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size}.obj" -z "${step_size}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2.0
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size}.obj" -z "${step_size}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2.0
 
-"${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2.0
-
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${connection_threshold2}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a "${connection_threshold2}"
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${connection_threshold3}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a "${connection_threshold3}"
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${connection_threshold4}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a "${connection_threshold4}"
+"${contour}" -f "${mfa_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2.0
 
 
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${connection_threshold2}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a "${connection_threshold2}"
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${root_finding_epsilon2}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon2}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat"
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${connection_threshold3}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a "${connection_threshold3}"
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${root_finding_epsilon3}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon3}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat"
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${root_finding_epsilon4}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon4}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" 
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size3}.obj" -z "${step_size3}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size4}.obj" -z "${step_size4}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size5}.obj" -z "${step_size5}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2
-
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size6}.obj" -z "${step_size6}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${connection_threshold4}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a "${connection_threshold4}"
 
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size7}.obj" -z "${step_size7}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size8}.obj" -z "${step_size8}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 0 -s "${error_file}_${value2}.dat" -a 2
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${root_finding_epsilon2}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon2}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat"
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${root_finding_epsilon3}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon3}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat"
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size2}_${root_finding_epsilon4}.obj" -z "${step_size2}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon4}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" 
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size3}.obj" -z "${step_size3}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size4}.obj" -z "${step_size4}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size5}.obj" -z "${step_size5}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size6}.obj" -z "${step_size6}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2
 
 
-# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value3}_${step_size}.obj" -z "${step_size}" -v "${value3}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -u 1 -w 1 -s "${error_file}_${value3}.dat"
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size7}.obj" -z "${step_size7}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value2}_${step_size8}.obj" -z "${step_size8}" -v "${value2}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 0 -s "${error_file}_${value2}.dat" -a 2
+
+
+# "${contour}" -f "${mfa_file}" -r "${root_file}" -b "${ridge_valley_file1}_${value3}_${step_size}.obj" -z "${step_size}" -v "${value3}" -p "${trace_split_grad_square_threshold}" -y 0.5 -x "${root_finding_epsilon}" -j "${critical_point_file}" -w 1 -s "${error_file}_${value3}.dat"
 
 
 
@@ -153,7 +153,7 @@ fi
 
 
 # "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 2 -d 3 -u "${step_size}" -g 0 -z 0 
-"${write_vtk}" -f "${mfa_file}" -t "${mfa_file}_${step_size2}.vtk" -m 2 -d 3 -u "${step_size2}" -g 0 -z 1
+# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}_${step_size2}.vtk" -m 2 -d 3 -u "${step_size2}" -g 0 -z 1
 
 
 source ~/enter/etc/profile.d/conda.sh
@@ -164,7 +164,7 @@ conda activate mfa
 
 # python "${extract_ttk_contour}" "${mfa_file}.vtk" "${value1}" "./build/src/${save_folder}/contour_${value1}_ttk_3d.obj" "./build/src/${save_folder}/contour_${value1}_ttk.bin"
 
-python "${extract_ttk_contour}" "${mfa_file}_${step_size2}.vtk" "${value2}" "./build/src/${save_folder}/contour_${value2}_ttk_3d.obj" "./build/src/${save_folder}/contour_${value2}_ttk.bin"
+# python "${extract_ttk_contour}" "${mfa_file}_${step_size2}.vtk" "${value2}" "./build/src/${save_folder}/contour_${value2}_ttk_3d.obj" "./build/src/${save_folder}/contour_${value2}_ttk.bin"
 
 # python "${extract_ttk_contour}" "${mfa_file}.vtk" "${value3}" "./build/src/${save_folder}/contour_${value3}_ttk_3d.obj" "./build/src/${save_folder}/contour_${value3}_ttk.bin"
 
@@ -216,7 +216,7 @@ python "${count_betti_num}" "${ridge_valley_file1}_${value2}_${step_size2}.obj"
 # python "${count_betti_num}" "./build/src/ori_func_sample/sinc_ori_value1.obj"
 # python "${count_betti_num}" "./build/src/ori_func_sample/sinc_ori_value2.obj"
 # python "${count_betti_num}" "./build/src/${save_folder}/contour_${value1}_ttk.obj" 
-python "${count_betti_num}" "./build/src/${save_folder}/contour_${value2}_ttk_3d.obj" 
+# python "${count_betti_num}" "./build/src/${save_folder}/contour_${value2}_ttk_3d.obj" 
 # python "${count_betti_num}" "./build/src/${save_folder}/contour_${value3}_ttk.obj" 
 
 
