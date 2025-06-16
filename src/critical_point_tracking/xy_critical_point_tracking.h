@@ -84,12 +84,12 @@ namespace xy_cp_tracking{
         {
             return false;
         }
-        T norm = gradient.norm();
-        if(norm<gradient_epsilon)
-        {
-            return false;
-        }
-        gradient /= norm;
+        // T norm = gradient.norm();
+        // if(norm<gradient_epsilon)
+        // {
+        //     return false;
+        // }
+        // gradient /= norm;
         direction.head(2) = gradient;
         direction[2] = 1.0;
 
@@ -128,6 +128,7 @@ namespace xy_cp_tracking{
         {
             p3 = p-0.5*step_size*k2;
         }
+
         if(!compute_direction(b,p3, k3,hessian_det_epsilon,gradient_epsilon))
         {
             return false;
@@ -142,6 +143,7 @@ namespace xy_cp_tracking{
         {
             p4 = p-step_size*k3;
         }
+
         if(!compute_direction(b,p4, k4,hessian_det_epsilon,gradient_epsilon))
         {
             return false;
@@ -226,9 +228,38 @@ namespace xy_cp_tracking{
         return true;
     }
 
+
+
+
+    template<typename T>
+    bool check_duplication(CP_Trace<T>& trace_in_span, std::vector<VectorX<T>>& result, T threshold_square)
+    {
+        
+        // std::cout<<"check duplication "<<threshold_square<<std::endl;
+        if(result.empty())
+        {
+            return true;
+        }
+        for(auto i=0;i<trace_in_span.traces.size();++i)
+        {
+
+            if((result[0]-trace_in_span.traces[i][0]).squaredNorm()<threshold_square)
+            {
+                if((result.back()-trace_in_span.traces[i].back()).squaredNorm()<threshold_square)
+                {                            
+                    return true;
+                }
+            }                                                
+            
+        }
+            
+        
+        return false;
+    }
+
     template<typename T>
     void tracing_cpt(T step_size, const Block<T>* b, std::vector<VectorX<T>>& initial, CP_Trace<T>& trace, std::vector<std::vector<T>>& span_range, T threshold_correction, int correction_max_itr,
-    T hessian_det_epsilon, T gradient_epsilon)
+    T hessian_det_epsilon, T gradient_epsilon, T trace_threshold_square)
     {
          std::vector<VectorX<T>> result;
 
@@ -236,7 +267,14 @@ namespace xy_cp_tracking{
         {
             tracing_single_cpt(step_size,b,initial[i],result,span_range,threshold_correction,correction_max_itr,hessian_det_epsilon,gradient_epsilon);
 
-            trace.traces.emplace_back(result);
+            // check duplicaiton
+            if(!check_duplication(trace, result, trace_threshold_square))
+            {
+                trace.traces.emplace_back(result);
+            }
+
+
+           
         }
 
     }
@@ -245,7 +283,8 @@ namespace xy_cp_tracking{
     template<typename T>
     void find_trace(T step_size,int max_step, const Block<T>* b, std::vector<std::vector<VectorX<T>>>& initial,
     std::vector<size_t>& span_index, std::vector<CP_Trace<T>>& traces, 
-    T hessian_det_epsilon, T gradient_epsilon,T threshold_correction,int correction_max_itr)
+    T hessian_det_epsilon, T gradient_epsilon,T threshold_correction,int correction_max_itr,
+    T trace_threshold_square)
     {
         auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
         VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
@@ -269,7 +308,7 @@ namespace xy_cp_tracking{
                     span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[j][span_domain_index[j]+1+b->mfa->var(0).p[j]]*domain_range[j]+b->core_mins[j]);
                 }
 
-                tracing_cpt(step_size,b,initial[i],traces[i],span_range,threshold_correction,correction_max_itr,hessian_det_epsilon,gradient_epsilon);                
+                tracing_cpt(step_size,b,initial[i],traces[i],span_range,threshold_correction,correction_max_itr,hessian_det_epsilon,gradient_epsilon,trace_threshold_square);                
             }
         },ap);
     }

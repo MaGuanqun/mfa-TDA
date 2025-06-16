@@ -6,7 +6,7 @@
 #include "domain_args.hpp"
 
 // Define list of example keywords
-set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian_pair1","gaussian_pair2","ackley","schwefel","gaussian_mixture"};
+set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian_pair1","gaussian_pair2","ackley","schwefel","gaussian_mixture","rotating_gaussian"};
 set<string> datasets_4d = {"tornado4d"};
 set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado"};
 set<string> datasets_2d = {"cesm","vortex_street","boussinesq","hurricane_isabel","s3d"};
@@ -211,6 +211,31 @@ void gaussian_mixture(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 
     return;
 
+}
+
+template<typename T>
+void rotating_gaussian(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+{
+    T cx = 0.0;
+    T cy = 0.0;
+    T r1 = 0.7; T r2 = 0.7;
+    T phi1 = 0; T phi2 = M_PI; 
+    T omega1 = 0.5 * M_PI; T omega2 = 0.5 * M_PI;
+    T x1= cx + r1 * cos(omega1 * domain_pt(2) + phi1);
+    T y1 = cy + r1 * sin(omega1 * domain_pt(2) + phi1);
+    
+    T x2 = cx + r2 * cos(omega2 * domain_pt(2) + phi2);
+    T y2 = cy + r2 * sin(omega2 * domain_pt(2) + phi2);
+
+    T sigmax1 = 0.5; T sigmay1 = 0.5;
+    T sigmax2 = 0.4; T sigmay2 = 0.4;
+    T A1 = 1.0; T A2 = 0.8;
+
+    T f1 = A1 * exp(-((domain_pt(0) - x1)*(domain_pt(0) - x1)/(2*sigmax1*sigmax1) + (domain_pt(1) - y1)*(domain_pt(1) - y1)/(2*sigmay1*sigmay1)));
+    T f2 = A2 * exp(-((domain_pt(0) - x2)*(domain_pt(0) - x2)/(2*sigmax2*sigmax2) + (domain_pt(1) - y2)*(domain_pt(1) - y2)/(2*sigmay2*sigmay2)));
+    output_pt(0) = f1 + f2;
+
+    return;
 }
 
 template<typename T>
@@ -567,6 +592,7 @@ void evaluate_function(string fun, const VectorX<T>& domain_pt, VectorX<T>& outp
     else if (fun == "gaussian_pair1") return gaussian_pair1(  domain_pt, output_pt);
     else if (fun == "gaussian_pair2") return gaussian_pair2(  domain_pt, output_pt);
     else if (fun == "gaussian_mixture") return gaussian_mixture(domain_pt, output_pt);
+    else if (fun == "rotating_gaussian") return rotating_gaussian(domain_pt, output_pt);
     else
     {
         cerr << "Invalid function name in evaluate_function. Aborting." << endl;

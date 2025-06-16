@@ -40,6 +40,8 @@
 
 #include "xy_critical_point_finding.h"
 #include "xy_critical_point_tracking.h"
+
+#include "tracking_utility.h"
 // #include "trace.h"
 
 // #include "../morse_smale/find_isocontour.h"
@@ -61,6 +63,10 @@ struct root_info
 };
 
 
+namespace {
+    tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
+}
+
 int main(int argc, char** argv)
 {
 
@@ -69,8 +75,7 @@ int main(int argc, char** argv)
 
     string infile = "approx.mfa";               // diy input file
     // string inControlPoint = "derivative_control_point.dat";
-    string inCriticalPoint = "default_critical_point.dat";
-    string root_file = "root_point.dat";
+
     string inControlPoint = "derivative_control_point.dat";
 
     // default command line arguments
@@ -104,21 +109,19 @@ int main(int argc, char** argv)
 
 
 
-    real_t initial_point_finding_hessian_threshold = 1e-12;
+    real_t initial_point_finding_hessian_threshold = 1e-20;
     real_t root_finding_epsilon = 1e-8;
     real_t hessian_threshold_for_cpt_tracking = 1e-12;
 
-    real_t threshold_distance_stop_tracing = 0.3;
-    string input_shrink_ratio = "0-1-0-1";
+    string input_shrink_ratio = "0-1-0-1-0-1";
     real_t dxy_dt_gradient_epsilon = 1e-10;
 
     int initial_t_number = 1;
-    int z_zero = 1;
+
 
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
-    ops >> opts::Option('j', "inCriticalPoint",  inCriticalPoint,  " diy input critical point file name");
     ops >> opts::Option('h', "help",    help,    " show help");
-    ops >> opts::Option('r', "root_file", root_file,    " root");
+    ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
     ops >> opts::Option('z', "step_size",    step_size,       " step size");
     ops >> opts::Option('c', "threshold_correction",    threshold_correction,       " threshold activate the correction of point tracing");
     ops >> opts::Option('g', "grad_threshold",    grad_threshold,       " gradient is smaller enough to change to permutate the point a little bit");
@@ -128,11 +131,8 @@ int main(int argc, char** argv)
 
     ops >> opts::Option('x', "root_finding_epsilon",    root_finding_epsilon,       "first root finding epsilon");
 
-    ops >> opts::Option('y', "threshold_distance_stop_tracing",    threshold_distance_stop_tracing,       "when the distance from previous point is smaller than this*step_size, stop tracing");
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
-    ops >> opts::Option('w', "z_zero",    z_zero,       " output z as zero");
-
-
+  
     if (!ops.parse(argc, argv) || help)
     {
         if (world.rank() == 0)
@@ -195,14 +195,17 @@ int main(int argc, char** argv)
         auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
         VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
 
+        initial_t_number = step_size;
+
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-        double min_span_size = Span_size.minCoeff()/step_size;
+        double min_span_size = Span_size[2]/step_size;
         step_size = min_span_size;
 
 
         tolerance = 0.5*step_size; // same_root_epsilon
 
         trace_threshold_square = step_size*step_size; //check duplication
+
 
         // std::cout<<"step "<<step_size<<std::endl;
         // std::cout<<"trace_threshold_square__"<<trace_threshold_square<<std::endl;
@@ -216,14 +219,12 @@ int main(int argc, char** argv)
         utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
 
 
-
-
-        std::vector<double> shrink_ratio_in_unit;
-        for(int i=0;i<shrink_ratio.size()/2;i++)
-        {
-            shrink_ratio_in_unit.emplace_back((shrink_ratio[2*i]-b->core_mins[i])/ local_domain_range[i]);
-            shrink_ratio_in_unit.emplace_back((shrink_ratio[2*i+1]-b->core_mins[i])/ local_domain_range[i]);
-        }
+        // std::vector<double> shrink_ratio_in_unit;
+        // for(int i=0;i<shrink_ratio.size()/2;i++)
+        // {
+        //     shrink_ratio_in_unit.emplace_back((shrink_ratio[2*i]-b->core_mins[i])/ local_domain_range[i]);
+        //     shrink_ratio_in_unit.emplace_back((shrink_ratio[2*i+1]-b->core_mins[i])/ local_domain_range[i]);
+        // }
 
         std::vector<std::vector<VectorX<real_t>>> root; //the inner vector store the root in a span
 
@@ -234,7 +235,7 @@ int main(int argc, char** argv)
         std::vector<size_t> valid_span_index;
 
 
-        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio_in_unit,2);
+        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2);
 
         tbb::enumerable_thread_specific<std::vector<root_info>> local_root;
 
@@ -249,13 +250,14 @@ int main(int argc, char** argv)
         tbb::affinity_partitioner ap;
 
 
-        tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()),
+        tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
         [&](const tbb::blocked_range<size_t>& range)
         {
             auto& root_thread = local_root.local();
 
             for(auto i=range.begin();i!=range.end();++i)
             {
+                // std::cout<<selected_span[0][i][2]<<std::endl;
                 std::vector<VectorX<real_t>> root_block;
                 std::vector<real_t> function_value_block;
                 root_block.reserve(16);
@@ -263,7 +265,8 @@ int main(int argc, char** argv)
                 // std::vector<VectorXd> root_span;
                 if(find_2d_roots::root_finding(b,selected_span,root_block,i,root_finding_epsilon, tolerance,initial_t_number,initial_point_finding_hessian_threshold))
                 {
-                    size_t index=utility::obtain_index_from_domain_index(selected_span[0][i],number_in_every_domain);
+                    VectorXi selected_span_index=selected_span[0][i]- b->mfa->var(0).p;
+                    size_t index=utility::obtain_index_from_domain_index(selected_span_index,number_in_every_domain);
                     root_info span_root;
                     span_root.roots = std::move(root_block);
                     // span_root.function_value = std::move(function_value_block);
@@ -284,6 +287,8 @@ int main(int argc, char** argv)
         );
 
 
+
+
         size_t total_size = 0;
         for (const auto& thread_indices : local_root)
             total_size += thread_indices.size();
@@ -301,60 +306,26 @@ int main(int argc, char** argv)
         }   
 
 
+        string test_file=cp_tracing_file+"_test.obj";
+
+
+        tracking_utility::convert_to_obj(test_file,root);
+        find_2d_roots::test_root_finding(b,root,root_finding_epsilon);
+
+        std::cout<<"finish finding root "<<root.size()<<std::endl;
+
         std::vector<CP_Trace<double>> traces_in_span;
 
         traces_in_span.resize(valid_span_index.size());
 
         xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces_in_span,hessian_threshold_for_cpt_tracking,grad_threshold,
-        threshold_correction,correction_max_itr);
+        threshold_correction,correction_max_itr,trace_threshold_square);
+
+
+        CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces_in_span);
 
 
 
-
-            // size_t total_size = 0;
-            // for (const auto& thread_indices : local_root)
-            //     total_size += thread_indices.size();
-
-            // root.reserve(total_size);
-            // function_value.reserve(total_size);
-            // valid_span_index.reserve(total_size);
-
-            // double func_max = -1e10;
-            // for (auto& thread_root_block : local_root)
-            // {
-            //     for(auto& root_info : thread_root_block)
-            //     {
-            //         root.emplace_back(std::move(root_info.roots));
-            //         valid_span_index.emplace_back(root_info.valid_span_index);
-            //         function_value.emplace_back(std::move(root_info.function_value));
-            //     }
-            // }
-                        
-            // std::cout<<"finish finding root"<<root.size()<<std::endl;
-
-            // traces_in_span.resize(valid_span_index.size());
-
-            // find_isocontour::find_isocontour(step_size,max_step,b->mfa,b->vars[0].mfa_data,root, valid_span_index,trace_threshold_square,traces_in_span,threshold_correction,trace_split_grad_square_threshold,correction_max_itr,threshold_distance_stop_tracing*threshold_distance_stop_tracing,b->core_mins,local_domain_range,point_func_value);
-
-            // std::cout<<"finish tracing"<<std::endl;
-
-            
-            // find_isocontour::getFunctionValue(b->mfa,b->vars[0].mfa_data,traces_in_span,b->core_mins,local_domain_range);
-
-            // std::cout<<"getting function "<<std::endl;
-
-            // std::vector<VectorX<double>> critical_points;
-            // if(inCriticalPoint!="default_critical_point.dat")
-            // {
-            //     connect_rv_graph::read_critical_point(inCriticalPoint,critical_points,false,true,point_func_value,100.0*threshold_correction);                
-            // }
-
-
-            // connect_rv_graph::connect_ridge_valley_graph(traces_in_span,critical_points,b->vars[0].mfa_data,spanned_block_num, span_num,
-            // valid_span_index,
-            // threshold_connect_traces_square, ridge_valley_graph_file,b->core_mins,local_domain_range,z_zero);
-            
-            // // ridge_valley_graph::test_points_feature(b->mfa,b->vars[0].mfa_data,traces_in_span,b->core_mins,local_domain_range);
     });
 
 }

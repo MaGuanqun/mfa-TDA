@@ -343,6 +343,34 @@ struct MFAParser
 
         }
 
+        if(input == "rotating_gaussian")
+        {
+
+            d_args.full_dom_pts = {100,100,40};      // Hard-coded to full data set size
+            d_args.ndom_pts = d_args.full_dom_pts;
+            
+            if (!adaptive)
+            {
+                vars_nctrl[0] = 23;
+                vars_nctrl[1] = 23;
+                vars_nctrl[2] = 15;
+            }
+        
+            d_args.min.resize(dom_dim);
+            d_args.max.resize(dom_dim);
+            d_args.min[0]               = -2.0;
+            d_args.max[0]               = 2.0;
+            d_args.min[1]               = -2.0;
+            d_args.max[1]               = 2.0;
+            d_args.min[2]               = -2.0;
+            d_args.max[2]               = 2.0;
+
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);                 // scaling factor on range
+
+
+        }
+
 
 
 

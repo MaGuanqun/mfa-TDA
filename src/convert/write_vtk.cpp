@@ -190,7 +190,7 @@ void write_function_pointset_vtk(mfa::PointSet<T>* ps, char* filename,Block<real
     {
         write_curvilinear_mesh(
             /* const char *filename */                  filename,
-            /* int useBinary */                         0,
+            /* int useBinary */                         1,
             /* int *dims */                             &npts_dim[0],
             /* float *pts */                            &(pt_coords[0].x),
             /* int nvars */                             nvars,
@@ -1191,7 +1191,7 @@ void PrepRenderingData(
 
 template<typename T>
 void set_point_set(mfa::PointSet<T>*& point_set, size_t dom_dim, size_t pt_dim,
-const VectorX<T>& core_min, const VectorX<T>& core_max, int upsample_factor, std::vector<T>& shrink_range_raio,Block<real_t>* block)
+const VectorX<T>& core_min, const VectorX<T>& core_max, std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio,Block<real_t>* block)
 {
     VectorXi ndom_pts(dom_dim);
     int npts = 1;
@@ -1209,10 +1209,11 @@ const VectorX<T>& core_min, const VectorX<T>& core_max, int upsample_factor, std
     VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
     for(int i=0;i<dom_dim;i++)
     {
-        ori_ndom_pts(i) = upsample_factor * span_num(i)+1;
+        ori_ndom_pts(i) = upsample_factor[i] * span_num(i)+1;
     }
 
-        for(int i=0;i<2;++i)
+
+    for(int i=0;i<dom_dim;++i)
     {
         if(shrink_range_raio[2*i+1]==1)
         {
@@ -1225,8 +1226,8 @@ const VectorX<T>& core_min, const VectorX<T>& core_max, int upsample_factor, std
     for (int i = 0; i < dom_dim; i++)
     {
 
-        dim_start[2*i]= upsample_factor * shrink_range_raio[2*i]; //round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i]);
-        dim_start[2*i+1]=upsample_factor * shrink_range_raio[2*i+1];// round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i+1]);
+        dim_start[2*i]= upsample_factor[i] * shrink_range_raio[2*i]; //round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i]);
+        dim_start[2*i+1]=upsample_factor[i] * shrink_range_raio[2*i+1];// round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i+1]);
 
         ndom_pts(i)     =  (dim_start[2*i+1] - dim_start[2*i] + 1);
         npts    *= ndom_pts(i);
@@ -1274,7 +1275,7 @@ const VectorX<T>& core_min, const VectorX<T>& core_max, int upsample_factor, std
 
 template<typename T>
 void save_ply(std::string& file_name, Block<real_t>* block, size_t dom_dim, size_t pt_dim,
-int upsample_factor, std::vector<T>& shrink_range_raio)
+std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio)
 {
 
     VectorXi ori_ndom_pts(dom_dim);
@@ -1282,7 +1283,7 @@ int upsample_factor, std::vector<T>& shrink_range_raio)
     VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
     for(int i=0;i<dom_dim;i++)
     {
-        ori_ndom_pts(i) = upsample_factor * span_num(i)+1;
+        ori_ndom_pts(i) = upsample_factor[i] * span_num(i)+1;
     }
 
     VectorXi ndom_pts(dom_dim);
@@ -1415,7 +1416,7 @@ void write_vtk_files(
         Block<real_t>* b,
         const          diy::Master::ProxyWithLink& cp,
         int            sci_var,
-        int upsample_factor,
+        std::vector<int>& upsample_factor,
         std::vector<double>& shrink_range_raio,
         int ignore,
         string& output_obj_name, string& output_vtk_name,
@@ -1536,7 +1537,6 @@ else
     
     std::cout<<"compute value and gradient mag running time, millisecond : "<< std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time + run_time).count()/1000<<std::endl;
 }
-
 
 
 #ifdef MFA_DEBUG_KNOT_INSERTION
@@ -1817,7 +1817,7 @@ int main(int argc, char ** argv)
     int                         pt_dim = 3;        // domain and point dimensionality, respectively
     int set_zero=1;
 
-    int upsample_factor = 1;//upsample factor for pointset based on original pointset
+    string input_upsample_factor = "1";//upsample factor for pointset based on original pointset
     // int shrink_range_raio = 1;//shrink the range of the pointset
 
     string input_shrink_ratio = "0-1-0-1";
@@ -1838,7 +1838,9 @@ int main(int argc, char ** argv)
     ops >> opts::Option('v', "var",         sci_var,    " science variable to render geometrically for 1d and 2d domains");
     ops >> opts::Option('h', "help",        help,       " show help");
 
-    ops >> opts::Option('u', "upsample",    upsample_factor,       " upsample factor for pointset based on original pointset");
+    ops >> opts::Option('u', "upsample range",    input_upsample_factor,       " upsample factor for pointset based on original pointset,  by \"x1-x2-y1-y2-z1-z2-...\"");
+
+
     ops >> opts::Option('s', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-z1-z2-...\"");
     ops >> opts::Option('r', "raw data file",    raw_data_file,       " original raw data file name");
     ops >> opts::Option('o', "output raw vtk",    output_raw_vtk,       " file name of output vtk of raw file");
@@ -1869,6 +1871,30 @@ int main(int argc, char ** argv)
             shrink_ratio.push_back(number);
         }
     }  
+
+    std::istringstream iuf(input_upsample_factor);
+    std::vector<int> upsample_factor;
+    while (std::getline(iuf, token, '-')) {
+        std::istringstream tokenStream(token);
+        if (tokenStream >> number) {
+            upsample_factor.push_back(number);
+        }
+    }  
+
+    if(upsample_factor.size()==1)
+    {
+        for(int i=0;i<dom_dim-1;++i)
+        {
+            upsample_factor.push_back(upsample_factor[0]);
+        }
+    }
+    else if(upsample_factor.size()<dom_dim)
+    {
+        for(int i=upsample_factor.size();i<dom_dim;++i)
+        {
+            upsample_factor.push_back(1);
+        }
+    }
 
 
     if(2*dom_dim!=shrink_ratio.size())

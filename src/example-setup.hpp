@@ -188,6 +188,11 @@ using namespace std;
             dom_bounds.min = {-1.0, -0.8};
             dom_bounds.max = { 1.0, 2.3};
         }
+        else if(input == "rotating_gaussian")
+        {
+            dom_bounds.min = {-2.0, -2.0, -2.0};
+            dom_bounds.max = { 2.0, 2.0, 2.0};
+        } 
         else if (datasets_4d.count(input) || datasets_3d.count(input) || datasets_2d.count(input) || datasets_unstructured.count(input))
         {
             for (int i = 0; i < dom_bounds.min.dimension(); i++)
@@ -195,7 +200,7 @@ using namespace std;
                 dom_bounds.min[i] = 0.0;
                 dom_bounds.max[i] = 1.0;
             }
-        }        
+        }     
         else
         {
             cerr << "Unrecognized input in set_dom_bounds(). Exiting." << endl;
@@ -367,6 +372,35 @@ using namespace std;
 
             for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
                 d_args.s[i] = 1.0 * (i + 1);  
+        }
+
+        if(input == "rotating_gaussian")
+        {
+            d_args.min.resize(dom_dim);
+            d_args.max.resize(dom_dim);
+
+            d_args.min[0]               = -2.0;
+            d_args.max[0]               = 2.0;
+            d_args.min[1]               = -2.0;
+            d_args.max[1]               = 2.0;
+            d_args.min[2]               = -2.0;
+            d_args.max[2]               = 2.0;
+
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+            
+            d_args.full_dom_pts = {100,100,50};      // Hard-coded to full data set size
+            d_args.ndom_pts = d_args.full_dom_pts;
+            for (int i = 0; i < dom_dim; i++)
+            {
+                d_args.tot_ndom_pts *= d_args.ndom_pts[i];
+            }
+            if (!adaptive)
+            {
+                vars_nctrl[0] = 23;
+                vars_nctrl[1] = 23;
+                vars_nctrl[2] = 15;
+            }
         }
 
         if(input == "ackley")

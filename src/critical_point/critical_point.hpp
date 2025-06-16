@@ -137,7 +137,6 @@ void compute_valid_span(
         limit_dimension_num = block->dom_dim;
     }
 
-
     for (size_t i = 0; i < nvars; i++)                                      // science variables
     {
         auto& mfa_data          = block->mfa->var(i);
@@ -152,8 +151,8 @@ void compute_valid_span(
         //the common block means the number should be the same as the domain dimension
         // memset(count_in_original_function.data(),0,sizeof(size_t)*count_in_original_function.size());
 
-        VectorXi number_in_every_dmain_ori_func;
-        utility::obtain_number_in_every_domain(tc.nctrl_pts,number_in_every_dmain_ori_func);
+        VectorXi number_in_every_domain_ori_func;
+        utility::obtain_number_in_every_domain(tc.nctrl_pts,number_in_every_domain_ori_func);
 
         valid_span[i].reserve(tc.nctrl_pts.prod()/10);
 
@@ -162,6 +161,7 @@ void compute_valid_span(
 
         int total_block=0;
     
+
         for(int k = 0;k< limit_dimension_num;k++)
         {            
 
@@ -190,6 +190,9 @@ void compute_valid_span(
             int block_span=block_span_num.prod();
 
             tbb::affinity_partitioner ap;
+        
+  
+
             tbb::parallel_for(tbb::blocked_range<size_t>(0,spanned_block_num),
             [&](const tbb::blocked_range<size_t>& range)
             {
@@ -198,10 +201,13 @@ void compute_valid_span(
                     VectorXi span_index(p.size());
                     //decode the span index in every dimension
                     utility::obtainDomainIndex(j,span_index,number_in_every_domain);
+
+
                     //get the index in control point for this block
                     std::vector<size_t>index_for_control_point(block_span);
 
                     utility::obtain_index_for_control_point(index_for_control_point,span_index,number_in_every_dmain_block,number_in_every_domain_ori);
+
 
                     // std::cout<<j<<" "<<index_for_control_point.size()<<std::endl;
                     // if(j==0)
@@ -212,6 +218,12 @@ void compute_valid_span(
                     //     }
                     //     std::cout<<std::endl;
 
+                    // }
+
+                    // if(span_index==test)
+                    // {
+                    //     std::cout<<"span_index "<<span_index.transpose()<<std::endl;
+                    //     std::cout<<utility::check_valid_span(control_points[i][k].data(),index_for_control_point)<<std::endl;
                     // }
                     
 
@@ -225,8 +237,8 @@ void compute_valid_span(
 
                         //project it to the original function span (fx->f)
                         span_index+=mfa_data.p;  //here the derivative is 
-                        size_t ind = utility::obtain_index_from_domain_index(span_index,number_in_every_dmain_ori_func);
-                        count_in_original_function[ind].fetch_add(1);           
+                        size_t ind = utility::obtain_index_from_domain_index(span_index,number_in_every_domain_ori_func);
+                        count_in_original_function[ind].fetch_add(1);       
   
                     }
                 }
@@ -243,7 +255,8 @@ void compute_valid_span(
         {
             if(count_in_original_function[j].load()==limit_dimension_num)
             {
-                utility::obtainDomainIndex(j,index,number_in_every_dmain_ori_func);
+                utility::obtainDomainIndex(j,index,number_in_every_domain_ori_func);
+
                 if(spanInRange(mfa_data,index,domain_limit))
                 {
                     valid_span[i].emplace_back(index);

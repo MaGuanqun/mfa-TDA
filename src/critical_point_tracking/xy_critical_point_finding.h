@@ -116,16 +116,17 @@ namespace find_2d_roots
                 return false;
             }
 
+            if(!utility::InBlock(span_range,p))
+            {
+                return false;
+            }
+
 
             compute_f_dev_f(b,p,f,dev_f);
 
 
             if(itr_num>0){
                 if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){             
-                    if(!utility::InBlock(span_range,p))
-                    {
-                        return false;
-                    }
                     
                     result = p;
                     return true;
@@ -165,7 +166,7 @@ namespace find_2d_roots
         VectorXi one = VectorXi::Ones(b->mfa->var(0).p.size());
         // int deg = (mfa_data->p-one).prod();
 
-        int maxIter=50;
+        int maxIter=100;
 
         int distance_stop_itr = 5;
 
@@ -241,7 +242,6 @@ namespace find_2d_roots
 
         for(int g=0;g<initial_t.size();g++)
         {  
-
             std::vector<VectorX<T>> root_in_original_domain;
 
             for(int i=0;i<num_initial_point;++i)
@@ -293,9 +293,7 @@ namespace find_2d_roots
 
         for(auto i=0;i<block->mfa->nvars();++i)
         {
-            VectorXi span_index_local = span_index[i][current_index]+block->mfa->var(i).p;
-
-            if(root_finding(block,span_index_local, root,
+            if(root_finding(block,span_index[i][current_index], root,
             root_finding_epsilon,same_root_epsilon,t_initial_number,hessian_det_epsilon))
             {
                 return true;
@@ -303,6 +301,36 @@ namespace find_2d_roots
         }
 
         return false;
+    }
+
+    template<typename T>
+    void test_root_finding(Block<T>* b,std::vector<std::vector<Eigen::VectorX<T>>>& points,T root_finding_epsilon)
+    {
+        std::cout<<root_finding_epsilon<<std::endl;
+        for(auto i=0;i<points.size();++i)
+        {
+            int domain_dim=2;
+            VectorX<T>f(domain_dim);
+            for(auto j=0;j<points[i].size();++j)
+            {
+                VectorX<T> p = points[i][j];
+               
+                VectorXi deriv(3);
+                VectorX<T> f_vector(1);
+                for(int k=0;k<domain_dim;k++)
+                {
+                    deriv.setZero();
+                    deriv[k]+=1;
+                    mfa_extend::recover_mfa(b, p,f_vector, deriv);
+                    f[k] = f_vector[0];
+                }
+                if(f.squaredNorm() > root_finding_epsilon*root_finding_epsilon)
+                {
+                    std::cout<<"not root "<<f.transpose()<<" "<<f.squaredNorm()<<std::endl;
+                }
+            }
+        }
+
     }
 
 }
