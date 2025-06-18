@@ -23,6 +23,7 @@ if                          (NOT CMAKE_BUILD_TYPE)
 endif                       (NOT CMAKE_BUILD_TYPE)
 
 option                      (mfa_thread     "tbb, kokkos, sycl, or serial (default tbb)"                                 "tbb"  )
+set(mfa_thread "tbb")
 
 # MPI
 find_package                (MPI REQUIRED)

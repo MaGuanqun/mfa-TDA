@@ -19,7 +19,7 @@ step_size="16"
 t_sample_ratio="10"
 tracking_result="./build/src/${save_folder}/${data_type}.obj"
 ttk_tracking_file="./build/src/${save_folder}/ttk_${data_type}.vtu"
-
+ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cpt.csv"
 
 upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
@@ -35,15 +35,16 @@ root_finding_epsilon="1e-10"
 
 # "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
 # 
-"${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 
+# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 
 
-# "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${step_size}" -a "${control_points}" -x "${root_finding_epsilon}"
+"${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${step_size}" -a "${control_points}" -x "${root_finding_epsilon}"
 
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
 
-python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
+# python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
 
+# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}"
 
-pvpython ./src/critical_point_tracking/tracking_script.py -i "${mfa_file}.vti" -o "${ttk_tracking_file}"
+# pvpython ./src/critical_point_tracking/tracking_script.py -i "${mfa_file}.vti" -o "${ttk_tracking_file}"

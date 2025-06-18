@@ -1,9 +1,10 @@
 from paraview.simple import *
+from paraview import servermanager as sm
 import argparse
+import vtk.util.numpy_support as VN
 
 LoadPlugin("/home/guanqunma/ParaView-5.11.2-MPI-Linux-Python3.9-x86_64/lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so", remote=False, ns=globals()) 
 
-TTKArrayPreconditioning()  # If this works, the plugin is loaded
 
 def compute_tracking(input, output):
     timeTrackingvti = XMLImageDataReader(FileName=[input])
@@ -18,9 +19,14 @@ def compute_tracking(input, output):
     precond.PointDataArrays = all_point_arrays
     precond.UpdatePipeline()
     tetrahedralize1 = Tetrahedralize(registrationName='Tetrahedralize1', Input=precond)
+    
+    Points_fetched = sm.Fetch(tetrahedralize1)
+    value0 = VN.vtk_to_numpy(Points_fetched.GetFieldData().GetArray(all_point_arrays[0]))[0]
+    value1 = VN.vtk_to_numpy(Points_fetched.GetFieldData().GetArray(all_point_arrays[1]))[0]
+    
     tTKTrackingFromFields1 = TTKTrackingFromFields(Input=tetrahedralize1)
     tTKTrackingFromFields1.ForceZtranslation = 1
-    tTKTrackingFromFields1.ZTranslation = 0.125
+    tTKTrackingFromFields1.ZTranslation = value1-value0
     tTKTrackingFromFields1.Persistencethreshold = 0.0
     # tTKTrackingFromFields1.Fweight = 1
     print(f"Output data type: {tTKTrackingFromFields1.GetDataInformation().GetDataSetTypeAsString()}")
