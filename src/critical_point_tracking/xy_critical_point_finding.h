@@ -1,5 +1,5 @@
 // for a 3D dataset, find critical point on every xy plane.
-
+#pragma once
 #include <iostream>
 #include <complex>
 #include <vector>
@@ -25,7 +25,7 @@ namespace find_2d_roots
     template<typename T>
     void compute_f_dev_f(const Block<T>* b, VectorX<T>& p, VectorX<T>& f, MatrixX<T>& dev_f)
     {
-        int domain_dim = 2;
+        int domain_dim = b->dom_dim-1;
         dev_f.resize(domain_dim,domain_dim);
         f.resize(domain_dim);
 
@@ -34,7 +34,7 @@ namespace find_2d_roots
 
         // std::cout<<local_domain_range.transpose()<<std::endl;
 
-        VectorXi deriv(3);
+        VectorXi deriv(b->dom_dim);
 
         for(int i=0;i<domain_dim;i++)
         {
@@ -94,7 +94,7 @@ namespace find_2d_roots
 
 
 
-            double determinant = dev_f.data()[3]*dev_f.data()[0]-dev_f.data()[1]*dev_f.data()[2];
+            T determinant = dev_f.data()[3]*dev_f.data()[0]-dev_f.data()[1]*dev_f.data()[2];
             if(std::abs(determinant) < hessian_det_epsilon)
             {
                 return false;                

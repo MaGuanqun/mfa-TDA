@@ -8,6 +8,9 @@ write_vtk="./build/src/convert/write_vtk"
 tracking="./build/src/critical_point_tracking/critical_point_tracking"
 derivative_control_point="./build/src/critical_point/derivative_control_point"
 
+degenerate_case="./build/src/critical_point_tracking/degenerate_case"
+convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
+
 
 data_type="rotating_gaussian"
 
@@ -15,9 +18,17 @@ save_folder="${data_type}"
 
 control_points="./build/src/${save_folder}/${data_type}_cpt.dat"
 mfa_file="./build/src/${save_folder}/${data_type}.mfa"
+
+
 step_size="16"
 t_sample_ratio="10"
+
+degenerate_point="./build/src/${save_folder}/${data_type}_degenerate.dat"
+
 tracking_result="./build/src/${save_folder}/${data_type}.obj"
+
+
+
 ttk_tracking_file="./build/src/${save_folder}/ttk_${data_type}.vtu"
 ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cpt.csv"
 
@@ -25,6 +36,7 @@ upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
 
 root_finding_epsilon="1e-10"
+J_threshold="1e-10"
 
 
 # if [ "${data_type}" = "rotating_gaussian" ]; then
@@ -37,7 +49,13 @@ root_finding_epsilon="1e-10"
 # 
 # "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 
 
-"${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${step_size}" -a "${control_points}" -x "${root_finding_epsilon}"
+# "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -a "${control_points}" -j "${J_threshold}"
+
+"${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
+
+# gdb --args "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -a "${control_points}" -j "${J_threshold}"
+
+# "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${step_size}" -a "${control_points}" -x "${root_finding_epsilon}"
 
 
 source ~/enter/etc/profile.d/conda.sh

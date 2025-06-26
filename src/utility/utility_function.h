@@ -305,7 +305,7 @@ namespace utility
 
     }
 
-    //there will be 2^n+1 initial points
+
     template<typename T>
     void compute_initial_points(std::vector<std::vector<T>>&initial_points_every_domain, const VectorXi& degree,  std::vector<std::vector<T>>& span_range) { 
         // int point_num=std::pow(2,n)+1;

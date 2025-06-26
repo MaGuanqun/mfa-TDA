@@ -17,7 +17,7 @@
 #include "EigenMatrixIO.h"
 #include"find_all_root.h"
 #include "save_control_data.hpp"
-#include "critical_point.hpp"
+#include "span_filter.hpp"
 
 #include"find_unique_root.h"
 
