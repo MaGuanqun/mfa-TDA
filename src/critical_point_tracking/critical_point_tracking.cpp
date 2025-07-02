@@ -117,7 +117,7 @@ int main(int argc, char** argv)
     real_t dxy_dt_gradient_epsilon = 1e-10;
 
     int initial_t_number = 1;
-
+    int max_itr=40;
 
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
@@ -132,7 +132,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('x', "root_finding_epsilon",    root_finding_epsilon,       "first root finding epsilon");
 
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
-  
+    ops >> opts::Option('m', "max_itr", max_itr, " max_itr");
+
     if (!ops.parse(argc, argv) || help)
     {
         if (world.rank() == 0)
@@ -184,6 +185,7 @@ int main(int argc, char** argv)
 
     std::vector<std::vector<VectorX<double>>> domain_root(master.size()); //[blocks,]
 
+    double plane_step_size=0.1;
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
     {
         
@@ -198,9 +200,10 @@ int main(int argc, char** argv)
         initial_t_number = step_size;
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-        double min_span_size = Span_size[2]/step_size;
+        double min_span_size = Span_size[Span_size.size()-1]/step_size;
+        plane_step_size = Span_size.head(Span_size.size()-1).minCoeff()/step_size;
         step_size = min_span_size;
-
+   
 
         tolerance = 0.5*step_size; // same_root_epsilon
 
@@ -237,6 +240,17 @@ int main(int argc, char** argv)
 
         span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2);
 
+
+
+
+
+        span_filter::compute_boundary_span(b,selected_span,true);
+
+        // for(int i=0;i<selected_span[0].size();i++)
+        // {
+        //     std::cout<<i<<" "<<selected_span[0][i].transpose()<<std::endl;
+        // }
+
         tbb::enumerable_thread_specific<std::vector<root_info>> local_root;
 
             
@@ -249,6 +263,10 @@ int main(int argc, char** argv)
 
         tbb::affinity_partitioner ap;
 
+        // VectorXi test(3);
+        // test<<16,13,3;
+        // selected_span[0].clear();
+        // selected_span[0].emplace_back(test);
 
         tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
         [&](const tbb::blocked_range<size_t>& range)
@@ -263,7 +281,7 @@ int main(int argc, char** argv)
                 root_block.reserve(16);
                 function_value_block.reserve(16);
                 // std::vector<VectorXd> root_span;
-                if(find_2d_roots::root_finding(b,selected_span,root_block,i,root_finding_epsilon, tolerance,initial_t_number,initial_point_finding_hessian_threshold))
+                if(find_2d_roots::root_finding(b,selected_span,root_block,i,root_finding_epsilon, tolerance,initial_point_finding_hessian_threshold,max_itr,step_size,plane_step_size))
                 {
                     VectorXi selected_span_index=selected_span[0][i]- b->mfa->var(0).p;
                     size_t index=utility::obtain_index_from_domain_index(selected_span_index,number_in_every_domain);
@@ -318,8 +336,8 @@ int main(int argc, char** argv)
 
         traces_in_span.resize(valid_span_index.size());
 
-        xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces_in_span,hessian_threshold_for_cpt_tracking,grad_threshold,
-        threshold_correction,correction_max_itr,trace_threshold_square);
+        // xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces_in_span,hessian_threshold_for_cpt_tracking,grad_threshold,
+        // threshold_correction,correction_max_itr,trace_threshold_square);
 
 
         CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces_in_span);

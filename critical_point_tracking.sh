@@ -51,11 +51,11 @@ J_threshold="1e-10"
 
 # "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -a "${control_points}" -j "${J_threshold}"
 
-"${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
+# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
 
 # gdb --args "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -a "${control_points}" -j "${J_threshold}"
 
-# "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${step_size}" -a "${control_points}" -x "${root_finding_epsilon}"
+"${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${step_size}" -a "${control_points}" -x "${root_finding_epsilon}"
 
 
 source ~/enter/etc/profile.d/conda.sh
