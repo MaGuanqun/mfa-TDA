@@ -24,15 +24,33 @@ namespace find_2d_roots
     int remap(int idx, int remove_idx) {
         return idx - (idx > remove_idx);
     }
-    // compute derivative in a single span. here the third dimension is fixed. So only compute derivative in x and y directions
+    
+    //gradient exclude last dimension
     template<typename T>
-    void compute_f_dev_f(const Block<T>* b, VectorX<T>& p, VectorX<T>& f, MatrixX<T>& dev_f, int removed_dom)
+    void compute_gradient(const Block<T>* b, VectorX<T>& p, VectorX<T>& f)
     {
+        VectorX<T> f_vector(1);
+        int domain_dim = b->dom_dim-1;
+        VectorXi deriv(b->dom_dim);
+        f.resize(domain_dim);
+        for(int i=0;i<domain_dim;i++)
+        {
+            deriv.setZero();
+            deriv[i]+=1;
+            mfa_extend::recover_mfa(b, p,f_vector, deriv);
+            f[i] = f_vector[0];
+        }
+    }
+
+    template<typename T>
+    void compute_Hessian(const Block<T>* b, VectorX<T>& p, MatrixX<T>& dev_f, int removed_dom)
+    {
+
         int domain_dim = b->dom_dim-1;
         dev_f.resize(domain_dim,domain_dim);
-        f.resize(domain_dim);
+        
 
-        VectorX<T> f_vector(1);
+
         VectorX<T> dev_f_vector(1);    
 
         // std::cout<<local_domain_range.transpose()<<std::endl;
@@ -86,15 +104,13 @@ namespace find_2d_roots
             }
         }
 
+    }
 
-        for(int i=0;i<domain_dim;i++)
-        {
-            deriv.setZero();
-            deriv[i]+=1;
-            mfa_extend::recover_mfa(b, p,f_vector, deriv);
-            f[i] = f_vector[0];
-        }
-
+    template<typename T>
+    void compute_f_dev_f(const Block<T>* b, VectorX<T>& p, VectorX<T>& f, MatrixX<T>& dev_f, int removed_dom)
+    {
+        compute_Hessian(b, p, dev_f, removed_dom);
+        compute_gradient(b, p, f);
     }
     // newton method with single initial_point
     template<typename T>
@@ -123,9 +139,6 @@ namespace find_2d_roots
         result=p;
 
         T temp_rec;
-
-        VectorX<T> pre_point = p;
-        VectorX<T> intersection = p;
 
         while(itr_num<max_itr)
         {
@@ -169,7 +182,7 @@ namespace find_2d_roots
 
              
 
-            if(!utility::InBlock(span_range,p_on_boundary))
+            if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
             {
                 return false;
             }
@@ -179,7 +192,11 @@ namespace find_2d_roots
 
 
             if(itr_num>0){
-                if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){             
+                if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){       
+                    if(!utility::InBlock(span_range,p_on_boundary))
+                    {
+                        return false;
+                    }      
                     
                     result = p;
                     return true;
@@ -228,9 +245,11 @@ namespace find_2d_roots
                 j++;
             }
         }
+       
 
         std::vector<std::vector<T>>initial_point;
-        utility::compute_initial_points(initial_point,degree,span_range);
+        // degree = degree + VectorXi::Ones(degree.size());
+        utility::compute_initial_points2(initial_point,degree,span_range);
 
         VectorXi num_initial_point_every_domain(initial_point.size());
         for(int i=0;i<num_initial_point_every_domain.size();i++)
@@ -259,14 +278,14 @@ namespace find_2d_roots
                 current_initial_point[used_dom[j]]=initial_point[j][domain_index[j]];
             }        
             current_initial_point[boundary_dim_index]=boundary_value;
-            if(boundary_dim_index==degree.size())
-            {
-                current_initial_point[boundary_dim_index]+=step_size;
-            }
-            else
-            {
-                current_initial_point[boundary_dim_index]-=top_or_bottom*plane_step_size;
-            }
+            // if(boundary_dim_index==degree.size())
+            // {
+            //     current_initial_point[boundary_dim_index]+=step_size;
+            // }
+            // else
+            // {
+            //     current_initial_point[boundary_dim_index]-=top_or_bottom*plane_step_size;
+            // }
 
             
             // if(boundary_dim_index==0)
@@ -295,12 +314,6 @@ namespace find_2d_roots
                 if(newRoot(next_root,root_in_original_domain,same_root_epsilon))
                 {        
                     root_in_original_domain.emplace_back(next_root);
-                    // std::cout<<next_root_in_original_domain.transpose()<<std::endl;
-                    // std::cout<<"record+++++"<<std::endl;
-                    // if(total_root_num>=deg)
-                    // {
-                    //     break;
-                    // }
                 } 
             }
 
@@ -311,7 +324,6 @@ namespace find_2d_roots
             root.insert(root.end(),root_in_original_domain.begin(),root_in_original_domain.end());
         }
 
-        
     }
 
 
@@ -493,7 +505,17 @@ namespace find_2d_roots
                 }
             }
         }
+    }
 
+    template<typename T>
+    void root_number(std::vector<std::vector<Eigen::VectorX<T>>>& points)
+    {
+        int count=0;
+        for(auto i=0;i<points.size();++i)
+        {
+            count+= points[i].size();
+        }
+        std::cout<<"total root number "<<count<<std::endl;
     }
 
 }

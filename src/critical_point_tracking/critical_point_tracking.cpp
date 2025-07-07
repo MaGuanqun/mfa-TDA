@@ -97,7 +97,6 @@ int main(int argc, char** argv)
     double tolerance = 1e-4; // same_root_epsilon
     double step_size = 1e-3;
     
-    double threshold_correction = 1e-4; //activate the correction of point tracing
     double grad_threshold = 1e-5;
 
     int correction_max_itr = 30;
@@ -123,7 +122,6 @@ int main(int argc, char** argv)
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
     ops >> opts::Option('z', "step_size",    step_size,       " step size");
-    ops >> opts::Option('c', "threshold_correction",    threshold_correction,       " threshold activate the correction of point tracing");
     ops >> opts::Option('g', "grad_threshold",    grad_threshold,       " gradient is smaller enough to change to permutate the point a little bit");
     ops >> opts::Option('q', "edge_type",    edge_type,       "edge type file, (pseudo) ridge/valley");
 
@@ -156,8 +154,6 @@ int main(int argc, char** argv)
 
     trace_threshold_square = step_size*step_size;
     std::cout<<"trace_threshold_square "<<trace_threshold_square<<" "<<step_size<<std::endl;
-
-    threshold_correction = root_finding_epsilon;
 
 
 
@@ -267,7 +263,7 @@ int main(int argc, char** argv)
         // test<<16,13,3;
         // selected_span[0].clear();
         // selected_span[0].emplace_back(test);
-
+        
         tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
         [&](const tbb::blocked_range<size_t>& range)
         {
@@ -328,19 +324,18 @@ int main(int argc, char** argv)
 
 
         tracking_utility::convert_to_obj(test_file,root);
-        find_2d_roots::test_root_finding(b,root,root_finding_epsilon);
+        // find_2d_roots::test_root_finding(b,root,root_finding_epsilon);
+        find_2d_roots::root_number(root);
+        // std::cout<<"finish finding root "<<root.size()<<std::endl;
 
-        std::cout<<"finish finding root "<<root.size()<<std::endl;
+        std::vector<CP_Trace<double>> traces;
 
-        std::vector<CP_Trace<double>> traces_in_span;
+        traces.resize(valid_span_index.size());
 
-        traces_in_span.resize(valid_span_index.size());
-
-        // xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces_in_span,hessian_threshold_for_cpt_tracking,grad_threshold,
-        // threshold_correction,correction_max_itr,trace_threshold_square);
+        xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces,hessian_threshold_for_cpt_tracking,grad_threshold,correction_max_itr,trace_threshold_square);
 
 
-        CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces_in_span);
+        CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
 
 
 

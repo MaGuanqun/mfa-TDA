@@ -323,6 +323,23 @@ namespace utility
 
     }
 
+    template<typename T>
+    //consider initial points on the boundary
+    void compute_initial_points2(std::vector<std::vector<T>>&initial_points_every_domain, const VectorXi& degree,  std::vector<std::vector<T>>& span_range) { 
+        initial_points_every_domain.resize(span_range.size());
+        for(int i=0;i<span_range.size();i++)
+        {
+            int point_num=degree[i]+1;
+            initial_points_every_domain[i].reserve(point_num);
+            for (int j = 0; j < point_num; ++j) {
+                T coe = (T(j)/(point_num))*(span_range[i][1]-span_range[i][0]);
+                initial_points_every_domain[i].emplace_back(span_range[i][0]+coe);
+            }
+            
+        }
+
+    }
+
 
     //there will be 2^n+1 initial points
     template<typename T>
@@ -482,6 +499,16 @@ namespace utility
     }
 
 
-
+    // template<typename T>
+    // bool check_if_a_point_is_in_a_range(std::vector<std::vector<T>>& span_range, VectorX<T> point)
+    // {
+    //     for(int i=0;i<span_range.size();++i)
+    //     {
+    //         if(point[i]<span_range[i][0] || point[i]>span_range[i][1])
+    //         {
+    //             return false;
+    //         }
+    //     }
+    // }
 
 }

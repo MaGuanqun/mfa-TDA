@@ -18,7 +18,7 @@
 #include "CP_Trace.h"
 
 
-namespace xy_cp_tracking{
+namespace xy_cp_tracking_in_span{
 
     template<typename T>
     //compute dx/dt, dy/dt
@@ -28,7 +28,6 @@ namespace xy_cp_tracking{
         VectorXi deriv(b->dom_dim);
         VectorX<T> dev_f(domain_dim);
         MatrixX<T> hessian(domain_dim,domain_dim);
-        VectorX<T> f_vector(1);
 
         find_2d_roots::compute_Hessian(b, p, hessian, b->dom_dim-1);
 
@@ -69,7 +68,7 @@ namespace xy_cp_tracking{
     }
 
     template<typename T>
-    bool compute_direction(const Block<T>* b, VectorX<T>& p, VectorX<T>& direction, T hessian_det_epsilon)
+    bool compute_direction(const Block<T>* b, VectorX<T>& p, VectorX<T>& direction, T hessian_det_epsilon, T gradient_epsilon)
     {
         VectorX<T> gradient;
         if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
@@ -87,22 +86,90 @@ namespace xy_cp_tracking{
         return true;
     }
 
+    template<typename T>
+    bool RKF45(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search)
+    {
+        VectorX<T> k1(b->dom_dim);
+        if(!compute_direction(b,p, k1,hessian_det_epsilon,gradient_epsilon))
+        {
+            return false;
+        }
+        VectorX<T> k2(b->dom_dim);
+        VectorX<T> p2;
+        if(upper_search)
+        {
+            p2 = p+0.5*step_size*k1;
+        }
+        else
+        {
+            p2 = p-0.5*step_size*k1;
+        }
+        if(!compute_direction(b,p2, k2,hessian_det_epsilon,gradient_epsilon))
+        {
+            return false;
+        }
+        VectorX<T> k3(b->dom_dim);
+        VectorX<T> p3;
+        if(upper_search)
+        {
+            p3 = p+0.5*step_size*k2;
+        }
+        else
+        {
+            p3 = p-0.5*step_size*k2;
+        }
+
+        if(!compute_direction(b,p3, k3,hessian_det_epsilon,gradient_epsilon))
+        {
+            return false;
+        }
+        VectorX<T> k4(b->dom_dim);
+        VectorX<T> p4;
+        if(upper_search)
+        {
+            p4 = p+step_size*k3;
+        }
+        else
+        {
+            p4 = p-step_size*k3;
+        }
+
+        if(!compute_direction(b,p4, k4,hessian_det_epsilon,gradient_epsilon))
+        {
+            return false;
+        }
+        VectorX<T> k = (k1+2*k2+2*k3+k4)/6.0;
+        k[b->dom_dim-1] = 1.0;
+        if(upper_search)
+        {
+            result = p + step_size*k;
+        }
+        else
+        {
+            result = p - step_size*k;
+        }
+        if(!utility::In_Domain(result,b->core_mins,b->core_maxs))
+        {
+            return false;
+        }
+        return true;
+
+    }
+
      // newton method with single initial_point
     template<typename T>
-    bool correction_newton(const Block<T>* b, VectorX<T>& input_point, int max_itr, T d_max_square, T root_finding_epsilon, T hessian_det_epsilon)
+    bool correction_newton(const Block<T>* b, VectorX<T>& p, int max_itr, T d_max_square, T root_finding_epsilon, T hessian_det_epsilon)
     {
         int itr_num=0;
 
         MatrixX<T> dev_f;
         VectorX<T> f;
-        find_2d_roots::compute_gradient(b, input_point, f);
+        find_2d_roots::compute_gradient(b, p, f);
 
         if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon)
         {
             return false;
         }
-
-        VectorX<T> p = input_point;
 
         T temp_rec;
 
@@ -144,20 +211,18 @@ namespace xy_cp_tracking{
                 return false;
             }
 
-            if((input_point-p).squaredNorm()>d_max_square)
-            {
-                return false;
-            }
-
             find_2d_roots::compute_gradient(b, p, f);
 
 
  
             if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){             
-                input_point = p;
+                
+                result = p;
                 return true;
             }
             
+
+            // result = p;
             itr_num++;
         }
 
@@ -166,121 +231,41 @@ namespace xy_cp_tracking{
     }
 
     template<typename T>
-    bool RKF45(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, bool upper_search)
-    {
-        VectorX<T> k1(b->dom_dim);
-        if(!compute_direction(b,p, k1,hessian_det_epsilon))
-        {
-            return false;
-        }
-        VectorX<T> k2(b->dom_dim);
-        VectorX<T> p2;
-        if(upper_search)
-        {
-            p2 = p+0.5*step_size*k1;
-        }
-        else
-        {
-            p2 = p-0.5*step_size*k1;
-        }
-        if(!compute_direction(b,p2, k2,hessian_det_epsilon))
-        {
-            return false;
-        }
-        VectorX<T> k3(b->dom_dim);
-        VectorX<T> p3;
-        if(upper_search)
-        {
-            p3 = p+0.5*step_size*k2;
-        }
-        else
-        {
-            p3 = p-0.5*step_size*k2;
-        }
-
-        if(!compute_direction(b,p3, k3,hessian_det_epsilon))
-        {
-            return false;
-        }
-        VectorX<T> k4(b->dom_dim);
-        VectorX<T> p4;
-        if(upper_search)
-        {
-            p4 = p+step_size*k3;
-        }
-        else
-        {
-            p4 = p-step_size*k3;
-        }
-
-        if(!compute_direction(b,p4, k4,hessian_det_epsilon))
-        {
-            return false;
-        }
-        VectorX<T> k = (k1+2*k2+2*k3+k4)/6.0;
-        k[b->dom_dim-1] = 1.0;
-        if(upper_search)
-        {
-            result = p + step_size*k;
-        }
-        else
-        {
-            result = p - step_size*k;
-        }
-        if(!utility::In_Domain(result,b->core_mins,b->core_maxs))
-        {
-            return false;
-        }
-
-
-
-        return true;
-
-    }
-
-    template<typename T>
-    bool RKF45_correction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square)
-    {
-        if(RKF45(b,p,result,step_size,hessian_det_epsilon,upper_search))
-        {
-            correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
-            return true;
-        }
-        return false;
-        
-    }
-    
-
-    template<typename T>
-    bool tracing_one_direction(T step_size, const Block<T>* b, VectorX<T>& initial, std::vector<VectorX<T>>& result, bool upper_search,
-    T hessian_det_epsilon, T gradient_epsilon, int max_itr, T d_max_square)
+    bool tracing_one_direction(T step_size, const Block<T>* b, VectorX<T>& initial, std::vector<VectorX<T>>& result, bool upper_search, std::vector<std::vector<T>>& span_range, T threshold_correction,
+    T hessian_det_epsilon, T gradient_epsilon)
     {
         result.clear();
         VectorX<T> p_new = VectorX<T>::Zero(initial.size());
         VectorX<T> p_old = initial;
 
-        bool valid = RKF45_correction(b,initial, p_new,step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr, d_max_square);
+        bool valid = RKF45(b,initial, p_new,step_size,hessian_det_epsilon,gradient_epsilon,upper_search);
 
         result.emplace_back(initial);
 
+        bool work_on_tracing = true;
+
         if(!valid)
         {
+            work_on_tracing = false;
             return true;
         }
 
         int step=1;
 
         while (utility::In_Domain(p_new, b->core_mins,b->core_maxs))
+        // while (utility::InBlock(span_range,p_new))
         {            
             result.emplace_back(p_new);
             p_old = p_new;
 
-            valid = RKF45_correction(b,p_old, p_new,step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr, d_max_square);
+            valid = RKF45(b,p_old, p_new,step_size,hessian_det_epsilon,gradient_epsilon,upper_search);
 
             if(!valid)
             {
                 break;
             }
+
+
 
             step++;
         }
@@ -289,17 +274,16 @@ namespace xy_cp_tracking{
     }
 
     template<typename T>
-    bool tracing_single_cpt(T step_size, const Block<T>* b, VectorX<T>& initial, std::vector<VectorX<T>>& result, int correction_max_itr, 
-    T hessian_det_epsilon, T gradient_epsilon, T d_max_square)
+    bool tracing_single_cpt(T step_size, const Block<T>* b, VectorX<T>& initial, std::vector<VectorX<T>>& result, std::vector<std::vector<T>>& span_range, T threshold_correction, int correction_max_itr, 
+    T hessian_det_epsilon, T gradient_epsilon)
     {
         result.clear();
         
-        tracing_one_direction(step_size,b,initial,result,false,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square);
+        tracing_one_direction(step_size,b,initial,result,true,span_range,threshold_correction,hessian_det_epsilon,gradient_epsilon);
         std::reverse(result.begin(),result.end());
 
-
         std::vector<VectorX<T>> temp_result;
-        tracing_one_direction(step_size,b,initial,temp_result,true,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square);
+        tracing_one_direction(step_size,b,initial,temp_result,true,span_range,threshold_correction,hessian_det_epsilon,gradient_epsilon);
         if(temp_result.size()>1)
         {
             result.pop_back();
@@ -339,20 +323,20 @@ namespace xy_cp_tracking{
     }
 
     template<typename T>
-    void tracing_cpt(T step_size, const Block<T>* b, std::vector<VectorX<T>>& initial, CP_Trace<T>& trace, int correction_max_itr,
-    T hessian_det_epsilon, T gradient_epsilon, T trace_threshold_square, T d_max_square)
+    void tracing_cpt(T step_size, const Block<T>* b, std::vector<VectorX<T>>& initial, CP_Trace<T>& trace, std::vector<std::vector<T>>& span_range, T threshold_correction, int correction_max_itr,
+    T hessian_det_epsilon, T gradient_epsilon, T trace_threshold_square)
     {
          std::vector<VectorX<T>> result;
 
         for(int i =0;i<initial.size();i++)
         {
-            tracing_single_cpt(step_size,b,initial[i],result,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square);
+            tracing_single_cpt(step_size,b,initial[i],result,span_range,threshold_correction,correction_max_itr,hessian_det_epsilon,gradient_epsilon);
 
             // check duplicaiton
-            // if(!check_duplication(trace, result, trace_threshold_square))
-            // {
-            trace.traces.emplace_back(result);
-            // }
+            if(!check_duplication(trace, result, trace_threshold_square))
+            {
+                trace.traces.emplace_back(result);
+            }
 
 
            
@@ -364,7 +348,7 @@ namespace xy_cp_tracking{
     template<typename T>
     void find_trace(T step_size,int max_step, const Block<T>* b, std::vector<std::vector<VectorX<T>>>& initial,
     std::vector<size_t>& span_index, std::vector<CP_Trace<T>>& traces, 
-    T hessian_det_epsilon, T gradient_epsilon,int correction_max_itr,
+    T hessian_det_epsilon, T gradient_epsilon,T threshold_correction,int correction_max_itr,
     T trace_threshold_square)
     {
         auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
@@ -373,25 +357,23 @@ namespace xy_cp_tracking{
         VectorXi number_in_every_domain; //span
         utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
         auto domain_range = b->core_maxs - b->core_mins;
-
-
-        int distance_stop_itr = 5;
-        T span_size= domain_range.cwiseQuotient(span_num.cast<T>()).head(span_num.size()-1).squaredNorm();
-        T d_max_square = distance_stop_itr*distance_stop_itr*span_size;
-
         tbb::affinity_partitioner ap;
-  
-
         tbb::parallel_for(tbb::blocked_range<size_t>(0,initial.size()),[&](const tbb::blocked_range<size_t>& r)
         {
             for(auto i = r.begin(); i != r.end(); ++i)
             {  
+                VectorXi span_domain_index(b->mfa->var(0).p.size());
+                //decode the span index in every dimension
+                utility::obtainDomainIndex(span_index[i],span_domain_index,number_in_every_domain);
 
-                // VectorXi span_domain_index(b->mfa->var(0).p.size());
-                // //decode the span index in every dimension
-                // utility::obtainDomainIndex(span_index[i],span_domain_index,number_in_every_domain);
+                std::vector<std::vector<T>> span_range(number_in_every_domain.size());
+                for(int j=0;j<span_domain_index.size();++j)
+                {    
+                    span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[j][span_domain_index[j]+b->mfa->var(0).p[j]]*domain_range[j]+b->core_mins[j]);
+                    span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[j][span_domain_index[j]+1+b->mfa->var(0).p[j]]*domain_range[j]+b->core_mins[j]);
+                }
 
-                tracing_cpt(step_size,b,initial[i],traces[i],correction_max_itr,hessian_det_epsilon,gradient_epsilon,trace_threshold_square,d_max_square);                
+                tracing_cpt(step_size,b,initial[i],traces[i],span_range,threshold_correction,correction_max_itr,hessian_det_epsilon,gradient_epsilon,trace_threshold_square);                
             }
         },ap);
     }
