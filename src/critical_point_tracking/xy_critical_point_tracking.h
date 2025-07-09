@@ -72,10 +72,10 @@ namespace xy_cp_tracking{
     bool compute_direction(const Block<T>* b, VectorX<T>& p, VectorX<T>& direction, T hessian_det_epsilon)
     {
         VectorX<T> gradient;
-        if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
-        {
-            return false;
-        }
+        // if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
+        // {
+        //     return false;
+        // }
 
         if(!compute_gradient(b,p,gradient,hessian_det_epsilon))
         {
@@ -173,6 +173,7 @@ namespace xy_cp_tracking{
         {
             return false;
         }
+        std::cout<<"k1 "<<k1.transpose()<<std::endl;
         VectorX<T> k2(b->dom_dim);
         VectorX<T> p2;
         if(upper_search)
@@ -183,10 +184,12 @@ namespace xy_cp_tracking{
         {
             p2 = p-0.5*step_size*k1;
         }
+        std::cout<<"p2 "<<p2.transpose()<<std::endl;
         if(!compute_direction(b,p2, k2,hessian_det_epsilon))
         {
             return false;
         }
+        std::cout<<"k2 "<<k2.transpose()<<std::endl;
         VectorX<T> k3(b->dom_dim);
         VectorX<T> p3;
         if(upper_search)
@@ -197,7 +200,7 @@ namespace xy_cp_tracking{
         {
             p3 = p-0.5*step_size*k2;
         }
-
+        std::cout<<"p3 "<<p3.transpose()<<std::endl;
         if(!compute_direction(b,p3, k3,hessian_det_epsilon))
         {
             return false;
@@ -212,11 +215,13 @@ namespace xy_cp_tracking{
         {
             p4 = p-step_size*k3;
         }
-
+        std::cout<<"k3 "<<k3.transpose()<<std::endl;
+        std::cout<<"p4 "<<p4.transpose()<<std::endl;
         if(!compute_direction(b,p4, k4,hessian_det_epsilon))
         {
             return false;
         }
+        std::cout<<"k4 "<<k4.transpose()<<std::endl;
         VectorX<T> k = (k1+2*k2+2*k3+k4)/6.0;
         k[b->dom_dim-1] = 1.0;
         if(upper_search)
@@ -227,6 +232,7 @@ namespace xy_cp_tracking{
         {
             result = p - step_size*k;
         }
+        std::cout<<"result "<<result.transpose()<<std::endl;
         if(!utility::In_Domain(result,b->core_mins,b->core_maxs))
         {
             return false;
@@ -263,6 +269,8 @@ namespace xy_cp_tracking{
 
         result.emplace_back(initial);
 
+        // std::cout<<"start rkf 45 correction "<<valid<<std::endl;
+
         if(!valid)
         {
             return true;
@@ -294,15 +302,15 @@ namespace xy_cp_tracking{
     {
         result.clear();
         
-        tracing_one_direction(step_size,b,initial,result,false,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square);
-        std::reverse(result.begin(),result.end());
+        // tracing_one_direction(step_size,b,initial,result,false,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square);
+        // std::reverse(result.begin(),result.end());
 
 
         std::vector<VectorX<T>> temp_result;
         tracing_one_direction(step_size,b,initial,temp_result,true,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square);
-        if(temp_result.size()>1)
+        // if(temp_result.size()>1)
         {
-            result.pop_back();
+            // result.pop_back();
             result.insert(result.end(),temp_result.begin(),temp_result.end());
         }
 
@@ -346,6 +354,15 @@ namespace xy_cp_tracking{
 
         for(int i =0;i<initial.size();i++)
         {
+            VectorX<T> test_point(3);
+            test_point<<0.507636,1.71865,-2.0;
+            if((initial[i]-test_point).squaredNorm()>1e-8)
+            {
+                continue;
+            }
+
+            std::cout<<"start tracing "<<i<<" "<<initial[i].transpose()<<std::endl;
+
             tracing_single_cpt(step_size,b,initial[i],result,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square);
 
             // check duplicaiton
@@ -386,7 +403,6 @@ namespace xy_cp_tracking{
         {
             for(auto i = r.begin(); i != r.end(); ++i)
             {  
-
                 // VectorXi span_domain_index(b->mfa->var(0).p.size());
                 // //decode the span index in every dimension
                 // utility::obtainDomainIndex(span_index[i],span_domain_index,number_in_every_domain);

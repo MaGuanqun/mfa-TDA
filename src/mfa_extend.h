@@ -7,6 +7,7 @@
 #include <mfa/mfa.hpp>
 #include "opts.h"
 #include "block.hpp"
+#include "../utility/utility_function.h"
 
 
 namespace mfa_extend
@@ -179,17 +180,18 @@ namespace mfa_extend
     }
 
     template<typename T>
-    void move_point_to_span(VectorX<T>&   param)
+    void move_point_to_span(VectorX<T>&   param, VectorX<T>& correct_param)
     {
+        correct_param = param;
         for(int i = 0; i < param.size(); ++i)
         {
-            if (param(i) < 0)
+            if (correct_param(i) < 0)
             {
-                param(i) = 0;
+                correct_param(i) = 0;
             }
-            else if (param(i) > 1)
+            else if (correct_param(i) > 1)
             {
-                param(i) = 1;
+                correct_param(i) = 1;
             }
         }
     }
@@ -211,12 +213,13 @@ namespace mfa_extend
         }
         else
         {
-            move_point_to_span(param);
+            VectorX<T> correct_param;
+            move_point_to_span(param, correct_param);
             const mfa::MFA_Data<T>& mfa_data = b->mfa->var(0);
             vector<int>         span(mfa_data.p.size());  
             for(int i = 0; i < param.size(); ++i)
             {
-                span[i]    = mfa_data.tmesh.FindSpan(i, param(i), mfa_data.tmesh.tensor_prods[0]);
+                span[i]    = mfa_data.tmesh.FindSpan(i, correct_param(i), mfa_data.tmesh.tensor_prods[0]);
             }
 
             DecodeVar(param, cpt, mfa_data, span, derivs);

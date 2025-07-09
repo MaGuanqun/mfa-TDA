@@ -414,7 +414,7 @@ namespace cp_tracking_degenerate_case
         std::vector<std::vector<T>>initial_point;
 
 
-        utility::compute_initial_points(initial_point,b->mfa->var(0).p,span_range);
+        utility::compute_initial_points2(initial_point,b->mfa->var(0).p,span_range);
 
         VectorXi num_initial_point_every_domain(initial_point.size());
         for(int i=0;i<num_initial_point_every_domain.size();i++)

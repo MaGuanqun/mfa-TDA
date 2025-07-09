@@ -329,7 +329,7 @@ namespace utility
         initial_points_every_domain.resize(span_range.size());
         for(int i=0;i<span_range.size();i++)
         {
-            int point_num=degree[i]+1;
+            int point_num=degree[i]+3;
             initial_points_every_domain[i].reserve(point_num);
             for (int j = 0; j < point_num; ++j) {
                 T coe = (T(j)/(point_num))*(span_range[i][1]-span_range[i][0]);

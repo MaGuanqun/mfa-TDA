@@ -21,7 +21,7 @@ mfa_file="./build/src/${save_folder}/${data_type}.mfa"
 
 
 step_size="16"
-t_sample_ratio="10"
+t_sample_ratio="16"
 
 degenerate_point="./build/src/${save_folder}/${data_type}_degenerate.dat"
 

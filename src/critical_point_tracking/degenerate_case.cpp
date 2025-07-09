@@ -29,6 +29,7 @@
 #include "degenerate_case.h"
 #include "critical_point/span_filter.hpp"
 #include "tracking_utility.h"
+#include "../critical_point/find_unique_root.h"
 
 
 
@@ -139,14 +140,11 @@ int main(int argc, char** argv)
         
         Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
 
-        std::vector<VectorX<double>> root_ori;
-
-        double min_ = local_domain_range.minCoeff();
         auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
         VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-        double min_span_size = Span_size[2]/step_size;
+        double min_span_size = Span_size.minCoeff()/step_size;
         step_size = min_span_size;
 
 
@@ -216,8 +214,9 @@ int main(int argc, char** argv)
         for (const auto& thread_vec : local_root) {
             root.insert(root.end(), thread_vec.begin(), thread_vec.end());
         }
-
-        std::cout<<"degenerate case size "<<root.size()<<std::endl;
+        std::vector<VectorX<double>> root_unique;
+        spatial_hashing::find_all_unique_root(root, root_unique,tolerance);
+        std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
 
         auto end_time = std::chrono::high_resolution_clock::now();
         std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
@@ -225,10 +224,10 @@ int main(int argc, char** argv)
         //save roots to a file
         std::vector<MatrixXd> root_matrix(1);
 
-        root_matrix[0].resize(root.size(),root[0].size());
-        for(int j=0;j<root.size();j++)
+        root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+        for(int j=0;j<root_unique.size();j++)
         {
-            root_matrix[0].row(j) = root[j].transpose();
+            root_matrix[0].row(j) = root_unique[j].transpose();
         }
 
         utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
