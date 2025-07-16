@@ -207,23 +207,23 @@ namespace mfa_extend
         VectorX<T> param = (point-b->core_mins).cwiseQuotient(domain_range);
         cpt.resize(b->mfa->nvars());
 
-        if(utility::InDomain(param))
-        {
-            b->mfa->DecodeVar(0,param,cpt,derivs);
-        }
-        else
-        {
-            VectorX<T> correct_param;
-            move_point_to_span(param, correct_param);
-            const mfa::MFA_Data<T>& mfa_data = b->mfa->var(0);
-            vector<int>         span(mfa_data.p.size());  
-            for(int i = 0; i < param.size(); ++i)
-            {
-                span[i]    = mfa_data.tmesh.FindSpan(i, correct_param(i), mfa_data.tmesh.tensor_prods[0]);
-            }
+        // if(utility::InDomain(param))
+        // {
+        b->mfa->DecodeVar(0,param,cpt,derivs);
+        // }
+        // else
+        // {
+        //     VectorX<T> correct_param;
+        //     move_point_to_span(param, correct_param);
+        //     const mfa::MFA_Data<T>& mfa_data = b->mfa->var(0);
+        //     vector<int>         span(mfa_data.p.size());  
+        //     for(int i = 0; i < param.size(); ++i)
+        //     {
+        //         span[i]    = mfa_data.tmesh.FindSpan(i, correct_param(i), mfa_data.tmesh.tensor_prods[0]);
+        //     }
 
-            DecodeVar(param, cpt, mfa_data, span, derivs);
-        }
+        //     DecodeVar(param, cpt, mfa_data, span, derivs);
+        // }
 
         if (derivs.size() > 0)
         {

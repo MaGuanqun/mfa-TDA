@@ -362,8 +362,8 @@ struct MFAParser
             d_args.max[0]               = 2.0;
             d_args.min[1]               = -2.0;
             d_args.max[1]               = 2.0;
-            d_args.min[2]               = -2.0;
-            d_args.max[2]               = 2.0;
+            d_args.min[2]               = 0.0;
+            d_args.max[2]               = 4.0;
 
             for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
                 d_args.s[i] = 1.0 * (i + 1);                 // scaling factor on range

@@ -190,8 +190,8 @@ using namespace std;
         }
         else if(input == "rotating_gaussian")
         {
-            dom_bounds.min = {-2.0, -2.0, -2.0};
-            dom_bounds.max = { 2.0, 2.0, 2.0};
+            dom_bounds.min = {-2.0, -2.0, 0.0};
+            dom_bounds.max = { 2.0, 2.0, 4.0};
         } 
         else if (datasets_4d.count(input) || datasets_3d.count(input) || datasets_2d.count(input) || datasets_unstructured.count(input))
         {
@@ -383,13 +383,13 @@ using namespace std;
             d_args.max[0]               = 2.0;
             d_args.min[1]               = -2.0;
             d_args.max[1]               = 2.0;
-            d_args.min[2]               = -2.0;
-            d_args.max[2]               = 2.0;
+            d_args.min[2]               = 0.0;
+            d_args.max[2]               = 4.0;
 
             for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
                 d_args.s[i] = 1.0 * (i + 1);  
             
-            d_args.full_dom_pts = {100,100,50};      // Hard-coded to full data set size
+            d_args.full_dom_pts = {100,100,40};      // Hard-coded to full data set size
             d_args.ndom_pts = d_args.full_dom_pts;
             for (int i = 0; i < dom_dim; i++)
             {

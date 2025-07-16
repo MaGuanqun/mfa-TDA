@@ -213,27 +213,69 @@ void gaussian_mixture(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 
 }
 
+
+// template<typename T>
+// void rotating_gaussian(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
+// {
+//     T cx = 0.0;
+//     T cy = 0.0;
+//     T r1 = 0.7; T r2 = 0.7;
+//     T phi1 = 0; T phi2 = M_PI; 
+//     T omega1 = 0.5 * M_PI; T omega2 = 0.5 * M_PI;
+//     T x1= cx + r1 * cos(omega1 * domain_pt(2) + phi1);
+//     T y1 = cy + r1 * sin(omega1 * domain_pt(2) + phi1);
+    
+//     T x2 = cx + r2 * cos(omega2 * domain_pt(2) + phi2);
+//     T y2 = cy + r2 * sin(omega2 * domain_pt(2) + phi2);
+
+//     T sigmax1 = 0.5; T sigmay1 = 0.5;
+//     T sigmax2 = 0.4; T sigmay2 = 0.4;
+//     T A1 = 1.0; T A2 = 0.8;
+
+//     T f1 = A1 * exp(-((domain_pt(0) - x1)*(domain_pt(0) - x1)/(2*sigmax1*sigmax1) + (domain_pt(1) - y1)*(domain_pt(1) - y1)/(2*sigmay1*sigmay1)));
+//     T f2 = A2 * exp(-((domain_pt(0) - x2)*(domain_pt(0) - x2)/(2*sigmax2*sigmax2) + (domain_pt(1) - y2)*(domain_pt(1) - y2)/(2*sigmay2*sigmay2)));
+//     output_pt(0) = f1 + f2;
+
+//     return;
+// }
 template<typename T>
 void rotating_gaussian(const VectorX<T>&   domain_pt,VectorX<T>& output_pt)
 {
     T cx = 0.0;
     T cy = 0.0;
-    T r1 = 0.7; T r2 = 0.7;
-    T phi1 = 0; T phi2 = M_PI; 
-    T omega1 = 0.5 * M_PI; T omega2 = 0.5 * M_PI;
+    T r1 = 0.7; 
+    T phi1 = 0; 
+    T omega1 = 0.5 * M_PI;
+    T sigmax1 = 0.5; T sigmay1 = 0.5;
+    T sigmax2 = 0.5; T sigmay2 = 0.5;
+    T A1 = 1.0; T A2 = 1.0;
+
     T x1= cx + r1 * cos(omega1 * domain_pt(2) + phi1);
     T y1 = cy + r1 * sin(omega1 * domain_pt(2) + phi1);
-    
-    T x2 = cx + r2 * cos(omega2 * domain_pt(2) + phi2);
-    T y2 = cy + r2 * sin(omega2 * domain_pt(2) + phi2);
 
-    T sigmax1 = 0.5; T sigmay1 = 0.5;
-    T sigmax2 = 0.4; T sigmay2 = 0.4;
-    T A1 = 1.0; T A2 = 0.8;
+    T f2=0.0;
 
     T f1 = A1 * exp(-((domain_pt(0) - x1)*(domain_pt(0) - x1)/(2*sigmax1*sigmax1) + (domain_pt(1) - y1)*(domain_pt(1) - y1)/(2*sigmay1*sigmay1)));
-    T f2 = A2 * exp(-((domain_pt(0) - x2)*(domain_pt(0) - x2)/(2*sigmax2*sigmax2) + (domain_pt(1) - y2)*(domain_pt(1) - y2)/(2*sigmay2*sigmay2)));
-    output_pt(0) = f1 + f2;
+
+
+    if (domain_pt(2)<3.0 && domain_pt(2)>1.0)
+    {
+        // x1*=1.25-0.25*domain_pt(2);
+        // y1*=1.25-0.25*domain_pt(2);
+
+        T x2= cx + r1 * cos(-omega1 * domain_pt(2) + M_PI + phi1);
+        T y2 = cy + r1 * sin(-omega1 * domain_pt(2) + M_PI + phi1);
+
+        f2 = A2 * exp(-((domain_pt(0) - x2)*(domain_pt(0) - x2)/(2*sigmax2*sigmax2) + (domain_pt(1) - y2)*(domain_pt(1) - y2)/(2*sigmay2*sigmay2)));
+
+        if(f1 < f2)
+        {
+            f1 = f2;
+        }
+
+    }
+
+    output_pt(0) = f1;
 
     return;
 }

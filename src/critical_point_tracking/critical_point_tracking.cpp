@@ -122,7 +122,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
     ops >> opts::Option('z', "step_size",    step_size,       " step size");
-    ops >> opts::Option('g', "grad_threshold",    grad_threshold,       " gradient is smaller enough to change to permutate the point a little bit");
+    // ops >> opts::Option('g', "grad_threshold",    grad_threshold,       " gradient is smaller enough to change to permutate the point a little bit");
     ops >> opts::Option('q', "edge_type",    edge_type,       "edge type file, (pseudo) ridge/valley");
 
     ops >> opts::Option('a', "inControlPoint",  inControlPoint,  " diy input derivative control point file name");
@@ -332,7 +332,7 @@ int main(int argc, char** argv)
 
         traces.resize(valid_span_index.size());
 
-        xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces,hessian_threshold_for_cpt_tracking,grad_threshold,correction_max_itr,trace_threshold_square);
+        xy_cp_tracking::find_trace(step_size,max_step,b,root, valid_span_index,traces,hessian_threshold_for_cpt_tracking,root_finding_epsilon,correction_max_itr,trace_threshold_square);
 
 
         CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
