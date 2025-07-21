@@ -18,7 +18,7 @@
 #include "mfa_extend.h"
 
 
-namespace find_2d_roots
+namespace find_boundary_roots
 {
 
     int remap(int idx, int remove_idx) {
@@ -212,11 +212,11 @@ namespace find_2d_roots
     }
 
     template<typename T>
-    bool newRoot(VectorX<T>& z, std::vector<VectorX<T>>& root_so_far, T threshold)
+    bool check_new_root(std::vector<T>& threshold, VectorX<T>& z, VectorX<T>& existed_point)
     {
-        for(int i=0;i<root_so_far.size();++i)
+        if((z.head(z.size()-1)-existed_point.head(z.size()-1)).squaredNorm()<threshold[0]*threshold[0])
         {
-            if((z-root_so_far[i]).squaredNorm()<threshold*threshold)
+            if(std::abs(z[z.size()-1]-existed_point[existed_point.size()-1])<threshold.back())
             {
                 return false;
             }
@@ -225,13 +225,23 @@ namespace find_2d_roots
     }
 
     template<typename T>
-    void root_finding_on_one_boudnary(const Block<T>* b,std::vector<VectorX<T>>& root, std::vector<std::vector<T>>& span_range, T boundary_value, int boundary_dim_index,
-        T root_finding_grad_epsilon, T same_root_epsilon,
-        T hessian_det_epsilon, std::vector<int>& used_domain,int maxIter, T d_max_square,VectorX<T>& center,T step_size, T plane_step_size, T top_or_bottom) // top plane is 1, bottom plane is -1 
+    bool newRoot(VectorX<T>& z, std::vector<VectorX<T>>& root_so_far, std::vector<T>& threshold)
     {
-   
- 
+        for(int i=0;i<root_so_far.size();++i)
+        {
+            if(!check_new_root(threshold, z, root_so_far[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
+    template<typename T>
+    void root_finding_on_one_boundary(const Block<T>* b,std::vector<VectorX<T>>& root, std::vector<std::vector<T>>& span_range, T boundary_value, int boundary_dim_index,
+        T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
+        T hessian_det_epsilon, std::vector<int>& used_domain,int maxIter, T d_max_square,VectorX<T>& center,T step_size, T plane_step_size) // top plane is 1, bottom plane is -1 
+    {
         VectorXi degree(b->mfa->var(0).p.size()-1);
 
         std::vector<int> used_dom(degree.size());
@@ -278,35 +288,6 @@ namespace find_2d_roots
                 current_initial_point[used_dom[j]]=initial_point[j][domain_index[j]];
             }        
             current_initial_point[boundary_dim_index]=boundary_value;
-            // if(boundary_dim_index==degree.size())
-            // {
-            //     current_initial_point[boundary_dim_index]+=step_size;
-            // }
-            // else
-            // {
-            //     current_initial_point[boundary_dim_index]-=top_or_bottom*plane_step_size;
-            // }
-
-            
-            // if(boundary_dim_index==0)
-            // {
-            //     if(top_or_bottom==1.0)
-            //     {
-            //         std::cout<<current_initial_point.transpose()<<std::endl;
-
-            //     }
-            // }
-
-            // std::cout<<"initial point "<<i<<" "<<  current_initial_point.transpose()<<std::endl;
-            // VectorX<T> domain_range = b->core_maxs - b->core_mins;
-            // VectorX<T> param = (current_initial_point-b->core_mins).cwiseQuotient(domain_range);
-            // if(!utility::InDomain(param))
-            // {
-            //     std::cout<<param.transpose()<<std::endl;
-            //     std::cout<<boundary_dim_index<<std::endl;
-            //     std::cout<<"initial p "<<current_initial_point.transpose()<<std::endl;
-            //     std::cout<<used_dom[0]<<" "<<used_dom[1]<<std::endl;
-            // }
 
             if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,root_finding_grad_epsilon,hessian_det_epsilon,used_domain,boundary_dim_index))
             {
@@ -350,7 +331,7 @@ namespace find_2d_roots
     // Function to find the roots of the polynomial using Newton's method
     template<typename T>
     bool root_finding(const Block<T>* b, VectorXi& span_index, std::vector<VectorX<T>>& root,
-        T root_finding_grad_epsilon, T same_root_epsilon,
+        T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
         T hessian_det_epsilon,int maxItr,T step_size, T plane_step_size) { 
 
         root.clear();
@@ -378,7 +359,7 @@ namespace find_2d_roots
         VectorX<T> temp_center(domain_range.size()-1);
         std::vector<std::vector<int>> used_domain;
         std::vector<int> used_domain_temp;
-        std::vector<T> record_top_bottom_plane;
+        // std::vector<T> record_top_bottom_plane;
         for(int i=0;i<domain_range.size();++i)
         {
             if(span_index[i]==b->mfa->var(0).p[i])
@@ -391,7 +372,7 @@ namespace find_2d_roots
                 center.emplace_back(temp_center);
                 fixed_dim.emplace_back(i);
 
-                record_top_bottom_plane.emplace_back(-1.0); // bottom plane is -1
+                // record_top_bottom_plane.emplace_back(-1.0); // bottom plane is -1
                 // if(i==2)
                 // {
                 //     if(span_range_for_one_plane[0][0]<0.675 && span_range_for_one_plane[0][1]>0.675 && span_range_for_one_plane[1][0]<0.0 && span_range_for_one_plane[1][1]>0.0)
@@ -419,7 +400,7 @@ namespace find_2d_roots
                 span_range.emplace_back(span_range_for_one_plane);
                 center.emplace_back(temp_center);
                 fixed_dim.emplace_back(i);
-                record_top_bottom_plane.emplace_back(1.0); // top plane is 1
+                // record_top_bottom_plane.emplace_back(1.0); // top plane is 1
 
                 used_domain_temp.clear();
                 for(int j=0;j<domain_range.size();++j)
@@ -450,7 +431,7 @@ namespace find_2d_roots
         for(int i=0;i<fixed_value.size();++i)
         {
             // std::cout<<"find root on boundary "<<fixed_value[i]<<std::endl;
-            root_finding_on_one_boudnary(b, root, span_range[i], fixed_value[i], fixed_dim[i], root_finding_grad_epsilon, same_root_epsilon, hessian_det_epsilon, used_domain[i],maxItr,d_max_square[i],center[i], step_size,plane_step_size, record_top_bottom_plane[i]);
+            root_finding_on_one_boundary(b, root, span_range[i], fixed_value[i], fixed_dim[i], root_finding_grad_epsilon, same_root_epsilon, hessian_det_epsilon, used_domain[i],maxItr,d_max_square[i],center[i], step_size,plane_step_size);
         }
 
         return !root.empty();
@@ -463,7 +444,7 @@ namespace find_2d_roots
     bool root_finding(Block<T>* block, std::vector<std::vector<VectorXi>>& span_index, 
     std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
         int current_index,
-        T root_finding_epsilon, T same_root_epsilon, T hessian_det_epsilon,int maxItr, T step_size, T plane_step_size) //2^n+1 initial points) 
+        T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon,int maxItr, T step_size, T plane_step_size) //2^n+1 initial points) 
     {
 
         for(auto i=0;i<block->mfa->nvars();++i)
@@ -479,43 +460,42 @@ namespace find_2d_roots
     }
 
     template<typename T>
-    void test_root_finding(Block<T>* b,std::vector<std::vector<Eigen::VectorX<T>>>& points,T root_finding_epsilon)
+    void test_root_finding(Block<T>* b,std::vector<Eigen::VectorX<T>>& points,T root_finding_epsilon)
     {
         std::cout<<root_finding_epsilon<<std::endl;
+
+        int domain_dim=2;
+        VectorX<T>f(domain_dim);
         for(auto i=0;i<points.size();++i)
         {
-            int domain_dim=2;
-            VectorX<T>f(domain_dim);
-            for(auto j=0;j<points[i].size();++j)
+            VectorX<T> p = points[i];
+            
+            VectorXi deriv(3);
+            VectorX<T> f_vector(1);
+            for(int k=0;k<domain_dim;k++)
             {
-                VectorX<T> p = points[i][j];
-               
-                VectorXi deriv(3);
-                VectorX<T> f_vector(1);
-                for(int k=0;k<domain_dim;k++)
-                {
-                    deriv.setZero();
-                    deriv[k]+=1;
-                    mfa_extend::recover_mfa(b, p,f_vector, deriv);
-                    f[k] = f_vector[0];
-                }
-                if(f.squaredNorm() > root_finding_epsilon*root_finding_epsilon)
-                {
-                    std::cout<<"not root "<<f.transpose()<<" "<<f.squaredNorm()<<std::endl;
-                }
+                deriv.setZero();
+                deriv[k]+=1;
+                mfa_extend::recover_mfa(b, p,f_vector, deriv);
+                f[k] = f_vector[0];
             }
+            if(f.squaredNorm() > root_finding_epsilon*root_finding_epsilon)
+            {
+                std::cout<<"not root "<<f.transpose()<<" "<<f.squaredNorm()<<std::endl;
+            }
+            
         }
     }
 
-    template<typename T>
-    void root_number(std::vector<std::vector<Eigen::VectorX<T>>>& points)
-    {
-        int count=0;
-        for(auto i=0;i<points.size();++i)
-        {
-            count+= points[i].size();
-        }
-        std::cout<<"total root number "<<count<<std::endl;
-    }
+    // template<typename T>
+    // void root_number(std::vector<std::vector<Eigen::VectorX<T>>>& points)
+    // {
+    //     int count=0;
+    //     for(auto i=0;i<points.size();++i)
+    //     {
+    //         count+= points[i].size();
+    //     }
+    //     std::cout<<"total root number "<<count<<std::endl;
+    // }
 
 }

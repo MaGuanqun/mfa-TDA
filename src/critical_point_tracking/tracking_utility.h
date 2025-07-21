@@ -5,7 +5,7 @@
 namespace tracking_utility
 {
     template<typename T>
-    void convert_to_obj(const std::string& filename, std::vector<std::vector<Eigen::VectorX<T>>>& points)
+    void convert_to_obj(const std::string& filename, std::vector<Eigen::VectorX<T>>& points)
     {
         std::ofstream outFile(filename);
         if (!outFile.is_open()) {
@@ -15,10 +15,9 @@ namespace tracking_utility
 
         for(auto i=points.begin();i<points.end();++i)
         {
-            for(auto j=0;j<i->size();++j)
-            {
-                outFile << std::setprecision(15) << "v " << (*i)[j].data()[0] << " " << (*i)[j].data()[1] << " " << (*i)[j].data()[2] << "\n";
-            }
+
+            outFile << std::setprecision(15) << "v " << (*i).data()[0] << " " << (*i).data()[1] << " " << (*i).data()[2] << "\n";
+            
         }
         outFile.close();
 

@@ -29,7 +29,7 @@ namespace xy_cp_tracking_in_span{
         VectorX<T> dev_f(domain_dim);
         MatrixX<T> hessian(domain_dim,domain_dim);
 
-        find_2d_roots::compute_Hessian(b, p, hessian, b->dom_dim-1);
+        find_boundary_roots::compute_Hessian(b, p, hessian, b->dom_dim-1);
 
         for(int i=0;i<domain_dim;i++)
         {
@@ -164,7 +164,7 @@ namespace xy_cp_tracking_in_span{
 
         MatrixX<T> dev_f;
         VectorX<T> f;
-        find_2d_roots::compute_gradient(b, p, f);
+        find_boundary_roots::compute_gradient(b, p, f);
 
         if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon)
         {
@@ -175,7 +175,7 @@ namespace xy_cp_tracking_in_span{
 
         while(itr_num<max_itr)
         {
-            find_2d_roots::compute_Hessian(b, p, dev_f, b->dom_dim-1);
+            find_boundary_roots::compute_Hessian(b, p, dev_f, b->dom_dim-1);
 
             T determinant = dev_f.determinant();
 
@@ -211,7 +211,7 @@ namespace xy_cp_tracking_in_span{
                 return false;
             }
 
-            find_2d_roots::compute_gradient(b, p, f);
+            find_boundary_roots::compute_gradient(b, p, f);
 
 
  
