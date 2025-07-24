@@ -1196,8 +1196,8 @@ const VectorX<T>& core_min, const VectorX<T>& core_max, std::vector<int>& upsamp
     VectorXi ndom_pts(dom_dim);
     int npts = 1;
 
-    std::vector<T> dim_start(2*dom_dim);
-    std::vector<T> modified_shrink_range_raio(2*dom_dim); //To be consisted with dim_start after rounding
+    // std::vector<T> dim_start(2*dom_dim);
+    // std::vector<T> modified_shrink_range_raio(2*dom_dim); //To be consisted with dim_start after rounding
 
 
 
@@ -1213,33 +1213,33 @@ const VectorX<T>& core_min, const VectorX<T>& core_max, std::vector<int>& upsamp
     }
 
 
-    for(int i=0;i<dom_dim;++i)
-    {
-        if(shrink_range_raio[2*i+1]==1)
-        {
-            shrink_range_raio[2*i+1]=span_num[i];
-        }
+    // for(int i=0;i<dom_dim;++i)
+    // {
+    //     if(shrink_range_raio[2*i+1]==1)
+    //     {
+    //         shrink_range_raio[2*i+1]=span_num[i];
+    //     }
         
-    }
+    // }
     
 
     for (int i = 0; i < dom_dim; i++)
     {
 
-        dim_start[2*i]= upsample_factor[i] * shrink_range_raio[2*i]; //round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i]);
-        dim_start[2*i+1]=upsample_factor[i] * shrink_range_raio[2*i+1];// round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i+1]);
+    //     dim_start[2*i]= upsample_factor[i] * shrink_range_raio[2*i]; //round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i]);
+    //     dim_start[2*i+1]=upsample_factor[i] * shrink_range_raio[2*i+1];// round((ori_ndom_pts[i]-1)*shrink_range_raio[2*i+1]);
 
-        ndom_pts(i)     =  (dim_start[2*i+1] - dim_start[2*i] + 1);
+        ndom_pts(i)     = (int)(ori_ndom_pts(i)* (shrink_range_raio[2*i+1]-shrink_range_raio[2*i]));
         npts    *= ndom_pts(i);
 
-        modified_shrink_range_raio[2*i]=dim_start[2*i]/(ori_ndom_pts[i]-1);
-        modified_shrink_range_raio[2*i+1]=dim_start[2*i+1]/(ori_ndom_pts[i]-1);
+    //     modified_shrink_range_raio[2*i]=dim_start[2*i]/(ori_ndom_pts[i]-1);
+    //     modified_shrink_range_raio[2*i+1]=dim_start[2*i+1]/(ori_ndom_pts[i]-1);
 
     }
 
 
-    std::cout<<modified_shrink_range_raio[0]<<" "<<modified_shrink_range_raio[1]<<std::endl;
-    std::cout<<modified_shrink_range_raio[2]<<" "<<modified_shrink_range_raio[3]<<std::endl;
+    // std::cout<<modified_shrink_range_raio[0]<<" "<<modified_shrink_range_raio[1]<<std::endl;
+    // std::cout<<modified_shrink_range_raio[2]<<" "<<modified_shrink_range_raio[3]<<std::endl;
 
     VectorXi mdims(2);
     mdims(0) = dom_dim;
@@ -1253,8 +1253,8 @@ const VectorX<T>& core_min, const VectorX<T>& core_max, std::vector<int>& upsamp
     int nghost_pts;                         // number of ghost points in current dimension
     for (int i = 0; i < dom_dim; i++)
     {
-        d(i) =  (core_max(i) - core_min(i)) / (ndom_pts(i) - 1) *(modified_shrink_range_raio[2*i+1]-modified_shrink_range_raio[2*i]);
-        p0(i) = core_min(i)+(core_max(i) - core_min(i))*modified_shrink_range_raio[2*i];
+        d(i) =  (core_max(i) - core_min(i)) / (ndom_pts(i) - 1) *(shrink_range_raio[2*i+1]-shrink_range_raio[2*i]);
+        p0(i) = core_min(i)+(core_max(i) - core_min(i))*shrink_range_raio[2*i];
     }
 
     mfa::VolIterator vol_it(ndom_pts);

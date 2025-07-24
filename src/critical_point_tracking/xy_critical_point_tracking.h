@@ -26,18 +26,18 @@ namespace xy_cp_tracking{
     {
         result.clear();
         
-        particle_tracing::tracing_one_direction(time_step,spatial_step_size,b,initial,result,false,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square,
-            b->core_mins, b->core_maxs);
-        std::reverse(result.begin(),result.end());
+        // particle_tracing::tracing_one_direction(time_step,spatial_step_size,b,initial,result,false,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square,
+        //     b->core_mins, b->core_maxs);
+        // std::reverse(result.begin(),result.end());
 
 
         std::vector<VectorX<T>> temp_result;
         particle_tracing::tracing_one_direction(time_step,spatial_step_size,b,initial,temp_result,true,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square, b->core_mins, b->core_maxs);
-        if(temp_result.size()>1)
-        {
-            result.pop_back();
+        // if(temp_result.size()>1)
+        // {
+        //     result.pop_back();
             result.insert(result.end(),temp_result.begin(),temp_result.end());
-        }
+        // }
 
         return true;
     }

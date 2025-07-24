@@ -116,7 +116,7 @@ namespace find_boundary_roots
     template<typename T>
     bool newton(const Block<T>* b,VectorX<T>& result, VectorX<T>& p, int max_itr, std::vector<std::vector<T>>& span_range,
                     T d_max_square, VectorX<T>& center,
-                    T root_finding_epsilon, T hessian_det_epsilon, std::vector<int>& used_domain, int removed_dom)
+                    T root_finding_epsilon, T hessian_det_epsilon, std::vector<int>& used_domain, int removed_dom, std::vector<T>& point_update_epsilon)
     {
         int itr_num=0;
 
@@ -140,9 +140,12 @@ namespace find_boundary_roots
 
         T temp_rec;
 
+        VectorX<T> pre_point = p;
         while(itr_num<max_itr)
         {
             T determinant = dev_f.determinant();
+
+            pre_point=p;
 
             if(std::abs(determinant) < hessian_det_epsilon)
             {
@@ -192,7 +195,10 @@ namespace find_boundary_roots
 
 
             if(itr_num>0){
-                if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){       
+                if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon
+                && std::abs(p[p.size()-1]-pre_point[pre_point.size()-1])<point_update_epsilon.back()
+                && (p.head(p.size()-1)-pre_point.head(pre_point.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
+                ){       
                     if(!utility::InBlock(span_range,p_on_boundary))
                     {
                         return false;
@@ -240,7 +246,7 @@ namespace find_boundary_roots
     template<typename T>
     void root_finding_on_one_boundary(const Block<T>* b,std::vector<VectorX<T>>& root, std::vector<std::vector<T>>& span_range, T boundary_value, int boundary_dim_index,
         T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
-        T hessian_det_epsilon, std::vector<int>& used_domain,int maxIter, T d_max_square,VectorX<T>& center,T step_size, T plane_step_size) // top plane is 1, bottom plane is -1 
+        T hessian_det_epsilon, std::vector<int>& used_domain,int maxIter, T d_max_square,VectorX<T>& center, T point_itr_threshold) // top plane is 1, bottom plane is -1 
     {
         VectorXi degree(b->mfa->var(0).p.size()-1);
 
@@ -277,6 +283,11 @@ namespace find_boundary_roots
         std::vector<VectorX<T>> root_in_original_domain;
         VectorX<T> next_root; 
         
+        std::vector<T> point_update_epsilon = same_root_epsilon;
+        for(int i=0;i<point_update_epsilon.size();++i)
+        {
+            point_update_epsilon[i] *= point_itr_threshold;
+        }
 
 
         for(int i=0;i<num_initial_point;++i)
@@ -289,7 +300,7 @@ namespace find_boundary_roots
             }        
             current_initial_point[boundary_dim_index]=boundary_value;
 
-            if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,root_finding_grad_epsilon,hessian_det_epsilon,used_domain,boundary_dim_index))
+            if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,root_finding_grad_epsilon,hessian_det_epsilon,used_domain,boundary_dim_index,point_update_epsilon))
             {
         
                 if(newRoot(next_root,root_in_original_domain,same_root_epsilon))
@@ -332,7 +343,7 @@ namespace find_boundary_roots
     template<typename T>
     bool root_finding(const Block<T>* b, VectorXi& span_index, std::vector<VectorX<T>>& root,
         T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
-        T hessian_det_epsilon,int maxItr,T step_size, T plane_step_size) { 
+        T hessian_det_epsilon,int maxItr, T point_itr_threshold) { 
 
         root.clear();
         
@@ -431,7 +442,7 @@ namespace find_boundary_roots
         for(int i=0;i<fixed_value.size();++i)
         {
             // std::cout<<"find root on boundary "<<fixed_value[i]<<std::endl;
-            root_finding_on_one_boundary(b, root, span_range[i], fixed_value[i], fixed_dim[i], root_finding_grad_epsilon, same_root_epsilon, hessian_det_epsilon, used_domain[i],maxItr,d_max_square[i],center[i], step_size,plane_step_size);
+            root_finding_on_one_boundary(b, root, span_range[i], fixed_value[i], fixed_dim[i], root_finding_grad_epsilon, same_root_epsilon, hessian_det_epsilon, used_domain[i],maxItr,d_max_square[i],center[i], point_itr_threshold);
         }
 
         return !root.empty();
@@ -444,13 +455,13 @@ namespace find_boundary_roots
     bool root_finding(Block<T>* block, std::vector<std::vector<VectorXi>>& span_index, 
     std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
         int current_index,
-        T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon,int maxItr, T step_size, T plane_step_size) //2^n+1 initial points) 
+        T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon,int maxItr, T point_itr_threshold) //2^n+1 initial points) 
     {
 
         for(auto i=0;i<block->mfa->nvars();++i)
         {
             if(root_finding(block,span_index[i][current_index], root,
-            root_finding_epsilon,same_root_epsilon,hessian_det_epsilon,maxItr, step_size, plane_step_size))
+            root_finding_epsilon,same_root_epsilon,hessian_det_epsilon,maxItr, point_itr_threshold))
             {
                 return true;
             }

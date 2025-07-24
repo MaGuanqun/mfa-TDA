@@ -293,7 +293,7 @@ namespace cp_tracking_degenerate_case
     template<typename T>
     bool newton(const Block<T>* b,VectorX<T>& result, VectorX<T>& p, int max_itr, std::vector<std::vector<T>>& span_range,
                     T d_max_square, VectorX<T>& center,
-                    T degenerate_finding_epsilon, T hessian_det_epsilon)
+                    T degenerate_finding_epsilon, T hessian_det_epsilon, std::vector<T>& point_update_epsilon, T gradient_epsilon)
     {
         int itr_num=0;
         MatrixX<T> dev_J;
@@ -309,11 +309,12 @@ namespace cp_tracking_degenerate_case
         T temp_rec;
 
         VectorX<T> pre_point = p;
-        VectorX<T> intersection = p;
-
         while(itr_num<max_itr)
         {
             T determinant = dev_J.determinant();
+
+            pre_point=p;
+
             if(std::abs(determinant) < hessian_det_epsilon)
             {
                 return false;                
@@ -335,7 +336,10 @@ namespace cp_tracking_degenerate_case
             compute_J_dev_J(b,p,J,dev_J);   
 
             if(itr_num>0){
-                if(J.squaredNorm()< degenerate_finding_epsilon * degenerate_finding_epsilon){//|| (result-p).squaredNorm()<ROOT_FINDING_EPSILON*ROOT_FINDING_EPSILON
+                if(J.squaredNorm()< degenerate_finding_epsilon * degenerate_finding_epsilon 
+                && J.tail(J.size()-1).squaredNorm()<gradient_epsilon*gradient_epsilon
+                && std::abs(pre_point[pre_point.size()-1]-p[p.size()-1])<point_update_epsilon.back()
+                && (pre_point.head(pre_point.size()-1)-p.head(p.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]){
               
                     if(!utility::InBlock(span_range,p))
                     {
@@ -356,13 +360,16 @@ namespace cp_tracking_degenerate_case
 
 
     template<typename T>
-    bool newRoot(VectorX<T>& z, std::vector<VectorX<T>>& root_so_far, T threshold)
+    bool newRoot(VectorX<T>& z, std::vector<VectorX<T>>& root_so_far, std::vector<T>& threshold)
     {
         for(int i=0;i<root_so_far.size();++i)
         {
-            if((z-root_so_far[i]).squaredNorm()<threshold*threshold)
+            if(z[z.size()-1]-root_so_far[i][z.size()-1]<threshold.back())
             {
-                return false;
+                if((z.head(z.size()-1)-root_so_far[i].head(z.size()-1)).squaredNorm()<threshold[0]*threshold[0])
+                {
+                    return false;
+                }
             }
         }
         return true;
@@ -372,8 +379,8 @@ namespace cp_tracking_degenerate_case
    // Function to find the roots of the polynomial using Newton's method
     template<typename T>
     bool degenerate_finding(const Block<T>* b, VectorXi& span_index, std::vector<VectorX<T>>& root,
-        T degenerate_finding_epsilon, T same_root_epsilon,
-        T hessian_det_epsilon) { 
+        T degenerate_finding_epsilon, std::vector<T>& same_root_epsilon,
+        T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon) { 
 
         root.clear();
         
@@ -434,6 +441,11 @@ namespace cp_tracking_degenerate_case
 
         std::vector<VectorX<T>> root_in_original_domain;
         // std::cout<<"num_initial_point "<<num_initial_point<<std::endl;
+        std::vector<T> point_update_epsilon = same_root_epsilon;
+        for(int i=0;i<point_update_epsilon.size();++i)
+        {
+            point_update_epsilon[i] *= point_itr_threshold;
+        }
 
         for(int i=0;i<num_initial_point;++i)
         {
@@ -446,7 +458,7 @@ namespace cp_tracking_degenerate_case
 
             // std::cout<<"initial point "<<i<<" "<<  current_initial_point.transpose()<<std::endl;    
 
-            if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,degenerate_finding_epsilon,hessian_det_epsilon))
+            if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,degenerate_finding_epsilon,hessian_det_epsilon,point_update_epsilon,gradient_epsilon))
             {
         
                 if(newRoot(next_root,root_in_original_domain,same_root_epsilon))
@@ -468,17 +480,18 @@ namespace cp_tracking_degenerate_case
 
     }
 
+
     template<typename T>
     bool degenerate_finding(Block<real_t>* block, std::vector<std::vector<VectorXi>>& span_index, 
     std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
         int current_index,
-        T root_finding_epsilon, T same_root_epsilon, T hessian_det_epsilon) //2^n+1 initial points) 
+        T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon) //2^n+1 initial points) 
     {
 
         for(auto i=0;i<block->mfa->nvars();++i)
         {
             if(degenerate_finding(block,span_index[i][current_index], root,
-            root_finding_epsilon,same_root_epsilon,hessian_det_epsilon))
+            root_finding_epsilon,same_root_epsilon,hessian_det_epsilon, point_itr_threshold,gradient_epsilon))
             {
                 return true;
             }

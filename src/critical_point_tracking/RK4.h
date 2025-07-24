@@ -63,6 +63,7 @@ namespace RK4
         else{
             gradient =-1.0*hessian.colPivHouseholderQr().solve(dev_f);
         }
+
         return true;
     }
 
@@ -320,34 +321,70 @@ namespace RK4
     }
 
     template<typename T>
-    bool RK4_correction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square)
+    bool RK4_correction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, bool first_fixed_time=true)
     {
-        if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
+        
+        if(first_fixed_time)
         {
-            if((result-p).squaredNorm()>sptial_step_size*sptial_step_size)
+            if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
             {
-               if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
-               {
-                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+            
+                if((result.head(result.size()-1)-p.head(p.size()-1)).squaredNorm()>sptial_step_size*sptial_step_size)
+                {
+                if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
+                {
+                        // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                        return true;
+                }
+                }
+                else
+                {
+                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                     return true;
-               }
+                }
             }
             else
             {
-                correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
-                return true;
+                if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
+                {
+                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    return true;
+                }
             }
         }
         else
         {
             if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
             {
-                correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
-                return true;
+            
+                if(std::abs(result[result.size()-1]-p[p.size()-1])>time_step)
+                {
+                    if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
+                    {
+                            // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                            return true;
+                    }
+                }
+                else
+                {
+                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    return true;
+                }
             }
+            else
+            {
+                if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
+                {
+                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    return true;
+                }
+            }
+
         }
         return false;
     }
+
+
 
 
 

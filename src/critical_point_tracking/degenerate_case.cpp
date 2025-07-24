@@ -29,7 +29,7 @@
 #include "degenerate_case.h"
 #include "critical_point/span_filter.hpp"
 #include "tracking_utility.h"
-#include "../critical_point/find_unique_root.h"
+#include "spatial_hashing_spatial_temporal.h"
 
 
 
@@ -63,30 +63,34 @@ int main(int argc, char** argv)
     // string input_sample_point_number = "100-100";
 
     string degenerate_point_file = "degenerate_point.dat";
-
-
-
-    double tolerance = 1e-4; // same_root_epsilon
     
     double J_threshold = 1e-5;
 
     int correction_max_itr = 30;
-    double step_size = 1e-3;
+    double time_step = 1e-3;
+    double spatial_step_size = 1.0;
 
     real_t hessian_threshold = 1e-20;
 
     string input_shrink_ratio = "0-1-0-1-0-1";
 
+    real_t point_itr_threshold = 0.5;
 
+    real_t grad_epsilon = 1e-8;
 
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "degenerate_point_file", degenerate_point_file, " file name of degenerate points");
-    ops >> opts::Option('z', "step_size",    step_size,       " step size");
+    ops >> opts::Option('z', "time_step",    time_step,       " time step size");
+    ops >> opts::Option('s', "spatial_step_size",    spatial_step_size,       " spatial step size");
     ops >> opts::Option('j', "J_threshold",    J_threshold,       " Determine whether J is a zero vector");
 
     ops >> opts::Option('a', "inControlPoint",  inControlPoint,  " diy input derivative control point file name");
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
+
+    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
+
+    ops >> opts::Option('g', "grad_epsilon", grad_epsilon, " gradient epsilon for root finding");
   
     if (!ops.parse(argc, argv) || help)
     {
@@ -135,6 +139,7 @@ int main(int argc, char** argv)
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
+    std::vector<double> step_size;
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
     {
         
@@ -144,11 +149,9 @@ int main(int argc, char** argv)
         VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-        double min_span_size = Span_size.minCoeff()/step_size;
-        step_size = min_span_size;
 
-
-        tolerance = 0.5*step_size; // same_root_epsilon
+        std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
+        step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
 
         int spanned_block_num =span_num.prod();
 
@@ -174,7 +177,6 @@ int main(int argc, char** argv)
         tbb::affinity_partitioner ap;
 
         std::cout<<"start find degenerate point "<<std::endl;
-
         tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
         [&](const tbb::blocked_range<size_t>& range)
         {
@@ -194,7 +196,7 @@ int main(int argc, char** argv)
                 std::vector<VectorX<real_t>> root_block;
                 root_block.reserve(16);
                 // std::vector<VectorXd> root_span;
-                if(cp_tracking_degenerate_case::degenerate_finding(b,selected_span,root_block,i,J_threshold, tolerance,hessian_threshold))
+                if(cp_tracking_degenerate_case::degenerate_finding(b,selected_span,root_block,i,J_threshold, step_size,hessian_threshold,point_itr_threshold,grad_epsilon))
                 {
 
                     root_thread.insert(root_thread.end(), root_block.begin(), root_block.end());
@@ -215,7 +217,7 @@ int main(int argc, char** argv)
             root.insert(root.end(), thread_vec.begin(), thread_vec.end());
         }
         std::vector<VectorX<double>> root_unique;
-        spatial_hashing::find_all_unique_root(root, root_unique,tolerance);
+        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
         std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
 
         auto end_time = std::chrono::high_resolution_clock::now();

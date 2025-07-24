@@ -109,7 +109,10 @@ int main(int argc, char** argv)
 
     int max_itr=40;
 
+    real_t point_itr_threshold = 0.5;
+
     double  spatial_step_size = 1.0;
+
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -125,6 +128,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
     ops >> opts::Option('m', "max_itr", max_itr, " max_itr");
     ops >> opts::Option('s', "singular_point_file", singular_point_file, " singular point file name");
+
+    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -189,11 +194,15 @@ int main(int argc, char** argv)
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
         std::vector<double> step_size(span_num.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
+
        
         step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
    
 
         same_root_epsilon = step_size; // same_root_epsilon
+
+        std::cout<<Span_size.transpose()<<std::endl;
+        std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
 
         int spanned_block_num =span_num.prod();
 
@@ -241,10 +250,6 @@ int main(int argc, char** argv)
 
         tbb::affinity_partitioner ap;
 
-        // VectorXi test(3);
-        // test<<16,13,3;
-        // selected_span[0].clear();
-        // selected_span[0].emplace_back(test);
         
         tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
         [&](const tbb::blocked_range<size_t>& range)
@@ -259,7 +264,7 @@ int main(int argc, char** argv)
                 root_block.reserve(16);
                 function_value_block.reserve(16);
                 // std::vector<VectorXd> root_span;
-                if(find_boundary_roots::root_finding(b,selected_span,root_block,i,root_finding_grad_epsilon, same_root_epsilon,initial_point_finding_hessian_threshold,max_itr,step_size.back(),step_size[0]))
+                if(find_boundary_roots::root_finding(b,selected_span,root_block,i,root_finding_grad_epsilon, same_root_epsilon,initial_point_finding_hessian_threshold,max_itr, point_itr_threshold))
                 {
                     VectorXi selected_span_index=selected_span[0][i]- b->mfa->var(0).p;
                     size_t index=utility::obtain_index_from_domain_index(selected_span_index,number_in_every_domain);
@@ -318,7 +323,8 @@ int main(int argc, char** argv)
         }
         max_dis_stop_square*=25.0;
 
-        degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square);
+
+        degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
 
         CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
 
