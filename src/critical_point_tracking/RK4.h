@@ -321,7 +321,7 @@ namespace RK4
     }
 
     template<typename T>
-    bool RK4_correction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, bool first_fixed_time=true)
+    bool RK4_choose_direction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, bool first_fixed_time=true)
     {
         
         if(first_fixed_time)
@@ -384,8 +384,43 @@ namespace RK4
         return false;
     }
 
+    // determine we should fix time step or spatial step size
+    template<typename T>
+    bool determine_fixed_space_time(const Block<T>* b, VectorX<T>& p, T time_step, T sptial_step_size, T hessian_det_epsilon, bool& fixed_time)
+    {
+        VectorX<T> m(b->dom_dim);
+        if(!compute_direction(b,p, m,hessian_det_epsilon))
+        {
+            return false;
+        }
+        if(m.head(m.size()-1).squaredNorm() < sptial_step_size*sptial_step_size/(time_step*time_step))
+        {
+            fixed_time = true;
+        }
+        else
+        {
+            fixed_time = false;
+        }
 
+        return true;
+    }
 
+    template<typename T>
+    bool RK4_correction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square)
+    {
+        bool fixed_time;
+        if(!determine_fixed_space_time(b,p,time_step,sptial_step_size,hessian_det_epsilon,fixed_time))
+        {
+            return false;
+        }
+
+        if(RK4_choose_direction(b,p,result,time_step,sptial_step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time))
+        {
+            return true;
+        }
+
+        return false;
+    } 
 
 
 }

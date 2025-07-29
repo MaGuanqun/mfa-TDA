@@ -184,10 +184,10 @@ namespace degenerate_case_tracing
 
 
         // std::cout<<"====="<<step_size.back()<<" "<<step_size[0]<<" "<<trajectory.size()<<std::endl;
-        if(!pass){
+ 
         string name = "trajectory.csv";
         utility::saveToCSV(name, trajectory);
-        }
+        
         //determine if the trajectory passes the degenerate point
         return pass;
     }
@@ -206,7 +206,7 @@ namespace degenerate_case_tracing
         std::vector<VectorX<T>> critical_points;
         find_neighbor_critical_points(ori_step_size, step_size, b, degenerate_point, critical_points, root_finding_grad_epsilon,hessian_det_epsilon, maxIter,point_itr_threshold);
 
-        
+        // std::cout<<"critical points size: "<<critical_points.size()<<std::endl;
         for(auto& cp: critical_points)
         {
             if(check_boundary_point_pass_degenerate(degenerate_point, cp, b, step_size, ori_step_size, hessian_det_epsilon, root_finding_grad_epsilon, correction_itr))
@@ -240,16 +240,16 @@ namespace degenerate_case_tracing
         std::vector<int> upper_tracing; 
 
 
-        VectorX<T> test_point(3);
-        test_point<<-0.0204463, 0.695221, 1.07636;
+        // VectorX<T> test_point(3);
+        // test_point<<-0.0204463, 0.695221, 1.07636;
 
         for(int i=0;i<degenerate_points.size();++i)
         {
 
-            if((degenerate_points[i]-test_point).norm()>0.001)
-            {
-                continue;
-            }
+            // if((degenerate_points[i]-test_point).norm()>0.001)
+            // {
+            //     continue;
+            // }
 
             std::vector<VectorX<T>> temp_start_points;
             find_neighbor_start_points(b, degenerate_points[i], time_step, spatial_step, step_ratio, gradient_epsilon, hessian_det_epsilon, maxIter, correction_max_itr,temp_start_points,point_itr_threshold);
@@ -271,10 +271,12 @@ namespace degenerate_case_tracing
             upper_tracing.insert(upper_tracing.end(), temp_upper_tracing.begin(), temp_upper_tracing.end());
         }
 
-        if(start_points.empty())
-        {
-            std::cout<<"no start points found for degenerate points"<<std::endl;
-        }
+        // if(start_points.empty())
+        // {
+        //     std::cout<<"no start points found for degenerate points"<<std::endl;
+        // }
+
+        // std::cout<<"start points size: "<<start_points.size()<<std::endl;
 
         int size = trace.size();
         
@@ -282,12 +284,13 @@ namespace degenerate_case_tracing
         for(int i=0;i<start_points.size();++i)
         {
             tracing_from_start_points(b, start_points[i], upper_tracing[i], trace[i+size].traces, time_step, spatial_step, hessian_det_epsilon, gradient_epsilon, correction_max_itr, d_max_square);
+            // std::cout<<"tracing from start point "<<i<<" size: "<<trace[i+size].traces.size()<<std::endl;
         }
 
-        if (trace.size() == size)
-        {
-            std::cout << "Error: trace size does not match start points size." << std::endl;
-        }
+        // if (trace.size() == size)
+        // {
+        //     std::cout << "Error: trace size does not match start points size." << std::endl;
+        // }
         
 
     }

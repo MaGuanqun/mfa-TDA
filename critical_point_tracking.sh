@@ -40,6 +40,10 @@ J_threshold="1e-7"
 
 point_itr_threshold="4.0"
 
+# block="0.45-0.55-0.6225-0.7225-0.21863-0.31863"
+
+block="0.4449-0.5449-0.2762-0.3762-0.6809-0.7809"
+
 # if [ "${data_type}" = "rotating_gaussian" ]; then
 # "${analytical}" -d 4 -m 3 -n 201 -v 28 -q 3 -s 0.0 -i "${data_type}" -f "${mfa_file}"
 # else 
@@ -48,7 +52,7 @@ point_itr_threshold="4.0"
 
 # "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
 # 
-# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 -s "0.45-0.55-0.6225-0.7225-0.21863-0.31863"
+# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 -s "${block}"
 
 # "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
@@ -61,10 +65,11 @@ source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
 
 # python src/python/sample_original_high_dim_func.py
+
 # python ./src/critical_point_tracking/time_data_convert.py -i "rotating_gaussian_raw.vtk" -o "rotating_gaussian_raw.vti"
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_raw.vti" -o "rotating_gaussian_raw.csv"
 
-# python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
+python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
 
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}"
 
