@@ -39,13 +39,19 @@ namespace CP_Trace_fuc
         int obj_index=1;
         for (auto i=traces.begin();i<traces.end();++i)
         {
+            // std::cout<<"write start "<<obj_index<< std::endl;
             for(auto j=1;j<i->traces.size();++j)
             {
+                // std::cout<<"write trace "<<obj_index<< std::endl;
                 outFile <<  "l " << obj_index << " " << obj_index+1 << "\n";
                 obj_index++;
                 
             }
-            obj_index++;
+            if(!i->traces.empty())
+            {
+                obj_index++;
+            }
+
 
         }
         outFile.close();

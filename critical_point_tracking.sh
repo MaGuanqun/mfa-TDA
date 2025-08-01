@@ -36,13 +36,13 @@ upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
 
 root_finding_epsilon="1e-10"
-J_threshold="1e-7"
+J_threshold="1e-10"
 
 point_itr_threshold="4.0"
 
 # block="0.45-0.55-0.6225-0.7225-0.21863-0.31863"
 
-block="0.4449-0.5449-0.2762-0.3762-0.6809-0.7809"
+# block="0.4449-0.5449-0.2762-0.3762-0.6809-0.7809"
 
 # if [ "${data_type}" = "rotating_gaussian" ]; then
 # "${analytical}" -d 4 -m 3 -n 201 -v 28 -q 3 -s 0.0 -i "${data_type}" -f "${mfa_file}"
@@ -52,11 +52,11 @@ block="0.4449-0.5449-0.2762-0.3762-0.6809-0.7809"
 
 # "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
 # 
-# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 -s "${block}"
+# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 #-s "${block}"
 
-# "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+"${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
+"${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
 
 "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}"
 
@@ -69,7 +69,7 @@ conda activate mfa_env
 # python ./src/critical_point_tracking/time_data_convert.py -i "rotating_gaussian_raw.vtk" -o "rotating_gaussian_raw.vti"
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_raw.vti" -o "rotating_gaussian_raw.csv"
 
-python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
+# python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
 
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}"
 

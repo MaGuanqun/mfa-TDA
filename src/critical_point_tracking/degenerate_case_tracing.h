@@ -206,14 +206,15 @@ namespace degenerate_case_tracing
         std::vector<VectorX<T>> critical_points;
         find_neighbor_critical_points(ori_step_size, step_size, b, degenerate_point, critical_points, root_finding_grad_epsilon,hessian_det_epsilon, maxIter,point_itr_threshold);
 
-        // std::cout<<"critical points size: "<<critical_points.size()<<std::endl;
-        for(auto& cp: critical_points)
-        {
-            if(check_boundary_point_pass_degenerate(degenerate_point, cp, b, step_size, ori_step_size, hessian_det_epsilon, root_finding_grad_epsilon, correction_itr))
-            {
-                start_points.emplace_back(cp);
-            }
-        }
+        start_points = critical_points;
+
+        // for(auto& cp: critical_points)
+        // {
+        //     if(check_boundary_point_pass_degenerate(degenerate_point, cp, b, step_size, ori_step_size, hessian_det_epsilon, root_finding_grad_epsilon, correction_itr))
+        //     {
+        //         start_points.emplace_back(cp);
+        //     }
+        // }
     }
 
 
@@ -241,7 +242,7 @@ namespace degenerate_case_tracing
 
 
         // VectorX<T> test_point(3);
-        // test_point<<-0.0204463, 0.695221, 1.07636;
+        // test_point<<-1.62706, -1.54866, 0.761075;
 
         for(int i=0;i<degenerate_points.size();++i)
         {
@@ -281,7 +282,7 @@ namespace degenerate_case_tracing
         int size = trace.size();
         
         trace.resize(size+start_points.size());
-        for(int i=0;i<start_points.size();++i)
+        for(int i=1;i<start_points.size();++i)
         {
             tracing_from_start_points(b, start_points[i], upper_tracing[i], trace[i+size].traces, time_step, spatial_step, hessian_det_epsilon, gradient_epsilon, correction_max_itr, d_max_square);
             // std::cout<<"tracing from start point "<<i<<" size: "<<trace[i+size].traces.size()<<std::endl;

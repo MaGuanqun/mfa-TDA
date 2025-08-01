@@ -31,7 +31,7 @@ namespace particle_tracing{
 
         result.emplace_back(initial);
 
-        // std::cout<<"start rkf 45 correction "<<valid<<std::endl;
+        std::cout<<"start rk4 correction "<<valid<<std::endl;
 
         if(!valid)
         {
@@ -47,6 +47,9 @@ namespace particle_tracing{
             {
                 if((p_new.head(p_new.size()-1)-p_old.head(p_old.size()-1)).squaredNorm()<0.01*spatial_step_size*spatial_step_size)
                 {
+                    // RK4::test_gradient_hessian(b, p_new);
+
+                    // std::cout<<"break here"<<std::endl;
                     break;
                 } 
             }

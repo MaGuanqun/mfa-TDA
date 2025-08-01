@@ -311,18 +311,18 @@ namespace cp_tracking_degenerate_case
         VectorX<T> pre_point = p;
         while(itr_num<max_itr)
         {
-            T determinant = dev_J.determinant();
+            // T determinant = dev_J.determinant();
+            Eigen::ColPivHouseholderQR<MatrixX<T>> qr(dev_J);
 
             pre_point=p;
 
-            if(std::abs(determinant) < hessian_det_epsilon)
+            if(qr.rank() < dev_J.cols())
             {
-                return false;                
+                return false;
             }
-            else
-            {  
-                p -= dev_J.colPivHouseholderQr().solve(J); 
-            }
+
+
+            p -= qr.solve(J); 
 
             if((p-center).squaredNorm()>d_max_square)
             {
@@ -338,13 +338,14 @@ namespace cp_tracking_degenerate_case
             if(itr_num>0){
                 if(J.squaredNorm()< degenerate_finding_epsilon * degenerate_finding_epsilon 
                 && J.tail(J.size()-1).squaredNorm()<gradient_epsilon*gradient_epsilon
-                && std::abs(pre_point[pre_point.size()-1]-p[p.size()-1])<point_update_epsilon.back()
-                && (pre_point.head(pre_point.size()-1)-p.head(p.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]){
+                // && std::abs(pre_point[pre_point.size()-1]-p[p.size()-1])<point_update_epsilon.back()
+                // && (pre_point.head(pre_point.size()-1)-p.head(p.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
+                ){
               
-                    if(!utility::InBlock(span_range,p))
-                    {
-                        return false;
-                    }
+                    // if(!utility::InBlock(span_range,p))
+                    // {
+                    //     return false;
+                    // }
                     
                     result = p;
                     return true;

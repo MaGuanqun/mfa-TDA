@@ -93,10 +93,19 @@ namespace xy_cp_tracking{
         tbb::affinity_partitioner ap;
   
 
+        VectorX<T> test_point(3);
+        test_point<<-1.9325, -2.0, 0.45603;
+
         tbb::parallel_for(tbb::blocked_range<size_t>(0,initial.size()),[&](const tbb::blocked_range<size_t>& r)
         {
             for(auto i = r.begin(); i != r.end(); ++i)
             {  
+                if((initial[i]-test_point).norm()>0.0001)
+                {
+                    continue;
+                }
+
+                std::cout<<"start tracing on certain point"<<i<<std::endl;
 
                 tracing_single_cpt(time_step,spatial_step_size,b,initial[i],traces[i].traces,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square);           
             }

@@ -143,38 +143,24 @@ namespace find_boundary_roots
         VectorX<T> pre_point = p;
         while(itr_num<max_itr)
         {
-            T determinant = dev_f.determinant();
+            // T determinant = dev_f.determinant();
 
             pre_point=p;
 
-            if(std::abs(determinant) < hessian_det_epsilon)
+            Eigen::ColPivHouseholderQR<MatrixX<T>> qr(dev_f);
+            if(qr.rank() < dev_f.cols())
             {
-                return false;                
+                return false;
             }
-            else
-            {  
-                VectorX<T> tem;
-                if(p.size()==3)
-                {               
-                        MatrixX<T> inv(2,2);
-                        inv.data()[0]=dev_f.data()[3];
-                        inv.data()[1]=-dev_f.data()[1];
-                        inv.data()[2]=-dev_f.data()[2];
-                        inv.data()[3]=dev_f.data()[0];           
-                        inv/=determinant;
-                        tem= inv*f;
-                }
-                else
-                {
-                    tem = dev_f.colPivHouseholderQr().solve(f);
-                }
 
-                for(int i=0;i<tem.size();i++)
-                {
-                    p[used_domain[i]]-= tem[i];
-                }
-                p_on_boundary -=tem;
+            VectorX<T> tem = qr.solve(f);
+            
+            for(int i=0;i<tem.size();i++)
+            {
+                p[used_domain[i]]-= tem[i];
             }
+            p_on_boundary -=tem;
+            
             
             
 
@@ -199,10 +185,10 @@ namespace find_boundary_roots
                 && std::abs(p[p.size()-1]-pre_point[pre_point.size()-1])<point_update_epsilon.back()
                 && (p.head(p.size()-1)-pre_point.head(pre_point.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
                 ){       
-                    if(!utility::InBlock(span_range,p_on_boundary))
-                    {
-                        return false;
-                    }      
+                    // if(!utility::InBlock(span_range,p_on_boundary))
+                    // {
+                    //     return false;
+                    // }      
                     
                     result = p;
                     return true;

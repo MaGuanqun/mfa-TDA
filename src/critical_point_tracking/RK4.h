@@ -39,30 +39,13 @@ namespace RK4
             dev_f[i] = f_vector[0];
         }
 
-        T determinant;
-        if(domain_dim==2){
-            determinant = hessian.data()[3]*hessian.data()[0]-hessian.data()[1]*hessian.data()[2];
-        }
-        else{
-            determinant = hessian.determinant();
-        }
-        if(std::abs(determinant) < hessian_det_epsilon)
+        Eigen::ColPivHouseholderQR<MatrixX<T>> qr(hessian);
+        if(qr.rank() < domain_dim)
         {
-            return false;                
+            std::cout<<"Hessian is not full rank"<<std::endl;
+            return false;
         }
-
-        if(domain_dim==2){
-            MatrixX<T> inv(domain_dim,domain_dim);
-            inv.data()[0]=hessian.data()[3];
-            inv.data()[1]=-hessian.data()[1];
-            inv.data()[2]=-hessian.data()[2];
-            inv.data()[3]=hessian.data()[0];           
-            inv/=determinant;
-            gradient = -inv*dev_f;
-        }
-        else{
-            gradient =-1.0*hessian.colPivHouseholderQr().solve(dev_f);
-        }
+        gradient =-1.0*qr.solve(dev_f);
 
         return true;
     }
@@ -73,6 +56,7 @@ namespace RK4
         VectorX<T> gradient;
         if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
         {
+            std::cout<<"outside the domain "<<p.transpose()<<" "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
             return false;
         }
 
@@ -119,6 +103,7 @@ namespace RK4
         {
             p3 = p-0.5*step_size*k2;
         }
+
         if(!compute_direction(b,p3, k3,hessian_det_epsilon))
         {
             return false;
@@ -179,33 +164,15 @@ namespace RK4
         {
             find_boundary_roots::compute_Hessian(b, p, dev_f, b->dom_dim-1);
 
-            T determinant = dev_f.determinant();
+            Eigen::ColPivHouseholderQR<MatrixX<T>> qr(dev_f);
 
-            if(std::abs(determinant) < hessian_det_epsilon)
+            if(qr.rank() < dev_f.cols())
             {
-                return false;                
+                return false;
             }
-            else
-            {  
-                VectorX<T> tem;
-                if(p.size()==3)
-                {               
-                        MatrixX<T> inv(2,2);
-                        inv.data()[0]=dev_f.data()[3];
-                        inv.data()[1]=-dev_f.data()[1];
-                        inv.data()[2]=-dev_f.data()[2];
-                        inv.data()[3]=dev_f.data()[0];           
-                        inv/=determinant;
-                        tem= inv*f;
-                }
-                else
-                {
-                    tem = dev_f.colPivHouseholderQr().solve(f);
-                }
 
-
-                p.head(b->dom_dim-1)-= tem;                
-            }
+            p.head(b->dom_dim-1)-= qr.solve(f);                
+            
             
             
             if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
@@ -333,13 +300,13 @@ namespace RK4
                 {
                 if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
                 {
-                        // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                        correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                         return true;
                 }
                 }
                 else
                 {
-                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                     return true;
                 }
             }
@@ -347,7 +314,7 @@ namespace RK4
             {
                 if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
                 {
-                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                     return true;
                 }
             }
@@ -361,13 +328,13 @@ namespace RK4
                 {
                     if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
                     {
-                            // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                            correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                             return true;
                     }
                 }
                 else
                 {
-                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                     return true;
                 }
             }
@@ -375,7 +342,7 @@ namespace RK4
             {
                 if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
                 {
-                    // correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
                     return true;
                 }
             }
@@ -414,6 +381,8 @@ namespace RK4
             return false;
         }
 
+        std::cout<<"determined fixed time "<<fixed_time<<std::endl;
+
         if(RK4_choose_direction(b,p,result,time_step,sptial_step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time))
         {
             return true;
@@ -421,6 +390,31 @@ namespace RK4
 
         return false;
     } 
+
+    template<typename T>
+    void test_gradient_hessian(const Block<T>* b, VectorX<T>& p)
+    {
+        int domain_dim = b->dom_dim-1;
+        VectorXi deriv(b->dom_dim);
+        VectorX<T> dev_f(domain_dim);
+        MatrixX<T> hessian(domain_dim,domain_dim);
+        VectorX<T> f_vector(1);
+
+        find_boundary_roots::compute_Hessian(b, p, hessian, b->dom_dim-1);
+
+
+        for(int i=0;i<domain_dim-1;i++)
+        {
+            deriv.setZero();
+            deriv[i]=1;
+            mfa_extend::recover_mfa(b,p,f_vector,deriv);
+            dev_f[i] = f_vector[0];
+        }
+
+        std::cout<<dev_f.norm()<<" "<<dev_f.transpose()<<std::endl;
+        std::cout<<hessian<<std::endl;
+
+    }
 
 
 }

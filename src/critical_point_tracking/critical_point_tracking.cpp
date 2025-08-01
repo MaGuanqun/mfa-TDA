@@ -42,6 +42,7 @@
 #include "xy_critical_point_tracking.h"
 
 #include "tracking_utility.h"
+#include "spatial_hashing_spatial_temporal.h"
 // #include "trace.h"
 
 // #include "../morse_smale/find_isocontour.h"
@@ -266,8 +267,8 @@ int main(int argc, char** argv)
                 // std::vector<VectorXd> root_span;
                 if(find_boundary_roots::root_finding(b,selected_span,root_block,i,root_finding_grad_epsilon, same_root_epsilon,initial_point_finding_hessian_threshold,max_itr, point_itr_threshold))
                 {
-                    VectorXi selected_span_index=selected_span[0][i]- b->mfa->var(0).p;
-                    size_t index=utility::obtain_index_from_domain_index(selected_span_index,number_in_every_domain);
+                    // VectorXi selected_span_index=selected_span[0][i]- b->mfa->var(0).p;
+                    // size_t index=utility::obtain_index_from_domain_index(selected_span_index,number_in_every_domain);
                     // root_info span_root;
                     // span_root.roots = std::move(root_block);
                     // span_root.function_value = std::move(function_value_block);
@@ -302,19 +303,26 @@ int main(int argc, char** argv)
         }   
 
 
+        std::vector<VectorX<double>> root_unique;
+        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
+
+        std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+
+        root.clear();
+        root.shrink_to_fit();
+
         string test_file=cp_tracing_file+"_test.obj";
 
-
-        tracking_utility::convert_to_obj(test_file,root);
+        tracking_utility::convert_to_obj(test_file,root_unique);
         // find_boundary_roots::test_root_finding(b,root,root_finding_grad_epsilon);
 
-        std::cout<<"finish finding root "<<root.size()<<std::endl;
+
 
         std::vector<CP_Trace<double>> traces;
 
-        traces.resize(root.size());
+        traces.resize(root_unique.size());
 
-        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,b,root, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr);
+        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,b,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr);
 
         double max_dis_stop_square = 0.0;
         for(int  i=0;i<step_size.size()-1;++i)
@@ -324,7 +332,7 @@ int main(int argc, char** argv)
         max_dis_stop_square*=25.0;
 
 
-        degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
+        // degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
 
         CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
 
