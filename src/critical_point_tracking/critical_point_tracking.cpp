@@ -42,7 +42,7 @@
 #include "xy_critical_point_tracking.h"
 
 #include "tracking_utility.h"
-#include "spatial_hashing_spatial_temporal.h"
+
 // #include "trace.h"
 
 // #include "../morse_smale/find_isocontour.h"
@@ -332,7 +332,7 @@ int main(int argc, char** argv)
         max_dis_stop_square*=25.0;
 
 
-        // degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
+        degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
 
         CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
 

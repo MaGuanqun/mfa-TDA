@@ -42,7 +42,7 @@ namespace RK4
         Eigen::ColPivHouseholderQR<MatrixX<T>> qr(hessian);
         if(qr.rank() < domain_dim)
         {
-            std::cout<<"Hessian is not full rank"<<std::endl;
+            // std::cout<<"Hessian is not full rank"<<std::endl;
             return false;
         }
         gradient =-1.0*qr.solve(dev_f);
@@ -56,7 +56,7 @@ namespace RK4
         VectorX<T> gradient;
         if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
         {
-            std::cout<<"outside the domain "<<p.transpose()<<" "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
+            // std::cout<<"outside the domain "<<p.transpose()<<" "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
             return false;
         }
 
@@ -381,7 +381,7 @@ namespace RK4
             return false;
         }
 
-        std::cout<<"determined fixed time "<<fixed_time<<std::endl;
+        // std::cout<<"determined fixed time "<<fixed_time<<std::endl;
 
         if(RK4_choose_direction(b,p,result,time_step,sptial_step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time))
         {

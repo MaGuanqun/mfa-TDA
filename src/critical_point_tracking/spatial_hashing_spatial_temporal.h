@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include <unordered_set>
 #include <vector>
@@ -328,7 +329,7 @@ std::vector<Eigen::VectorX<T>>& unique_root, T spatial_epsilon = SAME_ROOT_EPSIL
     temp_index.resize(root[0].size());
     for(auto i=temp_index.begin();i<temp_index.end();++i)
     {
-        i->reserve(2);
+        i->reserve(root[0].size());
     }
 
     for(auto i=root.begin();i<root.end();++i)

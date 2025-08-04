@@ -31,7 +31,7 @@ namespace particle_tracing{
 
         result.emplace_back(initial);
 
-        std::cout<<"start rk4 correction "<<valid<<std::endl;
+        // std::cout<<"start rk4 correction "<<valid<<std::endl;
 
         if(!valid)
         {

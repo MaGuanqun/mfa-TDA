@@ -1,9 +1,17 @@
+# from vtkmodules.vtkCommonCore import vtkLogger
+# vtkLogger.SetStderrVerbosity(vtkLogger.VERBOSITY_ERROR)
+
 from paraview.simple import *
 from paraview import servermanager as sm
 import vtk.util.numpy_support as VN
 import argparse
 import numpy as np
 import csv
+import sys
+import os
+
+
+
 
 LoadPlugin("/home/guanqunma/ParaView-5.11.2-MPI-Linux-Python3.9-x86_64/lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so", remote=False, ns=globals()) 
 
@@ -87,5 +95,7 @@ args = parser.parse_args()
 
 input_file=args.input_name
 output_file=args.output_name
+
+
 
 compute_tracking(input_file,output_file)
