@@ -9,6 +9,7 @@ struct CP_Trace
     
     std::array<int,2> connect_info{-1,-1}; //store the degenerate_point_index
     size_t prefix_start; //store the start index of every trace in the prefix sum of the number of points in every trace
+    bool duplicated{false}; //if the trace is duplicated, it will not be written to the output file
 
 };
 
@@ -24,12 +25,15 @@ namespace CP_Trace_fuc
         }
 
 
-
         for (auto i=traces.begin();i<traces.end();++i)
         {
+            if(i->traces.size()<2 || i->duplicated)
+            {
+                continue;
+            }
             for(auto j=0;j<i->traces.size();++j)
             {
-                    outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] << " " << i->traces[j].data()[2] << "\n";
+                outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] << " " << i->traces[j].data()[2] << "\n";
             }
             
         }
@@ -38,6 +42,10 @@ namespace CP_Trace_fuc
         int obj_index=1;
         for (auto i=traces.begin();i<traces.end();++i)
         {
+            if(i->traces.size()<2|| i->duplicated)
+            {
+                continue;
+            }
             // std::cout<<"write start "<<obj_index<< std::endl;
             for(auto j=1;j<i->traces.size();++j)
             {
@@ -46,12 +54,8 @@ namespace CP_Trace_fuc
                 obj_index++;
                 
             }
-            if(!i->traces.empty())
-            {
-                obj_index++;
-            }
-
-
+            obj_index++;
+            
         }
         outFile.close();
 

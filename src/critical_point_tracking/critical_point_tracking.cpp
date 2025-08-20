@@ -42,6 +42,7 @@
 #include "xy_critical_point_tracking.h"
 
 #include "tracking_utility.h"
+#include "trace_deduplication.h"
 
 // #include "trace.h"
 
@@ -181,8 +182,13 @@ int main(int argc, char** argv)
     std::vector<VectorX<double>> degenerate_points;
     degenerate_case_tracing::read_degenerate_point(singular_point_file,degenerate_points);
 
+
+    std::vector<CP_Trace<double>> traces;
+    std::vector<double> step_size;
+    VectorX<double> core_mins;
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
     {
+        core_mins = b->core_mins;
         
         Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
 
@@ -194,7 +200,7 @@ int main(int argc, char** argv)
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
-        std::vector<double> step_size(span_num.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
+        step_size.resize(span_num.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
 
        
         step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
@@ -247,7 +253,7 @@ int main(int argc, char** argv)
         std::vector<int>multi_root_span; 
         Eigen::VectorXd weights=Eigen::VectorXd::Ones(b->mfa->var(0).tmesh.tensor_prods[0].ctrl_pts.rows());
 
-
+ 
 
         tbb::affinity_partitioner ap;
 
@@ -318,7 +324,7 @@ int main(int argc, char** argv)
 
 
 
-        std::vector<CP_Trace<double>> traces;
+
 
         traces.resize(root_unique.size());
 
@@ -334,10 +340,34 @@ int main(int argc, char** argv)
 
         degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
 
-        CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
-
-
 
     });
+
+    int trace_size=0;
+    for(auto& trace:traces)
+    {
+        if((!trace.duplicated) && trace.traces.size()>1)
+        {            
+            trace_size++;
+        }
+    }
+    std::cout<<"trace before splitting "<<traces.size()<<" real traces "<<trace_size<<std::endl;
+
+        //the result will sort degenerate_points by time
+    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
+
+    std::cout<<"trace_after splitting "<<traces.size()<<std::endl;
+
+    trace_size=0;
+    for(auto& trace:traces)
+    {
+        if((!trace.duplicated) && trace.traces.size()>1)
+        {            
+            trace_size++;
+        }
+    }
+    std::cout<<"traces after deduplication "<<trace_size<<std::endl;
+
+    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
 
 }
