@@ -3,16 +3,19 @@ include_directories         (${CMAKE_SOURCE_DIR}/src)          # needed for bloc
 add_executable              (analytical                             analytical.cpp)
 add_executable              (analytical_multiblock                  analytical_multiblock.cpp)
 add_executable              (analytical_multiblock_blend            analytical_multiblock_blend.cpp)
+add_executable              (export_raw_data                             export_raw_data.cpp)
 
 target_link_libraries       (analytical                             ${libraries})
 target_link_libraries       (analytical_multiblock                  ${libraries})
 target_link_libraries       (analytical_multiblock_blend            ${libraries})
+target_link_libraries       (export_raw_data            ${libraries})
 
 set_property                (TARGET analytical                      PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 set_property                (TARGET analytical_multiblock           PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 set_property                (TARGET analytical_multiblock_blend     PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
+set_property                (TARGET export_raw_data                      PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-install                     (TARGETS analytical analytical_multiblock analytical_multiblock_blend
+install                     (TARGETS analytical analytical_multiblock analytical_multiblock_blend export_raw_data
                             DESTINATION ${CMAKE_INSTALL_PREFIX}/src/encode/analytical
                             PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                             GROUP_READ GROUP_WRITE GROUP_EXECUTE
