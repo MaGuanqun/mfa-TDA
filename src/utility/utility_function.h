@@ -324,18 +324,29 @@ namespace utility
     }
 
     template<typename T>
-    //consider initial points on the boundary
-    void compute_initial_points2(std::vector<std::vector<T>>&initial_points_every_domain, const VectorXi& degree,  std::vector<std::vector<T>>& span_range) { 
-        initial_points_every_domain.resize(span_range.size());
-        for(int i=0;i<span_range.size();i++)
+    void compute_initial_points_single_dim(std::vector<T>&initial_points_single_domain, int point_num, std::vector<T>& domain_range) { 
+
+        initial_points_single_domain.reserve(point_num);
+        for (int j = 0; j < point_num; ++j) {
+            T coe = ((0.5+T(j))/point_num)*(domain_range[1]-domain_range[0]);
+            initial_points_single_domain.emplace_back(domain_range[0]+coe);
+        }
+
+    }
+
+
+    template<typename T>
+    void compute_initial_points2(std::vector<std::vector<T>>&initial_points_every_domain, const VectorXi& initial_point_number,  std::vector<std::vector<T>>& domain_range) { 
+        initial_points_every_domain.resize(domain_range.size());
+        for(int i=0;i<domain_range.size();i++)
         {
-            int point_num=degree[i]+3;
-            initial_points_every_domain[i].reserve(point_num);
-            for (int j = 0; j < point_num; ++j) {
-                T coe = (T(j)/(point_num))*(span_range[i][1]-span_range[i][0]);
-                initial_points_every_domain[i].emplace_back(span_range[i][0]+coe);
-            }
-            
+            compute_initial_points_single_dim(initial_points_every_domain[i],initial_point_number[i],domain_range[i]);
+            // int point_num=initial_point_number[i];
+            // initial_points_every_domain[i].reserve(point_num);
+            // for (int j = 0; j < point_num; ++j) {
+            //     T coe = ((0.5+T(j))/point_num)*(domain_range[i][1]-domain_range[i][0]);
+            //     initial_points_every_domain[i].emplace_back(domain_range[i][0]+coe);
+            // }
         }
 
     }

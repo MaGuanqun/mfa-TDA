@@ -13,6 +13,7 @@
 #include "block.hpp"
 #include "mfa_extend.h"
 #include "utility_function.h"
+#include "closed_form_function.h"
 
 namespace cp_tracking_degenerate_case
 {
@@ -57,11 +58,11 @@ namespace cp_tracking_degenerate_case
     }
 
     template<typename T>
-    void Hessian(const Block<T>* b, VectorX<T>& p, MatrixX<T>& Hessian)
+    void Hessian(VectorX<T>& p, MatrixX<T>& Hessian,const Block<T>* b=nullptr, const int function_type=0)
     {
-        int n_var_dim = b->dom_dim - 1;
+        int n_var_dim = p.size() - 1;
         Hessian.resize(n_var_dim, n_var_dim);
-        VectorXi deriv(b->dom_dim);
+        VectorXi deriv(p.size());
         VectorX<real_t> result(1);
 
         for(int i=0;i<n_var_dim;i++)
@@ -71,7 +72,20 @@ namespace cp_tracking_degenerate_case
                 deriv.setZero();
                 deriv[i]+=1;
                 deriv[j]+=1;
-                mfa_extend::recover_mfa(b, p, result, deriv);
+                switch (function_type)
+                {
+                case 0:
+                    mfa_extend::recover_mfa(b, p, result, deriv);
+                    break;
+                case 1:
+                    closed_form_function::quartic_potential(p, result, deriv);
+                    break;
+                default:
+                    std::cerr<<"invalid function type"<<std::endl;
+                    exit(0);
+                    break;
+                }
+                
                 Hessian(j,i) = result[0];
                 Hessian(i,j) = result[0];
             }
@@ -79,11 +93,11 @@ namespace cp_tracking_degenerate_case
     }
 
     template<typename T>
-    void partial_xt(const Block<T>* b, VectorX<T>& p, VectorX<T>& result)
+    void partial_xt(VectorX<T>& p, VectorX<T>& result, const Block<T>* b=nullptr, const int function_type=0)
     {
-        int n_var_dim = b->dom_dim - 1;
+        int n_var_dim = p.size() - 1;
         result.resize(n_var_dim);
-        VectorXi deriv(b->dom_dim);
+        VectorXi deriv(p.size());
         VectorX<real_t> out(1);
 
         for(int i=0;i<n_var_dim;i++)
@@ -91,18 +105,30 @@ namespace cp_tracking_degenerate_case
             deriv.setZero();
             deriv[i]+=1;
             deriv[n_var_dim]+=1;
-            mfa_extend::recover_mfa(b, p, out, deriv);
+            switch (function_type)
+            {
+            case 0:
+                mfa_extend::recover_mfa(b, p, out, deriv);
+                break;
+            case 1:
+                closed_form_function::quartic_potential(p, out, deriv);
+                break;
+            default:
+                std::cerr<<"invalid function type"<<std::endl;
+                exit(0);
+                break;
+            }
             result(i) = out[0];
         }
     }
 
 
     template<typename T>
-    void partial_Hessian(const Block<T>* b, VectorX<T>& p, MatrixX<T>& p_Hessian, int partial_deriv_index)
+    void partial_Hessian(VectorX<T>& p, MatrixX<T>& p_Hessian, int partial_deriv_index, const Block<T>* b=nullptr, const int function_type=0)
     {
-        int n_var_dim = b->dom_dim - 1;
+        int n_var_dim = p.size() - 1;
         p_Hessian.resize(n_var_dim, n_var_dim);
-        VectorXi deriv(b->dom_dim);
+        VectorXi deriv(p.size());
         VectorX<real_t> result(1);
 
         for(int i=0;i<n_var_dim;i++)
@@ -113,7 +139,19 @@ namespace cp_tracking_degenerate_case
                 deriv[i]+=1;
                 deriv[j]+=1;
                 deriv[partial_deriv_index] += 1; // partial derivative with respect to the partial_deriv_index
-                mfa_extend::recover_mfa(b, p, result, deriv);
+                switch (function_type)
+                {
+                case 0:
+                    mfa_extend::recover_mfa(b, p, result, deriv);
+                    break;
+                case 1:
+                    closed_form_function::quartic_potential(p, result, deriv);
+                    break;
+                default:
+                    std::cerr<<"invalid function type"<<std::endl;
+                    exit(0);
+                    break;
+                }
                 p_Hessian(j,i) = result[0];
                 p_Hessian(i,j) = result[0];
             }
@@ -121,59 +159,72 @@ namespace cp_tracking_degenerate_case
     }
 
     template<typename T>
-    void diff_Hessian(const Block<T>* b, VectorX<T>& p, std::vector<MatrixX<T>>& d_Hessian)
+    void diff_Hessian(VectorX<T>& p, std::vector<MatrixX<T>>& d_Hessian, const Block<T>* b=nullptr, const int function_type=0)
     {
-        d_Hessian.resize(b->dom_dim);
-        for(int i=0;i<b->dom_dim;i++)
+        d_Hessian.resize(p.size());
+        for(int i=0;i<p.size();i++)
         {
-            partial_Hessian(b, p, d_Hessian[i], i);       
+            partial_Hessian(p, d_Hessian[i], i, b, function_type);       
         }
     }
     template<typename T>
-    void diff_Hessian_determinant(const Block<T>* b, VectorX<T>& p,const MatrixX<T>& hessian, VectorX<T>& diff)
+    void diff_Hessian_determinant(VectorX<T>& p,const MatrixX<T>& hessian, VectorX<T>& diff, const Block<T>* b=nullptr, const int function_type=0)
     {
         MatrixX<T> adj;
         adjugate_of_symmetric(hessian, adj);
         std::vector<MatrixX<T>> diff_Hes;
-        diff_Hessian(b, p, diff_Hes);
+        diff_Hessian(p, diff_Hes, b, function_type);
 
-        diff.resize(b->dom_dim);
-        for(int i=0;i<b->dom_dim;i++)
+        diff.resize(p.size());
+        for(int i=0;i<p.size();i++)
         {
             diff[i]=adj.cwiseProduct(diff_Hes[i]).sum();
         }
     }
 
     template<typename T>
-    void compute_J(const Block<T>* b, VectorX<T>& p, VectorX<T>& J)
+    void compute_J(VectorX<T>& p, VectorX<T>& J, const Block<T>* b=nullptr, const int function_type=0)
     {
-        J.resize(b->dom_dim);
-        VectorXi deriv(b->dom_dim);
-        int n_var_dim=b->dom_dim-1;
+        J.resize(p.size());
+        VectorXi deriv(p.size());
+        int n_var_dim=p.size()-1;
         VectorX<T> result(1); 
         for(int i=0;i<n_var_dim;i++)
         {
             deriv.setZero();
             deriv[i]+=1;
-            mfa_extend::recover_mfa(b, p,result, deriv);
+
+            switch (function_type)
+            {   
+            case 0:
+                mfa_extend::recover_mfa(b, p,result, deriv);
+                break;
+            case 1:
+                closed_form_function::quartic_potential(p, result, deriv);
+                break;
+            default:
+                std::cerr<<"invalid function type"<<std::endl;
+                exit(0);
+                break;
+            }
+
             J[i+1] = result[0];
         }
 
-        
         MatrixX<T> Hessian_f;
         Hessian(b, p, Hessian_f);
         J[0] = Hessian_f.determinant();        
     }
 
     template<typename T>
-    void compute_J_dev_J(const Block<T>* b, VectorX<T>& p, VectorX<T>& J, MatrixX<T>& Jacobian_f)
+    void compute_J_dev_J(VectorX<T>& p, VectorX<T>& J, MatrixX<T>& Jacobian_f,const Block<T>* b=nullptr, const int function_type=0)
     {
-        J.resize(b->dom_dim);
-        Jacobian_f.resize(b->dom_dim,b->dom_dim);
+        J.resize(p.size());
+        Jacobian_f.resize(p.size(),p.size());
 
-        VectorXi deriv(b->dom_dim);
+        VectorXi deriv(p.size());
 
-        int n_var_dim=b->dom_dim-1;
+        int n_var_dim=p.size()-1;
 
         VectorX<T> result(1); 
 
@@ -182,123 +233,49 @@ namespace cp_tracking_degenerate_case
         {
             deriv.setZero();
             deriv[i]+=1;
-            mfa_extend::recover_mfa(b, p,result, deriv);
+            switch (function_type)
+            {
+            case 0:
+                mfa_extend::recover_mfa(b, p,result, deriv);
+                break;
+            case 1:
+                closed_form_function::quartic_potential(p, result, deriv);
+                break;
+            default:
+                std::cerr<<"invalid function type"<<std::endl;
+                exit(0);
+                break;
+            }
+
             J[i+1] = result[0];
         }
 
         MatrixX<T> Hessian_f;
-        Hessian(b, p, Hessian_f);
+        Hessian(p, Hessian_f, b, function_type);
         J[0] = Hessian_f.determinant();     
 
         VectorX<T> diff;
-        diff_Hessian_determinant(b, p, Hessian_f, diff);
+        diff_Hessian_determinant(p, Hessian_f, diff, b, function_type);
 
         Jacobian_f.row(0) = diff.transpose();
         Jacobian_f.block(1,0,n_var_dim,n_var_dim) = Hessian_f;
 
         VectorX<T> partial_xt_result;
-        partial_xt(b, p, partial_xt_result);
+        partial_xt(p, partial_xt_result,b, function_type);
         Jacobian_f.block(1,n_var_dim,n_var_dim,1) = partial_xt_result;
-        // VectorX<T> Hessian_f(b->dom_dim*(b->dom_dim+1)/2-1);
-        // //2d: f_xx,xy,xt,yy,yt
-        // //[0 1 2]
-        // //[1 3 4]
-        // //[2 4 5]
-        // //3d: f_xx,xy,xz,xt,yy,yz,yt,zz,zt
-        // //[0 1 2 3]
-        // //[1 4 5 6]
-        // //[2 5 7 8]
-
-        // int k=0;
-        // for(int i=0;i<n_var_dim;i++)
-        // {
-        //     for(int j=i;j<b->dom_dim;j++)
-        //     {
-        //         deriv.setZero();
-        //         deriv[i]+=1;
-        //         deriv[j]+=1;
-        //         mfa_extend::recover_mfa(b, p, result, deriv);
-        //         Hessian_f[k] = result[0];
-        //         k++;
-        //     }
-        // }
-
-        // VectorX<T> f(n_var_dim);
-        // for(int i=0;i<n_var_dim;i++)
-        // {
-        //     deriv.setZero();
-        //     deriv[i]+=1;
-        //     mfa_extend::recover_mfa(b, p,result, deriv);
-        //     f[i] = result[0];
-        // }
-
-        // if(n_var_dim==2)
-        // {
-        //     J[0]=Hessian_f[0]*Hessian_f[3]-Hessian_f[1]*Hessian_f[1];
-        // }
-        // else if(n_var_dim==3)
-        // {
-        //     J[0]= Hessian_f[0]*Hessian_f[4]*Hessian_f[7] + 2.0 * Hessian_f[1]*Hessian_f[5]*Hessian_f[2] - Hessian_f[2]*Hessian_f[4]*Hessian_f[2] - Hessian_f[1]*Hessian_f[1]*Hessian_f[7] - Hessian_f[0]*Hessian_f[5]*Hessian_f[5];
-        // }
-        // else
-        // {
-        //     std::cerr<<"Error: only support 2D and 3D case"<<std::endl;
-        // }
-
-        // J.segment(1,n_var_dim)=f;
-
-        // VectorX<T> f_3(4);
-        // //F_xxx,xxy,xyy,yyy
-        // deriv.setZero();
-        // deriv[0]=3;
-        // for(int i=0;i<4;i++)
-        // {
-        //     mfa_extend::recover_mfa(b, p,result, deriv);
-        //     f_3[i] = result[0];
-        //     deriv[0]--;
-        //     deriv[1]++;
-        // }
-
-        // deriv.setZero();
-        // deriv[2]=1;
-        // VectorX<T> f_t_3(3);
-        // //F_txx,txy,tyy
-        // for(int i=0;i<n_var_dim;i++)
-        // {
-        //     for(int j=i;j<n_var_dim;j++)
-        //     {
-        //         deriv[i]+=1;
-        //         deriv[j]+=1;
-        //         mfa_extend::recover_mfa(b, p,result, deriv);
-        //         f_t_3[n_var_dim*i+j] = result[0];
-        //         deriv[i]--;
-        //         deriv[j]--;
-        //     }
-        // }
-
-        // //f_xx,xy,xt,yy,yt
-        // //F_xxx,xxy,xyy,yyy
-        // //F_txx,txy,tyy
-        // Jacobian_f(0,0) = Hessian_f[3]*f_3[0]+Hessian_f[0]*f_3[2]-2.0*Hessian_f[1]*f_3[1];
-        // Jacobian_f(0,1) = Hessian_f[0]*f_3[3]+Hessian_f[3]*f_3[1]-2.0*Hessian_f[1]*f_3[2];
-        // Jacobian_f(0,2) = Hessian_f[3]*f_t_3[0]+Hessian_f[0]*f_t_3[2]-2.0*Hessian_f[1]*f_t_3[1];
-
-        // Jacobian_f.row(1) = Hessian_f.segment(0,3).transpose();
-        // Jacobian_f(2,0) = Hessian_f[1];
-        // Jacobian_f(2,1) = Hessian_f[3];
-        // Jacobian_f(2,2) = Hessian_f[4];
 
     }
 
     template<typename T>
-    bool newton(const Block<T>* b,VectorX<T>& result, VectorX<T>& p, int max_itr, std::vector<std::vector<T>>& span_range,
-                    T d_max_square, VectorX<T>& center,
-                    T degenerate_finding_epsilon, T hessian_det_epsilon, std::vector<T>& point_update_epsilon, T gradient_epsilon)
+    bool newton(VectorX<T>& result, VectorX<T>& p, int max_itr,
+                    // T d_max_square, VectorX<T>& center,
+                    T degenerate_finding_epsilon, T hessian_det_epsilon, T gradient_epsilon,
+                    const VectorX<T>& domain_min, const VectorX<T>& domain_max,const Block<T>* b=nullptr, const int function_type=0)
     {
         int itr_num=0;
         MatrixX<T> dev_J;
         VectorX<T> J;
-        compute_J_dev_J(b,p,J,dev_J);
+        compute_J_dev_J(p,J,dev_J, b, function_type);
         if(J.squaredNorm()<degenerate_finding_epsilon*degenerate_finding_epsilon)
         {
             result = p;
@@ -324,29 +301,21 @@ namespace cp_tracking_degenerate_case
 
             p -= qr.solve(J); 
 
-            if((p-center).squaredNorm()>d_max_square)
-            {
-                return false;
-            }
-            if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
+            // if((p-center).squaredNorm()>d_max_square)
+            // {
+            //     return false;
+            // }
+            if(!utility::In_Domain(p,domain_min,domain_max))
             {
                 return false;
             }
 
-            compute_J_dev_J(b,p,J,dev_J);   
+            compute_J_dev_J(p,J,dev_J, b, function_type);   
 
             if(itr_num>0){
                 if(J.squaredNorm()< degenerate_finding_epsilon * degenerate_finding_epsilon 
                 && J.tail(J.size()-1).squaredNorm()<gradient_epsilon*gradient_epsilon
-                // && std::abs(pre_point[pre_point.size()-1]-p[p.size()-1])<point_update_epsilon.back()
-                // && (pre_point.head(pre_point.size()-1)-p.head(p.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
-                ){
-              
-                    // if(!utility::InBlock(span_range,p))
-                    // {
-                    //     return false;
-                    // }
-                    
+                ){                    
                     result = p;
                     return true;
                 }
@@ -377,76 +346,84 @@ namespace cp_tracking_degenerate_case
     }
 
 
-   // Function to find the roots of the polynomial using Newton's method
     template<typename T>
-    bool degenerate_finding(const Block<T>* b, VectorXi& span_index, std::vector<VectorX<T>>& root,
-        T degenerate_finding_epsilon, std::vector<T>& same_root_epsilon,
-        T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon) { 
+    void generate_initial_points(std::vector<vector<T>>& initial_points, const VectorX<T>& domain_min, const VectorX<T>& domain_max,
+    const VectorXi& point_num_in_block,const VectorXi& set_block_num,const Block<T>* b=nullptr)
+    {
+        if(b==nullptr)
+        {
+            
+            std::vector<std::vector<T>> domain_range(domain_min.size());
+            for(int i=0;i<domain_min.size();++i)
+            {
+                domain_range[i].emplace_back(domain_min[i]);
+                domain_range[i].emplace_back(domain_max[i]);
+            }
 
-        root.clear();
-        
-        VectorXi one = VectorXi::Ones(b->mfa->var(0).p.size());
-        // int deg = (mfa_data->p-one).prod();
+            VectorXi initial_point_number = point_num_in_block.cwiseProduct(set_block_num);
+            // if(b!=nullptr)
+            // {
+            //     VectorXi span_num = b->mfa->var(0).tmesh.tensor_prods[0].nctrl_pts-b->mfa->var(0).p;
+            //     initial_point_number = span_num.cwiseProduct(b->mfa->var(0).p+VectorXi::Ones(span_num.size()));
+            // }
+            utility::compute_initial_points2(initial_points,initial_point_number,domain_range);
+        }
+        else
+        {
+            initial_points.resize(domain_min.size());
+            for(int i=0;i<domain_min.size();++i)
+            {
+                initial_points[i].reserve(point_num_in_block[i]*set_block_num[i]);
+                double span_size = (domain_max[i]-domain_min[i])/set_block_num[i];
+                for(int j=0;j<set_block_num[i];++j)
+                {
+                    T span_min = b->mfa->var(0).tmesh.all_knots[i][j+b->mfa->var(0).p[i]]*(domain_max[i]-domain_min[i])+domain_min[i];
+                    T span_max = b->mfa->var(0).tmesh.all_knots[i][j+b->mfa->var(0).p[i]+1]*(domain_max[i]-domain_min[i])+domain_min[i];
 
-        int maxIter=100;
+                    std::vector<T> current_span_range{span_min,span_max};
+                    std::vector<T> initial_points_single_dim;
+                    utility::compute_initial_points_single_dim(initial_points_single_dim,point_num_in_block[i],current_span_range);
 
-        int distance_stop_itr = 5;
-
-        
-        auto domain_range = b->core_maxs-b->core_mins;
-        // std::cout<<"max_iteration--"<<maxIter<<std::endl;
-
-        std::vector<std::vector<T>> span_range(b->dom_dim);
-
-
-        VectorX<T> center(3);
-        for(int i=0;i<span_range.size();++i)
-        {    
-            span_range[i].emplace_back(b->mfa->var(0).tmesh.all_knots[i][span_index[i]]*domain_range[i]+b->core_mins[i]);
-            span_range[i].emplace_back(b->mfa->var(0).tmesh.all_knots[i][span_index[i]+1]*domain_range[i]+b->core_mins[i]);
-
-            center[i]=(span_range[i][0]+span_range[i][1])*0.5;
-        }   
-
-
-
-        // compute distance to terminate iteration
-        T d_max_square=0;
-        for(auto i=span_range.begin();i!=span_range.end();++i)
-        {  
-            d_max_square+=((*i)[1]-(*i)[0])*((*i)[1]-(*i)[0]);
+                    initial_points[i].insert(initial_points[i].end(), initial_points_single_dim.begin(), initial_points_single_dim.end());
+                }
+            }
         }
 
-        d_max_square*=distance_stop_itr * distance_stop_itr; //d^2=(2*diagonal of span)^2
-
-        std::vector<std::vector<T>>initial_point;
+    }
 
 
-        utility::compute_initial_points2(initial_point,b->mfa->var(0).p,span_range);
+ 
+
+
+
+   // Function to find the roots of the polynomial using Newton's method
+    template<typename T>
+    bool degenerate_finding_single_block(std::vector<VectorX<T>>& root,
+        T degenerate_finding_epsilon, std::vector<T>& same_root_epsilon,
+        T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon,const VectorX<T>& domain_min, const VectorX<T>& domain_max,
+        std::vector<std::vector<T>>initial_point, std::vector<std::array<int,2>>& initial_point_range,
+        const Block<T>* b=nullptr, const int function_type=0)
+    {
+
+        root.clear();
+        VectorXi one = VectorXi::Ones(domain_min.size());
+        int maxIter=50;        
+        auto domain_range = domain_max-domain_min;
 
         VectorXi num_initial_point_every_domain(initial_point.size());
         for(int i=0;i<num_initial_point_every_domain.size();i++)
         {
-            num_initial_point_every_domain[i]=initial_point[i].size();
+            num_initial_point_every_domain[i]=initial_point_range[i][1]-initial_point_range[i][0];
         }
 
         int num_initial_point = num_initial_point_every_domain.prod();
 
         VectorX<T> next_root; 
-
-
         VectorXi domain_index;
         VectorXi number_in_every_domain;
         VectorX<T> current_initial_point(initial_point.size());
         utility::obtain_number_in_every_domain(num_initial_point_every_domain,number_in_every_domain);
 
-        std::vector<VectorX<T>> root_in_original_domain;
-        // std::cout<<"num_initial_point "<<num_initial_point<<std::endl;
-        std::vector<T> point_update_epsilon = same_root_epsilon;
-        for(int i=0;i<point_update_epsilon.size();++i)
-        {
-            point_update_epsilon[i] *= point_itr_threshold;
-        }
 
         for(int i=0;i<num_initial_point;++i)
         {
@@ -454,51 +431,111 @@ namespace cp_tracking_degenerate_case
             utility::obtainDomainIndex(i,domain_index,number_in_every_domain);
             for(int j=0;j<initial_point.size();j++)
             {
-                current_initial_point[j]=initial_point[j][domain_index[j]];
+                current_initial_point[j]=initial_point[j][initial_point_range[j][0]+domain_index[j]];
             } 
 
-            // std::cout<<"initial point "<<i<<" "<<  current_initial_point.transpose()<<std::endl;    
-
-            if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,degenerate_finding_epsilon,hessian_det_epsilon,point_update_epsilon,gradient_epsilon))
+            if(newton(next_root, current_initial_point,maxIter,degenerate_finding_epsilon,hessian_det_epsilon,gradient_epsilon,domain_min,domain_max,b,function_type))
             {
         
-                if(newRoot(next_root,root_in_original_domain,same_root_epsilon))
+                if(newRoot(next_root,root,same_root_epsilon))
                 {        
-                    root_in_original_domain.emplace_back(next_root);
+                    root.emplace_back(next_root);
                 } 
             }
 
-        }
-
-        if(!root_in_original_domain.empty())
-        {
-            root.insert(root.end(),root_in_original_domain.begin(),root_in_original_domain.end());
-        }
-
-        
+        }        
 
         return !root.empty();
 
     }
 
 
+    
     template<typename T>
-    bool degenerate_finding(Block<real_t>* block, std::vector<std::vector<VectorXi>>& span_index, 
-    std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
-        int current_index,
-        T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon) //2^n+1 initial points) 
+    void degenerate_finding(std::vector<VectorX<T>>& root,
+    T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon, const VectorX<T>& domain_min, const VectorX<T>& domain_max,
+    const VectorXi& point_num_in_block, const VectorXi& set_block_num, const Block<real_t>* block=nullptr,std::vector<VectorXi>& selected_span_index = std::vector<VectorXi>(),const int function_type=0)
     {
+        std::vector<vector<T>> initial_points;
+        generate_initial_points(initial_points,domain_min,domain_max,point_num_in_block,set_block_num,block);
+        
 
-        for(auto i=0;i<block->mfa->nvars();++i)
+        // try to divide the initial points into different blocks. For MFA, every block is a span, for other functions, it is manually defined. So that it is easier to deduplicate
+
+        //MFA. both spans and initial points are uniformly distributed, number of points = (degree+1)*span_num
+        VectorXi number_in_every_dim;
+        int num_block;
+        if(block!=nullptr)
         {
-            if(degenerate_finding(block,span_index[i][current_index], root,
-            root_finding_epsilon,same_root_epsilon,hessian_det_epsilon, point_itr_threshold,gradient_epsilon))
-            {
-                return true;
-            }
+            num_block = selected_span_index.size();
+        }
+        else
+        {
+            num_block = set_block_num.prod();
+            utility::obtain_number_in_every_domain(set_block_num,number_in_every_dim);
         }
 
-        return false;
-    }    
+
+        tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
+        tbb::affinity_partitioner ap;
+
+        tbb::parallel_for(tbb::blocked_range<size_t>(0,num_block), //
+        [&](const tbb::blocked_range<size_t>& range)
+        {
+            auto& root_thread = local_root.local();
+            std::vector<std::array<int,2>> initial_point_range(initial_points.size());
+            VectorXi block_index;
+            std::vector<VectorX<T>> block_root;
+            for(int i=range.begin();i!=range.end();++i)
+            {
+                if(block==nullptr)
+                {
+                    utility::obtainDomainIndex(i,block_index,number_in_every_dim);
+                }
+                else
+                {
+                    block_index = selected_span_index[i];
+                }
+                for(int j=0;j<initial_points.size();j++)
+                {
+                    initial_point_range[j][0]= point_num_in_block[j]*block_index[j];
+                    initial_point_range[j][1]= point_num_in_block[j]*(block_index[j]+1);
+                }
+                degenerate_finding_single_block(block_root,root_finding_epsilon,same_root_epsilon,hessian_det_epsilon,point_itr_threshold,gradient_epsilon,domain_min,domain_max,initial_points,initial_point_range,block,function_type);
+                if(!block_root.empty())
+                {
+                    root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
+                } 
+            }
+
+        },ap               
+        );
+
+
+        for (const auto& thread_vec : local_root) {
+            root.insert(root.end(), thread_vec.begin(), thread_vec.end());
+        }
+
+    }
+
+
+    // template<typename T>
+    // bool degenerate_finding(Block<real_t>* block, std::vector<std::vector<VectorXi>>& span_index, 
+    // std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
+    //     int current_index,
+    //     T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon) //2^n+1 initial points) 
+    // {
+
+    //     for(auto i=0;i<block->mfa->nvars();++i)
+    //     {
+    //         if(degenerate_finding(block,span_index[i][current_index], root,
+    //         root_finding_epsilon,same_root_epsilon,hessian_det_epsilon, point_itr_threshold,gradient_epsilon))
+    //         {
+    //             return true;
+    //         }
+    //     }
+
+    //     return false;
+    // }    
 
 }
