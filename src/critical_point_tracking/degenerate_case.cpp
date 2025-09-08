@@ -165,7 +165,7 @@ int main(int argc, char** argv)
         std::vector<size_t> valid_span_index;
 
 
-        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2);
+        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2,true);
 
         VectorXi point_num_in_block = b->mfa->var(0).p + VectorXi::Ones(b->mfa->var(0).p.size()); //number of initial points in a block
 

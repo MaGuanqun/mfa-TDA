@@ -374,7 +374,6 @@ namespace cp_tracking_degenerate_case
             for(int i=0;i<domain_min.size();++i)
             {
                 initial_points[i].reserve(point_num_in_block[i]*set_block_num[i]);
-                double span_size = (domain_max[i]-domain_min[i])/set_block_num[i];
                 for(int j=0;j<set_block_num[i];++j)
                 {
                     T span_min = b->mfa->var(0).tmesh.all_knots[i][j+b->mfa->var(0).p[i]]*(domain_max[i]-domain_min[i])+domain_min[i];
@@ -434,6 +433,14 @@ namespace cp_tracking_degenerate_case
                 current_initial_point[j]=initial_point[j][initial_point_range[j][0]+domain_index[j]];
             } 
 
+            if(!utility::In_Domain(current_initial_point,domain_min,domain_max))
+            {
+                std::cout<<current_initial_point.size()<<std::endl;
+                std::cout<<domain_min.transpose()<<" "<<domain_max.transpose()<<std::endl;
+                std::cerr<<"initial point is not in the domain"<<std::endl;
+            }
+
+
             if(newton(next_root, current_initial_point,maxIter,degenerate_finding_epsilon,hessian_det_epsilon,gradient_epsilon,domain_min,domain_max,b,function_type))
             {
         
@@ -478,6 +485,12 @@ namespace cp_tracking_degenerate_case
 
         tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
         tbb::affinity_partitioner ap;
+
+        std::cout<<point_num_in_block.transpose()<<" initial points in each block"<<std::endl;
+        std::cout<<initial_points[0].size()<<" "<<initial_points[1].size()<<" initial points in each dimension"<<std::endl;
+        std::cout<<set_block_num.transpose()<<" blocks in each dimension"<<std::endl;
+
+
 
         tbb::parallel_for(tbb::blocked_range<size_t>(0,num_block), //
         [&](const tbb::blocked_range<size_t>& range)

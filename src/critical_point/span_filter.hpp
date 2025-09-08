@@ -99,15 +99,29 @@ void compute_valid_span(
 
 
 template <typename T>
-bool spanInRange(const mfa::MFA_Data<T>& mfa_data, VectorXi& span_index, std::vector<T>& interval)
+bool spanInRange(const mfa::MFA_Data<T>& mfa_data, VectorXi& span_index, std::vector<T>& interval, const VectorXi& p=VectorXi())
 {
     std::vector<std::vector<T>> span_range(span_index.size());
-    for(int i=0;i<span_index.size();++i)
-    {    
-        span_range[i].emplace_back(mfa_data.tmesh.all_knots[i][span_index[i]]);
-        span_range[i].emplace_back(mfa_data.tmesh.all_knots[i][span_index[i]+1]);
-    }   
 
+    if(p==VectorXi())
+    {
+        for(int i=0;i<span_index.size();++i)
+        {    
+            span_range[i].emplace_back(mfa_data.tmesh.all_knots[i][span_index[i]]);
+            span_range[i].emplace_back(mfa_data.tmesh.all_knots[i][span_index[i]+1]);
+        }   
+
+    }
+    else
+    {
+        for(int i=0;i<span_index.size();++i)
+        {    
+            span_range[i].emplace_back(mfa_data.tmesh.all_knots[i][span_index[i]+p[i]]); //span_index is the first index of the span
+            span_range[i].emplace_back(mfa_data.tmesh.all_knots[i][span_index[i]+1+p[i]]);
+        }   
+
+    }
+    
     for(int i=0;i<span_index.size();++i)
     {
         if(span_range[i][1]<interval[2*i]){
@@ -172,11 +186,13 @@ void compute_boundary_span(Block<T>*              block,std::vector<std::vector<
 
 
 //for nd domain
+//when limit_dimension_num != -1, the valid_span is the span index, but when it ==1, the valid_span is acutllay the span+p, which is the real span in the original function
+
 template <typename T>
 void compute_valid_span(
     std::vector<std::vector<MatrixX<T>>>&             control_points,
     Block<real_t>*              block,
-    std::vector<std::vector<VectorXi>>&           valid_span, std::vector<T>& domain_limit, int limit_dimension_num = -1
+    std::vector<std::vector<VectorXi>>&           valid_span, std::vector<T>& domain_limit, int limit_dimension_num = -1, bool for_cp_tracking = false
 )
 {
     int nvars           = block->mfa->nvars();   
@@ -211,6 +227,9 @@ void compute_valid_span(
 
         int total_block=0;
     
+        VectorXi span_num =  tc.nctrl_pts-mfa_data.p;
+        VectorXi number_in_every_domain; //span
+        utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
 
         for(int k = 0;k< limit_dimension_num;k++)
         {            
@@ -221,12 +240,9 @@ void compute_valid_span(
             VectorXi control_points_num = tc.nctrl_pts;
             control_points_num[k]-=1;
 
-            VectorXi span_num = control_points_num-p;
-
             int spanned_block_num = span_num.prod();
 
-            VectorXi number_in_every_domain; //span
-            utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
+
 
             VectorXi block_span_num = p+Eigen::VectorXi::Ones(p.size()); //every block
             VectorXi number_in_every_dmain_block;
@@ -286,9 +302,17 @@ void compute_valid_span(
                         // }
 
                         //project it to the original function span (fx->f)
-                        span_index+=mfa_data.p;  //here the derivative is 
-                        size_t ind = utility::obtain_index_from_domain_index(span_index,number_in_every_domain_ori_func);
-                        count_in_original_function[ind].fetch_add(1);       
+                        if(!for_cp_tracking)
+                        {
+                            span_index+=mfa_data.p;  
+                            size_t ind = utility::obtain_index_from_domain_index(span_index,number_in_every_domain_ori_func);
+                            count_in_original_function[ind].fetch_add(1);       
+                        }
+                        else
+                        {
+                            count_in_original_function[j].fetch_add(1);
+                        }
+                        
   
                     }
                 }
@@ -303,16 +327,33 @@ void compute_valid_span(
 
         for(int j=0;j<count_in_original_function.size();++j)
         {
-            if(count_in_original_function[j].load()==limit_dimension_num)
+            if(!for_cp_tracking)
             {
-                utility::obtainDomainIndex(j,index,number_in_every_domain_ori_func);
-
-                if(spanInRange(mfa_data,index,domain_limit))
+                if(count_in_original_function[j].load()==limit_dimension_num)
                 {
-                    valid_span[i].emplace_back(index);
-                }
+                    utility::obtainDomainIndex(j,index,number_in_every_domain_ori_func);
 
+                    if(spanInRange(mfa_data,index,domain_limit))
+                    {
+                        valid_span[i].emplace_back(index);
+                    }
+
+                }
             }
+            else
+            {
+               if(count_in_original_function[j].load()==limit_dimension_num)
+                {
+                    utility::obtainDomainIndex(j,index,number_in_every_domain);
+
+                    if(spanInRange(mfa_data,index,domain_limit,mfa_data.p))
+                    {
+                        valid_span[i].emplace_back(index);
+                    }
+
+                }
+            }
+            
             // else if(count_in_original_function[j].load()>ndom_dims){
             //     std::cout<<"error "<<count_in_original_function[j].load()<<" "<<j<<std::endl;
             // }
