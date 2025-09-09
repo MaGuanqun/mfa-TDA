@@ -88,7 +88,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('a', "inControlPoint",  inControlPoint,  " diy input derivative control point file name");
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
 
-    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
+    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point is away from block center than point_itr_threshold * block size");
 
     ops >> opts::Option('g', "grad_epsilon", grad_epsilon, " gradient epsilon for root finding");
   
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
 
         cp_tracking_degenerate_case::degenerate_finding(root,
             J_threshold, step_size, hessian_threshold, point_itr_threshold, grad_epsilon,
-            b->core_mins, b->core_maxs,point_num_in_block, span_num, b, selected_span[0]);
+            b->core_mins, b->core_maxs,point_num_in_block, span_num,0, b, selected_span[0]);
 
 
         // tbb::enumerable_thread_specific<std::vector<VectorXd>> local_root;

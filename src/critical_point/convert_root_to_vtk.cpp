@@ -95,6 +95,8 @@ int main(int argc, char** argv)
     int reduce_duplication = 0;
     int input_vector_vector = 0;
 
+    int is_mfa_result = 1; // 1 means the input data is from mfa, 0 means the input data is from other source
+
     // get command line arguments
     opts::Options ops;
     //ops >> opts::Option('d', "deriv",   deriv,   " which derivative to take (1 = 1st, 2 = 2nd, ...)");
@@ -110,6 +112,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('e', "same_root_epsilon",      same_root_epsilon,     " same root epsilon");
     ops >> opts::Option('d', "reduce_duplication",      reduce_duplication,     " 0 is not reducing duplication, 1 is reducing duplication");
     ops >> opts::Option('p', "vector_vector",    input_vector_vector,       " if the input data need to be transferred to vector<vector<>>");
+    ops >> opts::Option('j', "is_mfa_result",   is_mfa_result,   " 1 means the input data is from mfa, 0 means the input data is from other source");
+
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -182,58 +186,63 @@ int main(int argc, char** argv)
 
     std::cout<<"threshold "<<same_root_epsilon<<std::endl;
 
-   // initialize DIY
-    diy::FileStorage storage("./DIY.XXXXXX");     // used for blocks to be moved out of core
-    diy::Master      master(world,
-            1,
-            -1,
-            &Block<real_t>::create,
-            &Block<real_t>::destroy);
-    diy::ContiguousAssigner   assigner(world.size(), -1); // number of blocks set by read_blocks()
-
-    diy::io::read_blocks(input_mfa_file.c_str(), world, assigner, master, &Block<real_t>::load);
-    std::cout << master.size() << " blocks read from file "<< input_mfa_file << "\n\n";
-
-    
-
     std::vector<std::vector<Eigen::VectorXd>> filterd_root(root.size());    
 
     VectorXd min,max;
-    VectorXd min_ori,max_ori;
-    master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
-    {
-        min.resize(b->core_mins.size());
-        max.resize(b->core_mins.size());
-        for(int i=0;i<b->core_mins.size();++i)
+
+    if(is_mfa_result==1){
+    // initialize DIY
+        diy::FileStorage storage("./DIY.XXXXXX");     // used for blocks to be moved out of core
+        diy::Master      master(world,
+                1,
+                -1,
+                &Block<real_t>::create,
+                &Block<real_t>::destroy);
+        diy::ContiguousAssigner   assigner(world.size(), -1); // number of blocks set by read_blocks()
+
+        diy::io::read_blocks(input_mfa_file.c_str(), world, assigner, master, &Block<real_t>::load);
+        std::cout << master.size() << " blocks read from file "<< input_mfa_file << "\n\n";
+
+
+
+        VectorXd min_ori,max_ori;
+
+
+        master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
         {
-            if(i>=shrink_ratio.size()/2)
+            min.resize(b->core_mins.size());
+            max.resize(b->core_mins.size());
+            for(int i=0;i<b->core_mins.size();++i)
             {
-                shrink_ratio.push_back(0);
-                shrink_ratio.push_back(1);
+                if(i>=shrink_ratio.size()/2)
+                {
+                    shrink_ratio.push_back(0);
+                    shrink_ratio.push_back(1);
+                }
+
+                shrink_ratio[2*i] = round((b->input->ndom_pts(i)-1)*shrink_ratio[2*i])/(b->input->ndom_pts(i)-1);
+                shrink_ratio[2*i+1] = round((b->input->ndom_pts(i)-1)*shrink_ratio[2*i+1])/(b->input->ndom_pts(i)-1);
+
+                min(i) = b->core_mins(i) + shrink_ratio[2*i]*(b->core_maxs(i)-b->core_mins(i));
+                max(i) = b->core_mins(i) + shrink_ratio[2*i+1]*(b->core_maxs(i)-b->core_mins(i));
+
+                min_ori=b->core_mins;
+                max_ori=b->core_maxs;
+
             }
+            std::cout<<" mfa min max are: "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
 
-            shrink_ratio[2*i] = round((b->input->ndom_pts(i)-1)*shrink_ratio[2*i])/(b->input->ndom_pts(i)-1);
-            shrink_ratio[2*i+1] = round((b->input->ndom_pts(i)-1)*shrink_ratio[2*i+1])/(b->input->ndom_pts(i)-1);
-
-            min(i) = b->core_mins(i) + shrink_ratio[2*i]*(b->core_maxs(i)-b->core_mins(i));
-            max(i) = b->core_mins(i) + shrink_ratio[2*i+1]*(b->core_maxs(i)-b->core_mins(i));
-
-            min_ori=b->core_mins;
-            max_ori=b->core_maxs;
-
-        }
-         std::cout<<" mfa min max are: "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
-
-        Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
-        auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
-        VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
-        VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-        same_root_epsilon *= Span_size.minCoeff();
-    });
-
+            Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
+            auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
+            VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
+            VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
+            same_root_epsilon *= Span_size.minCoeff();
+        });
+          std::cout<<"restored min max are: "<<min.transpose()<<" "<<max.transpose()<<std::endl;
+    }
    
 
-    std::cout<<"restored min max are: "<<min.transpose()<<" "<<max.transpose()<<std::endl;
+  
 
     int start_place=0;
     if(input_vector_vector)

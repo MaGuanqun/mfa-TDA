@@ -70,8 +70,12 @@ output_file=args.output_name
 function=args.function
 
 if function == 'rotating_gaussian':
-    min = np.array([-1.0, -1.0, 0.0])
-    max =np.array([1.0, 1.0, 4.0])
+    min = np.array([-2.0, -2.0, 0.0])
+    max =np.array([2.0, 2.0, 4.0])
+    dim = np.array([100,100,100])
+elif function == 'quartic_potential':
+    min = np.array([-2.0, -2.0, 0.0])
+    max =np.array([2.0, 2.0, 4.0])
     dim = np.array([100,100,100])
     
 convert_binary_file_to_vti(input_file, output_file,dim,min,max)

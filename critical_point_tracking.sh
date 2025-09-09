@@ -9,6 +9,8 @@ tracking="./build/src/critical_point_tracking/critical_point_tracking"
 derivative_control_point="./build/src/critical_point/derivative_control_point"
 
 degenerate_case="./build/src/critical_point_tracking/degenerate_case"
+degenerate_case_explicit="./build/src/critical_point_tracking/degenerate_case_explicit"
+
 convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
 
 
@@ -16,7 +18,8 @@ export_raw_data="./build/src/encode/analytical/export_raw_data"
 
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
-data_type="rotating_gaussian"
+# data_type="rotating_gaussian"
+data_type="quartic_potential"
 # data_type="sinc"
 save_folder="${data_type}"
 
@@ -40,6 +43,7 @@ step_size="16"
 t_sample_ratio="16"
 
 degenerate_point="./build/src/${save_folder}/${data_type}_degenerate.dat"
+degenerate_point_original="./build/src/${save_folder}/${data_type}_degenerate_ori.dat"
 
 smoothed_degenerate_point="./build/src/${save_folder}/${data_type}_degenerate_smoothed.dat"
 
@@ -55,9 +59,9 @@ smoothed_ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cp
 
 upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
-
-root_finding_epsilon="1e-10"
-J_threshold="1e-10"
+#the reshold should be really small to raw explicit function
+root_finding_epsilon="1e-12"
+J_threshold="1e-12"
 
 point_itr_threshold="4.0"
 
@@ -80,9 +84,9 @@ point_itr_threshold="4.0"
 
 # "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 #-s "${block}"
 
-"${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-"${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
+# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
 
 
 
@@ -108,6 +112,9 @@ conda activate mfa_env
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}.csv"
 
 
+
+##########################################################
+#smoothing and tracking on smoothed data
 # gdb --args 
 # "${control_point_smoothing}" -f "${mfa_file}" -o "${smoothed_mfa_file}" -s 0.5
 
@@ -126,3 +133,12 @@ conda activate mfa_env
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${smoothed_mfa_file}.vti" -o "${smoothed_ttk_critical_point_file}.csv"
 
 # pvpython ./src/critical_point_tracking/tracking_script.py -i "${mfa_file}.vti" -o "${ttk_tracking_file}"
+
+
+
+##########################################################
+# directly work on raw explicit function
+
+"${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+
+"${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0

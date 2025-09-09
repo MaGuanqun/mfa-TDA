@@ -200,6 +200,11 @@ using namespace std;
                 dom_bounds.min[i] = 0.0;
                 dom_bounds.max[i] = 1.0;
             }
+        }
+        else if(input =="quartic_potential")
+        {
+            dom_bounds.min = {-2.0, -2.0, 0.0};
+            dom_bounds.max = { 2.0, 2.0, 4.0};
         }     
         else
         {
@@ -400,6 +405,35 @@ using namespace std;
                 vars_nctrl[0] = 23;
                 vars_nctrl[1] = 23;
                 vars_nctrl[2] = 15;
+            }
+        }
+
+        if(input == "quartic_potential")
+        {
+            d_args.min.resize(dom_dim);
+            d_args.max.resize(dom_dim);
+
+            d_args.min[0]               = -2.0;
+            d_args.max[0]               = 2.0;
+            d_args.min[1]               = -2.0;
+            d_args.max[1]               = 2.0;
+            d_args.min[2]               = 0.0;
+            d_args.max[2]               = 4.0;
+
+            for (int i = 0; i < d_args.model_dims.size()-1; i++)      // for all science variables
+                d_args.s[i] = 1.0 * (i + 1);  
+            
+            d_args.full_dom_pts = {100,100,100};      // Hard-coded to full data set size
+            d_args.ndom_pts = d_args.full_dom_pts;
+            for (int i = 0; i < dom_dim; i++)
+            {
+                d_args.tot_ndom_pts *= d_args.ndom_pts[i];
+            }
+            if (!adaptive)
+            {
+                vars_nctrl[0] = 23;
+                vars_nctrl[1] = 23;
+                vars_nctrl[2] = 23;
             }
         }
 
