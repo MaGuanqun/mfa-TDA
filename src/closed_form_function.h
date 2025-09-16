@@ -182,4 +182,19 @@ namespace closed_form_function
         exit(0);
     }
 
+    template<typename T>
+    void closed_form_function(const VectorX<T>& point,VectorX<T>& result, const int function_type=0, const VectorXi& derivs = VectorXi())
+    {
+        switch (function_type)
+        {
+        case 1:
+            quartic_potential(point,result,derivs);
+            break;
+        default:
+            std::cout<<"error: invalid function type"<<std::endl;
+            exit(0);
+            break;
+        }
+    }
+
 }

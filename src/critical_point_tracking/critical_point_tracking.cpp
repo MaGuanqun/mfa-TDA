@@ -59,9 +59,9 @@
 using namespace std;
 
 
-namespace {
-    tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
-}
+// namespace {
+//     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
+// }
 
 int main(int argc, char** argv)
 {
@@ -185,14 +185,14 @@ int main(int argc, char** argv)
 
     std::vector<CP_Trace<double>> traces;
     std::vector<double> step_size;
-    VectorX<double> core_mins;
+
+    VectorXd core_mins;
+
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
     {
-        core_mins = b->core_mins;
         
         Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
-
-        std::vector<VectorX<double>> root_ori;
+        core_mins=b->core_mins;
 
         double min_ = local_domain_range.minCoeff();
         auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
@@ -226,91 +226,31 @@ int main(int argc, char** argv)
 
         std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
 
-        std::vector<VectorX<real_t>> root_record;
-
         std::vector<std::vector<VectorXi>> selected_span;//[vars,span index]
 
 
 
-        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2);
 
-
-
+        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2,true);
 
 
         span_filter::compute_boundary_span(b,selected_span,true);
 
-        // for(int i=0;i<selected_span[0].size();i++)
-        // {
-        //     std::cout<<i<<" "<<selected_span[0][i].transpose()<<std::endl;
-        // }
-
-        tbb::enumerable_thread_specific<std::vector<VectorX<double>>> local_root;
-
+        std::cout<<"valid span num "<<selected_span[0].size()<<std::endl;
             
         auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
 
-        std::vector<int>multi_root_span; 
-        Eigen::VectorXd weights=Eigen::VectorXd::Ones(b->mfa->var(0).tmesh.tensor_prods[0].ctrl_pts.rows());
 
  
-
-        tbb::affinity_partitioner ap;
-
-        
-        tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
-        [&](const tbb::blocked_range<size_t>& range)
-        {
-            auto& root_thread = local_root.local();
-
-            for(auto i=range.begin();i!=range.end();++i)
-            {
-                // std::cout<<selected_span[0][i][2]<<std::endl;
-                std::vector<VectorX<real_t>> root_block;
-                std::vector<real_t> function_value_block;
-                root_block.reserve(16);
-                function_value_block.reserve(16);
-                // std::vector<VectorXd> root_span;
-                if(find_boundary_roots::root_finding(b,selected_span,root_block,i,root_finding_grad_epsilon, same_root_epsilon,initial_point_finding_hessian_threshold,max_itr, point_itr_threshold))
-                {
-                    // VectorXi selected_span_index=selected_span[0][i]- b->mfa->var(0).p;
-                    // size_t index=utility::obtain_index_from_domain_index(selected_span_index,number_in_every_domain);
-                    // root_info span_root;
-                    // span_root.roots = std::move(root_block);
-                    // span_root.function_value = std::move(function_value_block);
-                    // span_root.valid_span_index = index;
-
-                    root_thread.insert(root_thread.end(),root_block.begin(),root_block.end());
-
-                }
-
-                if(i%100000==0)
-                {
-                    std::cout<<"finish find span "<<i<<std::endl;
-                }
-                // break;
-                //multiplicity_root[index].insert(multiplicity_root[index].end(),multi_root_span.begin(),multi_root_span.end());
-            }
-        },ap               
-        );
+        find_boundary_roots::root_finding_mfa(b, selected_span[0], root, root_finding_grad_epsilon, same_root_epsilon,
+            initial_point_finding_hessian_threshold, max_itr, point_itr_threshold, span_num);
 
 
-
-
-        size_t total_size = 0;
-        for (const auto& thread_indices : local_root)
-            total_size += thread_indices.size();
-
-        root.reserve(total_size);
-
-        for (auto& thread_root_block : local_root)
-        {
-            root.insert(root.end(), thread_root_block.begin(), thread_root_block.end());
-        }   
-
+        std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
 
         std::vector<VectorX<double>> root_unique;
         spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
+
 
         std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
 
@@ -327,8 +267,9 @@ int main(int argc, char** argv)
 
 
         traces.resize(root_unique.size());
+        int function_type=0;
 
-        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,b,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr);
+        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr,b->core_mins,b->core_maxs,function_type,b);
 
         double max_dis_stop_square = 0.0;
         for(int  i=0;i<step_size.size()-1;++i)
@@ -337,8 +278,9 @@ int main(int argc, char** argv)
         }
         max_dis_stop_square*=25.0;
 
+        VectorXi point_num_in_block = b->mfa->var(0).p + VectorXi::Ones(b->mfa->var(0).p.size()); //n
 
-        degenerate_case_tracing::tracing_from_all_degenerate_points(b, degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold);
+        degenerate_case_tracing::tracing_from_all_degenerate_points(degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold,point_num_in_block, b->core_mins, b->core_maxs, 0, b);
 
 
     });

@@ -21,8 +21,8 @@
 namespace xy_cp_tracking{
 
     template<typename T>
-    bool tracing_single_cpt(T time_step, T spatial_step_size, const Block<T>* b, VectorX<T>& initial, std::vector<VectorX<T>>& result, int correction_max_itr, 
-    T hessian_det_epsilon, T gradient_epsilon, T d_max_square)
+    bool tracing_single_cpt(T time_step, T spatial_step_size, VectorX<T>& initial, std::vector<VectorX<T>>& result, int correction_max_itr, 
+    T hessian_det_epsilon, T gradient_epsilon, T d_max_square,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         result.clear();
         
@@ -32,7 +32,7 @@ namespace xy_cp_tracking{
 
 
         std::vector<VectorX<T>> temp_result;
-        particle_tracing::tracing_one_direction(time_step,spatial_step_size,b,initial,temp_result,true,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square, b->core_mins, b->core_maxs);
+        particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,true,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b);
         // if(temp_result.size()>1)
         // {
         //     result.pop_back();
@@ -74,16 +74,16 @@ namespace xy_cp_tracking{
 
 
     template<typename T>
-    void find_trace(T time_step, T spatial_step_size,int max_step, const Block<T>* b, std::vector<VectorX<T>>& initial,
+    void find_trace(T time_step, T spatial_step_size,int max_step, std::vector<VectorX<T>>& initial,
     std::vector<CP_Trace<T>>& traces, 
-    T hessian_det_epsilon, T gradient_epsilon,int correction_max_itr)
+    T hessian_det_epsilon, T gradient_epsilon,int correction_max_itr,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
-        auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
-        VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
+        // auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
+        // VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
 
-        VectorXi number_in_every_domain; //span
-        utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
-        auto domain_range = b->core_maxs - b->core_mins;
+        // VectorXi number_in_every_domain; //span
+        // utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
+        // auto domain_range = b->core_maxs - b->core_mins;
 
 
         // int distance_stop_itr = 1;
@@ -107,7 +107,7 @@ namespace xy_cp_tracking{
 
                 // std::cout<<"start tracing on certain point"<<i<<std::endl;
 
-                tracing_single_cpt(time_step,spatial_step_size,b,initial[i],traces[i].traces,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square);           
+                tracing_single_cpt(time_step,spatial_step_size,initial[i],traces[i].traces,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square,core_mins,core_maxs,function_type,b);           
             }
         },ap);
 

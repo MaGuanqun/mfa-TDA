@@ -224,6 +224,25 @@ namespace utility
         return true;
     }
 
+
+    template<typename T>
+    bool InBlock(std::vector<std::vector<T>>& span_range, VectorX<T>& point, int exclude_dim) //span_range: [[min0,max0],[min1,max1]]
+    {
+        
+        for(int i=0;i<span_range.size();++i)
+        {
+            if(i!=exclude_dim)
+            {
+                if(point[i]<span_range[i][0] || point[i]>span_range[i][1])
+                {
+                    return false;
+                };
+            }
+          
+        }
+        return true;
+    }
+
     //checkl if cross the zero
     template <typename T>
     bool check_valid_span(T* value, std::vector<size_t>& index_for_control_point, T func_value)

@@ -400,7 +400,7 @@ namespace cp_tracking_degenerate_case
     bool degenerate_finding_single_block(std::vector<VectorX<T>>& root,
         T degenerate_finding_epsilon, std::vector<T>& same_root_epsilon,
         T hessian_det_epsilon, T point_itr_threshold, T gradient_epsilon,const VectorX<T>& domain_min, const VectorX<T>& domain_max,
-        std::vector<std::vector<T>>initial_point, std::vector<std::array<int,2>>& initial_point_range,
+        std::vector<std::vector<T>>&initial_point, std::vector<std::array<int,2>>& initial_point_range,
         const Block<T>* b=nullptr, const int function_type=0)
     {
 

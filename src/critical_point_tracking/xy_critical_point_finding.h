@@ -16,7 +16,8 @@
 
 #include "utility_function.h"
 #include "mfa_extend.h"
-
+#include "closed_form_function.h"
+#include "degenerate_case.h"
 
 namespace find_boundary_roots
 {
@@ -27,23 +28,34 @@ namespace find_boundary_roots
     
     //gradient exclude last dimension
     template<typename T>
-    void compute_gradient(const Block<T>* b, VectorX<T>& p, VectorX<T>& f)
+    void compute_gradient(VectorX<T>& p, VectorX<T>& f, const int function_type=0, const Block<T>* b = nullptr)
     {
         VectorX<T> f_vector(1);
-        int domain_dim = b->dom_dim-1;
-        VectorXi deriv(b->dom_dim);
+        int domain_dim = p.size()-1;
+        VectorXi deriv(p.size());
         f.resize(domain_dim);
         for(int i=0;i<domain_dim;i++)
         {
             deriv.setZero();
             deriv[i]+=1;
-            mfa_extend::recover_mfa(b, p,f_vector, deriv);
+            switch (function_type)
+            {
+            case 0:
+                mfa_extend::recover_mfa(b, p,f_vector, deriv);
+                break;
+            case 1:
+                closed_form_function::closed_form_function(p, f_vector, function_type, deriv);
+                break;
+            default:
+                break;
+            }
+            
             f[i] = f_vector[0];
         }
     }
 
     template<typename T>
-    void compute_Hessian(const Block<T>* b, VectorX<T>& p, MatrixX<T>& dev_f, int removed_dom)
+    void compute_Hessian(VectorX<T>& p, MatrixX<T>& dev_f, int removed_dom, const int function_type=0, const Block<T>* b=nullptr)
     {
 
         int domain_dim = b->dom_dim-1;
@@ -66,7 +78,18 @@ namespace find_boundary_roots
                     deriv.setZero();
                     deriv[i]+=1;
                     deriv[j]+=1;
-                    mfa_extend::recover_mfa(b, p,dev_f_vector,deriv);
+                    switch (function_type)
+                    {
+                    case 0:
+                        mfa_extend::recover_mfa(b, p,dev_f_vector,deriv);
+                        break;
+                    case 1:
+                        closed_form_function::quartic_potential(p, dev_f_vector, deriv);
+                        break;
+                    default:
+                        break;
+                    }
+                    
                     dev_f(j,i) = dev_f_vector[0];// / (local_domain_range[i]*local_domain_range[j]);
                     dev_f(i,j) = dev_f_vector[0];
                 }
@@ -85,7 +108,17 @@ namespace find_boundary_roots
                     deriv.setZero();
                     deriv[i]+=1;
                     deriv[j]+=1;
-                    mfa_extend::recover_mfa(b, p,dev_f_vector,deriv);
+                    switch (function_type)
+                    {
+                    case 0:
+                        mfa_extend::recover_mfa(b, p,dev_f_vector,deriv);
+                        break;
+                    case 1:
+                        closed_form_function::quartic_potential(p, dev_f_vector, deriv);
+                        break;
+                    default:
+                        break;
+                    }
                     if(j==domain_dim)
                     {
                         dev_f(i,domain_dim-1) = dev_f_vector[0];
@@ -107,16 +140,16 @@ namespace find_boundary_roots
     }
 
     template<typename T>
-    void compute_f_dev_f(const Block<T>* b, VectorX<T>& p, VectorX<T>& f, MatrixX<T>& dev_f, int removed_dom)
+    void compute_f_dev_f(VectorX<T>& p, VectorX<T>& f, MatrixX<T>& dev_f, int removed_dom, const int function_type=0, const Block<T>* b=nullptr)
     {
-        compute_Hessian(b, p, dev_f, removed_dom);
-        compute_gradient(b, p, f);
+        compute_Hessian(p, dev_f, removed_dom, function_type, b);
+        compute_gradient(p, f, function_type, b);
     }
     // newton method with single initial_point
     template<typename T>
-    bool newton(const Block<T>* b,VectorX<T>& result, VectorX<T>& p, int max_itr, std::vector<std::vector<T>>& span_range,
-                    T d_max_square, VectorX<T>& center,
-                    T root_finding_epsilon, T hessian_det_epsilon, std::vector<int>& used_domain, int removed_dom, std::vector<T>& point_update_epsilon)
+    bool newton(VectorX<T>& result, VectorX<T>& p, int max_itr,
+                    // T d_max_square, VectorX<T>& center,
+                    T root_finding_epsilon, T hessian_det_epsilon, std::vector<int>& used_domain, int removed_dom, std::vector<T>& point_update_epsilon, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         int itr_num=0;
 
@@ -128,7 +161,7 @@ namespace find_boundary_roots
 
         MatrixX<T> dev_f;
         VectorX<T> f;
-        compute_f_dev_f(b,p,f,dev_f, removed_dom);
+        compute_f_dev_f(p,f,dev_f, removed_dom, function_type, b);
 
         if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon)
         {
@@ -162,34 +195,27 @@ namespace find_boundary_roots
             p_on_boundary -=tem;
             
             
-            
-
-            if((p_on_boundary-center).squaredNorm()>d_max_square)
-            {
-                return false;
-            }
+            // if((p_on_boundary-center).squaredNorm()>d_max_square)
+            // {
+            //     return false;
+            // }
 
              
 
-            if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
+            if(!utility::In_Domain(p,core_mins,core_maxs))
             {
                 return false;
             }
 
 
-            compute_f_dev_f(b,p,f,dev_f,removed_dom);
+            compute_f_dev_f(p,f,dev_f,removed_dom, function_type, b);
 
 
             if(itr_num>0){
                 if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon
                 && std::abs(p[p.size()-1]-pre_point[pre_point.size()-1])<point_update_epsilon.back()
                 && (p.head(p.size()-1)-pre_point.head(pre_point.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
-                ){       
-                    // if(!utility::InBlock(span_range,p_on_boundary))
-                    // {
-                    //     return false;
-                    // }      
-                    
+                ){           
                     result = p;
                     return true;
                 }
@@ -229,64 +255,57 @@ namespace find_boundary_roots
         return true;
     }
 
+
+
+
+
+
+//reset this using globle initial point
     template<typename T>
-    void root_finding_on_one_boundary(const Block<T>* b,std::vector<VectorX<T>>& root, std::vector<std::vector<T>>& span_range, T boundary_value, int boundary_dim_index,
+    void root_finding_on_one_boundary(std::vector<VectorX<T>>& root, T boundary_value, int boundary_dim_index,
         T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
-        T hessian_det_epsilon, std::vector<int>& used_domain,int maxIter, T d_max_square,VectorX<T>& center, T point_itr_threshold) // top plane is 1, bottom plane is -1 
+        T hessian_det_epsilon, std::vector<int>& used_dom,int maxIter, 
+        std::vector<std::vector<T>>&initial_point, std::vector<std::array<int,2>>& initial_point_range,
+        T point_itr_threshold, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr) // top plane is 1, bottom plane is -1 
     {
-        VectorXi degree(b->mfa->var(0).p.size()-1);
 
-        std::vector<int> used_dom(degree.size());
-        int j=0;
-        for(int i=0;i<=degree.size();++i)
-        {
-            if(i!=boundary_dim_index)
-            {
-                used_dom[j]=i;
-                degree[j]=b->mfa->var(0).p[i];
-                j++;
-            }
-        }
-       
-
-        std::vector<std::vector<T>>initial_point;
-        // degree = degree + VectorXi::Ones(degree.size());
-        utility::compute_initial_points2(initial_point,degree,span_range);
-
-        VectorXi num_initial_point_every_domain(initial_point.size());
+        VectorXi num_initial_point_every_domain(initial_point.size()-1);
         for(int i=0;i<num_initial_point_every_domain.size();i++)
         {
-            num_initial_point_every_domain[i]=initial_point[i].size();
+            num_initial_point_every_domain[i]=initial_point_range[used_dom[i]][1]-initial_point_range[used_dom[i]][0];
         }
         int num_initial_point = num_initial_point_every_domain.prod();
 
         VectorXi domain_index;
         VectorXi number_in_every_domain;
-        VectorX<T> current_initial_point(initial_point.size()+1);
+        VectorX<T> current_initial_point(initial_point.size());
         utility::obtain_number_in_every_domain(num_initial_point_every_domain,number_in_every_domain);
 
 
         std::vector<VectorX<T>> root_in_original_domain;
         VectorX<T> next_root; 
         
-        std::vector<T> point_update_epsilon = same_root_epsilon;
+        std::vector<T> point_update_epsilon(same_root_epsilon.size()-1);
         for(int i=0;i<point_update_epsilon.size();++i)
         {
-            point_update_epsilon[i] *= point_itr_threshold;
+            point_update_epsilon[i] =same_root_epsilon[used_dom[i]] *point_itr_threshold;
         }
+
 
 
         for(int i=0;i<num_initial_point;++i)
         {
 
+
             utility::obtainDomainIndex(i,domain_index,number_in_every_domain);
-            for(int j=0;j<initial_point.size();j++)
+            for(int j=0;j<num_initial_point_every_domain.size();j++)
             {
-                current_initial_point[used_dom[j]]=initial_point[j][domain_index[j]];
+                current_initial_point[used_dom[j]]=initial_point[used_dom[j]][initial_point_range[used_dom[j]][0]+domain_index[j]];
             }        
             current_initial_point[boundary_dim_index]=boundary_value;
 
-            if(newton(b, next_root, current_initial_point,maxIter,span_range,d_max_square,center,root_finding_grad_epsilon,hessian_det_epsilon,used_domain,boundary_dim_index,point_update_epsilon))
+
+            if(newton(next_root, current_initial_point,maxIter,root_finding_grad_epsilon,hessian_det_epsilon,used_dom,boundary_dim_index,point_update_epsilon,core_mins,core_maxs,function_type,b))
             {
         
                 if(newRoot(next_root,root_in_original_domain,same_root_epsilon))
@@ -294,6 +313,8 @@ namespace find_boundary_roots
                     root_in_original_domain.emplace_back(next_root);
                 } 
             }
+
+
 
         }
 
@@ -325,110 +346,109 @@ namespace find_boundary_roots
 
     }
 
+
+
+    template<typename T>
+    void root_finding_single_block_mfa(std::vector<VectorX<T>>& root, T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
+        T hessian_det_epsilon,int maxItr, T point_itr_threshold,const VectorX<T>& core_mins, const VectorX<T>& core_maxs,const VectorXi& point_num_in_block, const VectorXi& set_block_num,std::vector<vector<T>>& initial_points, const int function_type=0, const Block<T>* b=nullptr, const VectorXi& span_index= VectorXi())
+        {
+            root.clear();
+
+            std::vector<T> fixed_value; //the plane of the fixed value
+            std::vector<int> fixed_dim;
+            std::vector<std::vector<int>> used_domain;
+            std::vector<int> used_domain_temp;
+            std::vector<std::vector<std::array<int,2>>> initial_point_range;
+
+            for(int i=0;i<core_mins.size();++i)
+            {
+                if(span_index[i]==0)
+                {
+                    fixed_value.emplace_back(core_mins[i]);
+                    fixed_dim.emplace_back(i);
+                }
+                if(i!=(core_mins.size()-1) && (span_index[i]==(set_block_num[i]-1)))
+                {
+                    fixed_value.emplace_back(core_maxs[i]);
+                    fixed_dim.emplace_back(i);
+                }
+            }
+
+            initial_point_range.resize(fixed_dim.size());
+
+            for(int i=0;i<fixed_dim.size();++i)
+            {
+                used_domain_temp.clear();
+                initial_point_range[i].resize(core_mins.size());
+                for(int j=0;j<core_mins.size();++j)
+                {
+                    if(j!=fixed_dim[i])
+                    {
+                        used_domain_temp.emplace_back(j);
+                    }
+                    initial_point_range[i][j][0]= point_num_in_block[j]*span_index[j];
+                    initial_point_range[i][j][1]= point_num_in_block[j]*(span_index[j]+1);
+                }             
+                used_domain.emplace_back(used_domain_temp);
+            }
+
+
+            for(int i=0;i<fixed_value.size();++i)
+            {
+                root_finding_on_one_boundary(root, fixed_value[i], fixed_dim[i], root_finding_grad_epsilon, same_root_epsilon, hessian_det_epsilon, used_domain[i],maxItr,initial_points,initial_point_range[i], point_itr_threshold, core_mins, core_maxs, function_type,b);
+            }
+
+        }
+
+
+
+
     // Function to find the roots of the polynomial using Newton's method
     template<typename T>
-    bool root_finding(const Block<T>* b, VectorXi& span_index, std::vector<VectorX<T>>& root,
-        T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
-        T hessian_det_epsilon,int maxItr, T point_itr_threshold) { 
-
-        root.clear();
-        
+    bool root_finding_mfa(const Block<T>* b, std::vector<VectorXi>& span_index, std::vector<VectorX<T>>& root, T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
+        T hessian_det_epsilon,int maxItr, T point_itr_threshold, const VectorXi& set_block_num)
+    {        
         // VectorXi one = VectorXi::Ones(b->mfa->var(0).p.size());
         // int deg = (mfa_data->p-one).prod();
 
         int maxIter=100;
 
         int distance_stop_itr = 5;
+        auto domain_range =b->core_maxs-b->core_mins;
 
-        
-        auto domain_range = b->core_maxs-b->core_mins;
-        // std::cout<<"max_iteration--"<<maxIter<<std::endl;
+        VectorXi point_num_in_block = b->mfa->var(0).p + 2*VectorXi::Ones(b->mfa->var(0).p.size()); //n
 
-        //find all the boundary plane
-        //
-        std::vector<std::vector<std::vector<T>>> span_range;//
-        std::vector<VectorX<T>> center;
-        std::vector<T> fixed_value; //the plane of the fixed value
-        std::vector<int> fixed_dim;
-        auto& nctrl_pts = b->mfa->var(0).tmesh.tensor_prods[0].nctrl_pts;
+     
+        std::vector<vector<T>> initial_points;
+        cp_tracking_degenerate_case::generate_initial_points(initial_points,b->core_mins,b->core_maxs,point_num_in_block,set_block_num,b);
 
-        std::vector<std::vector<T>> span_range_for_one_plane(domain_range.size()-1);
-        VectorX<T> temp_center(domain_range.size()-1);
-        std::vector<std::vector<int>> used_domain;
-        std::vector<int> used_domain_temp;
-        // std::vector<T> record_top_bottom_plane;
-        for(int i=0;i<domain_range.size();++i)
+
+        tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
+        tbb::affinity_partitioner ap;
+
+
+        tbb::parallel_for(tbb::blocked_range<size_t>(0,span_index.size()), //
+        [&](const tbb::blocked_range<size_t>& range)
         {
-            if(span_index[i]==b->mfa->var(0).p[i])
-            {
-                fixed_value.emplace_back(b->core_mins[i]);
+            auto& root_thread = local_root.local();
+            std::vector<VectorX<T>> block_root;
 
-                span_range_for_plane(span_range_for_one_plane, b, i, temp_center, span_index);
+            for(int i=range.begin();i!=range.end();++i){
 
-                span_range.emplace_back(span_range_for_one_plane);
-                center.emplace_back(temp_center);
-                fixed_dim.emplace_back(i);
-
-                // record_top_bottom_plane.emplace_back(-1.0); // bottom plane is -1
-                // if(i==2)
-                // {
-                //     if(span_range_for_one_plane[0][0]<0.675 && span_range_for_one_plane[0][1]>0.675 && span_range_for_one_plane[1][0]<0.0 && span_range_for_one_plane[1][1]>0.0)
-                //     {
-                //         std::cout<<"find the span "<<span_index.transpose()<<std::endl;
-                //     }
-                // }
-
-                used_domain_temp.clear();
-                for(int j=0;j<domain_range.size();++j)
+            // for(int i=0;i<span_index.size();++i){
+                root_finding_single_block_mfa(block_root,root_finding_grad_epsilon,same_root_epsilon,hessian_det_epsilon,maxItr,point_itr_threshold,b->core_mins,b->core_maxs,point_num_in_block,set_block_num,initial_points,0,b,span_index[i]);
+                if(!block_root.empty())
                 {
-                    if(j!=i)
-                    {
-                        used_domain_temp.emplace_back(j);
-                    }
+                    // root.insert(root.end(), block_root.begin(), block_root.end());
+                    root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
                 }
-                used_domain.emplace_back(used_domain_temp);
-
-            }
-            if(i!=(domain_range.size()-1) && (span_index[i]==(nctrl_pts[i]-1)))
-            {
-                fixed_value.emplace_back(b->core_maxs[i]);
-                span_range_for_plane(span_range_for_one_plane, b, i, temp_center, span_index);
-
-                span_range.emplace_back(span_range_for_one_plane);
-                center.emplace_back(temp_center);
-                fixed_dim.emplace_back(i);
-                // record_top_bottom_plane.emplace_back(1.0); // top plane is 1
-
-                used_domain_temp.clear();
-                for(int j=0;j<domain_range.size();++j)
-                {
-                    if(j!=i)
-                    {
-                        used_domain_temp.emplace_back(j);
-                    }
-                }
-                used_domain.emplace_back(used_domain_temp);
-            }
-        }
-
-        std::vector<T> d_max_square;
-        // compute distance to terminate iteration
-        for(auto j=span_range.begin();j<span_range.end();++j)
-        { 
-            T d_max_square_temp=0;
-            for(auto i=j->begin();i!=j->end();++i)
-            {  
-                d_max_square_temp+=((*i)[1]-(*i)[0])*((*i)[1]-(*i)[0]);
             }
 
-            d_max_square_temp*=distance_stop_itr * distance_stop_itr; //d^2=(2*diagonal of span)^2
-            d_max_square.emplace_back(d_max_square_temp);
-        }
-       
-        for(int i=0;i<fixed_value.size();++i)
-        {
-            // std::cout<<"find root on boundary "<<fixed_value[i]<<std::endl;
-            root_finding_on_one_boundary(b, root, span_range[i], fixed_value[i], fixed_dim[i], root_finding_grad_epsilon, same_root_epsilon, hessian_det_epsilon, used_domain[i],maxItr,d_max_square[i],center[i], point_itr_threshold);
+        },ap               
+        );
+
+        for (const auto& thread_vec : local_root) {
+            root.insert(root.end(), thread_vec.begin(), thread_vec.end());
         }
 
         return !root.empty();
@@ -436,25 +456,6 @@ namespace find_boundary_roots
     }
 
 
-
-    template<typename T>
-    bool root_finding(Block<T>* block, std::vector<std::vector<VectorXi>>& span_index, 
-    std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
-        int current_index,
-        T root_finding_epsilon, std::vector<T>& same_root_epsilon, T hessian_det_epsilon,int maxItr, T point_itr_threshold) //2^n+1 initial points) 
-    {
-
-        for(auto i=0;i<block->mfa->nvars();++i)
-        {
-            if(root_finding(block,span_index[i][current_index], root,
-            root_finding_epsilon,same_root_epsilon,hessian_det_epsilon,maxItr, point_itr_threshold))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     template<typename T>
     void test_root_finding(Block<T>* b,std::vector<Eigen::VectorX<T>>& points,T root_finding_epsilon)

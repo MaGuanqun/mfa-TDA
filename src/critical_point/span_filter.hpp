@@ -103,7 +103,7 @@ bool spanInRange(const mfa::MFA_Data<T>& mfa_data, VectorXi& span_index, std::ve
 {
     std::vector<std::vector<T>> span_range(span_index.size());
 
-    if(p==VectorXi())
+    if(p.size()==0)
     {
         for(int i=0;i<span_index.size();++i)
         {    
@@ -137,18 +137,18 @@ bool spanInRange(const mfa::MFA_Data<T>& mfa_data, VectorXi& span_index, std::ve
 
 
 
-bool span_on_boundary(VectorXi& span_index, const VectorXi& ctrl_pts_num, const VectorXi& degree, bool exlucde_last_dim_max = false)
+bool span_on_boundary(VectorXi& span_index, const VectorXi& span_num, bool exlucde_last_dim_max = false)
 {
     for(int i=0;i<span_index.size();++i)
     {
         if(i==span_index.size()-1 && exlucde_last_dim_max)
         {
-            if(span_index[i]==ctrl_pts_num[i]-1)
+            if(span_index[i]==span_num[i]-1)
             {
                 return false;
             }
         }
-        if(span_index[i]==degree[i] || span_index[i]==ctrl_pts_num[i]-1)
+        if(span_index[i]==0 || span_index[i]==span_num[i]-1)
         {
             return true;
         }
@@ -170,10 +170,11 @@ void compute_boundary_span(Block<T>*              block,std::vector<std::vector<
         const auto& tc = mfa_data.tmesh.tensor_prods[0];
 
         boundary_span[i].reserve(valid_span[i].size()/10);
+        VectorXi span_num= tc.nctrl_pts-mfa_data.p;
         // int last_dim_max = tc.nctrl_pts[tc.nctrl_pts.size()-1]-mfa_data.p[mfa_data.p.size()-1]-1;
         for(int k = 0;k< valid_span[0].size();k++)
         {            
-            if(span_on_boundary(valid_span[i][k],tc.nctrl_pts,mfa_data.p, exlucde_last_dim_max))
+            if(span_on_boundary(valid_span[i][k],span_num, exlucde_last_dim_max))
             {       
                 boundary_span[i].emplace_back(valid_span[i][k]);       
             }            

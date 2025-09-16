@@ -18,8 +18,8 @@ export_raw_data="./build/src/encode/analytical/export_raw_data"
 
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
-# data_type="rotating_gaussian"
-data_type="quartic_potential"
+data_type="rotating_gaussian"
+# data_type="quartic_potential"
 # data_type="sinc"
 save_folder="${data_type}"
 
@@ -89,8 +89,8 @@ point_itr_threshold="4.0"
 # "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
 
 
-
-# "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}"
+# gdb --args 
+"${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}"
 
 
 
@@ -139,6 +139,6 @@ conda activate mfa_env
 ##########################################################
 # directly work on raw explicit function
 
-"${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-"${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0
+# "${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0

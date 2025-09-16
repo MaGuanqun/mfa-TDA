@@ -15,27 +15,36 @@
 
 #include "utility_function.h"
 #include "mfa_extend.h"
+#include "closed_form_function.h"
 
 namespace RK4
 {
     template<typename T>
     //compute dx/dt, dy/dt
-    bool compute_gradient(const Block<T>* b, VectorX<T>& p, VectorX<T>& gradient, T hessian_det_epsilon)
+    bool compute_gradient(VectorX<T>& p, VectorX<T>& gradient, T hessian_det_epsilon,const int function_type=0, const Block<T>* b=nullptr)
     {
-        int domain_dim = b->dom_dim-1;
-        VectorXi deriv(b->dom_dim);
+        int domain_dim = p.size()-1;
+        VectorXi deriv(p.size());
         VectorX<T> dev_f(domain_dim);
         MatrixX<T> hessian(domain_dim,domain_dim);
         VectorX<T> f_vector(1);
 
-        find_boundary_roots::compute_Hessian(b, p, hessian, b->dom_dim-1);
+        find_boundary_roots::compute_Hessian(p, hessian, domain_dim, function_type, b);
 
         for(int i=0;i<domain_dim;i++)
         {
             deriv.setZero();
             deriv[i]=1;
             deriv[2]=1;
-            mfa_extend::recover_mfa(b,p,f_vector,deriv);
+            switch (function_type)
+            {
+            case 0:
+                mfa_extend::recover_mfa(b,p,f_vector,deriv);
+                break;
+            default:
+                closed_form_function::closed_form_function(p, f_vector, function_type, deriv);
+                break;
+            }
             dev_f[i] = f_vector[0];
         }
 
@@ -51,35 +60,35 @@ namespace RK4
     }
 
     template<typename T>
-    bool compute_direction(const Block<T>* b, VectorX<T>& p, VectorX<T>& direction, T hessian_det_epsilon)
+    bool compute_direction(VectorX<T>& p, VectorX<T>& direction, T hessian_det_epsilon, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         VectorX<T> gradient;
-        if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
+        if(!utility::In_Domain(p,core_mins,core_maxs))
         {
             // std::cout<<"outside the domain "<<p.transpose()<<" "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
             return false;
         }
 
-        if(!compute_gradient(b,p,gradient,hessian_det_epsilon))
+        if(!compute_gradient(p,gradient,hessian_det_epsilon,function_type,b))
         {
             return false;
         }
 
-        direction.head(b->dom_dim-1) = gradient;
-        direction[b->dom_dim-1] = 1.0;
+        direction.head(p.size()-1) = gradient;
+        direction[p.size()-1] = 1.0;
 
         return true;
     }
 
     template<typename T>
-    bool RK4(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, bool upper_search)
+    bool RK4(VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, bool upper_search, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
-        VectorX<T> k1(b->dom_dim);
-        if(!compute_direction(b,p, k1,hessian_det_epsilon))
+        VectorX<T> k1(p.size());
+        if(!compute_direction(p, k1,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
-        VectorX<T> k2(b->dom_dim);
+        VectorX<T> k2(p.size());
         VectorX<T> p2;
         if(upper_search)
         {
@@ -89,11 +98,11 @@ namespace RK4
         {
             p2 = p-0.5*step_size*k1;
         }
-        if(!compute_direction(b,p2, k2,hessian_det_epsilon))
+        if(!compute_direction(p2, k2,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
-        VectorX<T> k3(b->dom_dim);
+        VectorX<T> k3(p.size());
         VectorX<T> p3;
         if(upper_search)
         {
@@ -104,11 +113,11 @@ namespace RK4
             p3 = p-0.5*step_size*k2;
         }
 
-        if(!compute_direction(b,p3, k3,hessian_det_epsilon))
+        if(!compute_direction(p3, k3,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
-        VectorX<T> k4(b->dom_dim);
+        VectorX<T> k4(p.size());
         VectorX<T> p4;
         if(upper_search)
         {
@@ -118,12 +127,12 @@ namespace RK4
         {
             p4 = p-step_size*k3;
         }
-        if(!compute_direction(b,p4, k4,hessian_det_epsilon))
+        if(!compute_direction(p4, k4,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
         VectorX<T> k = (k1+2*k2+2*k3+k4)/6.0;
-        k[b->dom_dim-1] = 1.0;
+        k[p.size()-1] = 1.0;
         if(upper_search)
         {
             result = p + step_size*k;
@@ -132,7 +141,7 @@ namespace RK4
         {
             result = p - step_size*k;
         }
-        if(!utility::In_Domain(result,b->core_mins,b->core_maxs))
+        if(!utility::In_Domain(result,core_mins,core_maxs))
         {
             return false;
         }
@@ -143,13 +152,13 @@ namespace RK4
 
          // newton method with single initial_point
     template<typename T>
-    bool correction_newton(const Block<T>* b, VectorX<T>& input_point, int max_itr, T d_max_square, T root_finding_epsilon, T hessian_det_epsilon)
+    bool correction_newton(VectorX<T>& input_point, int max_itr, T d_max_square, T root_finding_epsilon, T hessian_det_epsilon,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         int itr_num=0;
 
         MatrixX<T> dev_f;
         VectorX<T> f;
-        find_boundary_roots::compute_gradient(b, input_point, f);
+        find_boundary_roots::compute_gradient(input_point, f,function_type,b);
 
         if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon)
         {
@@ -162,7 +171,7 @@ namespace RK4
 
         while(itr_num<max_itr)
         {
-            find_boundary_roots::compute_Hessian(b, p, dev_f, b->dom_dim-1);
+            find_boundary_roots::compute_Hessian(p, dev_f, input_point.size()-1, function_type, b);
 
             Eigen::ColPivHouseholderQR<MatrixX<T>> qr(dev_f);
 
@@ -171,11 +180,11 @@ namespace RK4
                 return false;
             }
 
-            p.head(b->dom_dim-1)-= qr.solve(f);                
+            p.head(p.size()-1)-= qr.solve(f);                
             
             
             
-            if(!utility::In_Domain(p,b->core_mins,b->core_maxs))
+            if(!utility::In_Domain(p,core_mins,core_maxs))
             {
                 return false;
             }
@@ -186,7 +195,7 @@ namespace RK4
                 return false;
             }
 
-            find_boundary_roots::compute_gradient(b, p, f);
+            find_boundary_roots::compute_gradient(p, f,function_type,b);
 
 
  
@@ -211,16 +220,16 @@ namespace RK4
 
     template<typename T>
     // RKF45 with fixed spatial step size
-    bool RK4_normalized_step(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, bool upper_search)
+    bool RK4_normalized_step(VectorX<T>& p,VectorX<T>& result, T step_size, T hessian_det_epsilon, bool upper_search,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
-        VectorX<T> k1(b->dom_dim);
-        if(!compute_direction(b,p, k1,hessian_det_epsilon))
+        VectorX<T> k1(p.size());
+        if(!compute_direction(p, k1,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
         normalize_m(k1);
         
-        VectorX<T> k2(b->dom_dim);
+        VectorX<T> k2(p.size());
         VectorX<T> p2;
         if(upper_search)
         {
@@ -230,13 +239,13 @@ namespace RK4
         {
             p2 = p-0.5*step_size*k1;
         }
-        if(!compute_direction(b,p2, k2,hessian_det_epsilon))
+        if(!compute_direction(p2, k2,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
         normalize_m(k2);
 
-        VectorX<T> k3(b->dom_dim);
+        VectorX<T> k3(p.size());
         VectorX<T> p3;
         if(upper_search)
         {
@@ -246,13 +255,13 @@ namespace RK4
         {
             p3 = p-0.5*step_size*k2;
         }
-        if(!compute_direction(b,p3, k3,hessian_det_epsilon))
+        if(!compute_direction(p3, k3,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
         normalize_m(k3);
 
-        VectorX<T> k4(b->dom_dim);
+        VectorX<T> k4(p.size());
         VectorX<T> p4;
         if(upper_search)
         {
@@ -262,7 +271,7 @@ namespace RK4
         {
             p4 = p-step_size*k3;
         }
-        if(!compute_direction(b,p4, k4,hessian_det_epsilon))
+        if(!compute_direction(p4, k4,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
@@ -278,7 +287,7 @@ namespace RK4
         {
             result = p - step_size*k;
         }
-        if(!utility::In_Domain(result,b->core_mins,b->core_maxs))
+        if(!utility::In_Domain(result,core_mins,core_maxs))
         {
             return false;
         }
@@ -288,61 +297,61 @@ namespace RK4
     }
 
     template<typename T>
-    bool RK4_choose_direction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, bool first_fixed_time=true)
+    bool RK4_choose_direction(VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, bool first_fixed_time,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         
         if(first_fixed_time)
         {
-            if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
+            if(RK4(p,result,time_step,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
             {
             
                 if((result.head(result.size()-1)-p.head(p.size()-1)).squaredNorm()>sptial_step_size*sptial_step_size)
                 {
-                if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
+                if(RK4_normalized_step(p,result,sptial_step_size,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
                 {
-                        correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                        correction_newton(result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon,core_mins,core_maxs,function_type,b);
                         return true;
                 }
                 }
                 else
                 {
-                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon,core_mins,core_maxs,function_type,b);
                     return true;
                 }
             }
             else
             {
-                if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
+                if(RK4_normalized_step(p,result,sptial_step_size,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
                 {
-                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon,core_mins,core_maxs,function_type,b);
                     return true;
                 }
             }
         }
         else
         {
-            if(RK4_normalized_step(b,p,result,sptial_step_size,hessian_det_epsilon,upper_search))
+            if(RK4_normalized_step(p,result,sptial_step_size,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
             {
             
                 if(std::abs(result[result.size()-1]-p[p.size()-1])>time_step)
                 {
-                    if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
+                    if(RK4(p,result,time_step,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
                     {
-                            correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                            correction_newton(result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon,core_mins,core_maxs,function_type,b);
                             return true;
                     }
                 }
                 else
                 {
-                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon,core_mins,core_maxs,function_type,b);
                     return true;
                 }
             }
             else
             {
-                if(RK4(b,p,result,time_step,hessian_det_epsilon,upper_search))
+                if(RK4(p,result,time_step,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
                 {
-                    correction_newton(b, result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon);
+                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, hessian_det_epsilon,core_mins,core_maxs,function_type,b);
                     return true;
                 }
             }
@@ -353,10 +362,10 @@ namespace RK4
 
     // determine we should fix time step or spatial step size
     template<typename T>
-    bool determine_fixed_space_time(const Block<T>* b, VectorX<T>& p, T time_step, T sptial_step_size, T hessian_det_epsilon, bool& fixed_time)
+    bool determine_fixed_space_time(VectorX<T>& p, T time_step, T sptial_step_size, T hessian_det_epsilon, bool& fixed_time,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         VectorX<T> m(b->dom_dim);
-        if(!compute_direction(b,p, m,hessian_det_epsilon))
+        if(!compute_direction(p, m,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
@@ -373,17 +382,17 @@ namespace RK4
     }
 
     template<typename T>
-    bool RK4_correction(const Block<T>* b, VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square)
+    bool RK4_correction(VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         bool fixed_time;
-        if(!determine_fixed_space_time(b,p,time_step,sptial_step_size,hessian_det_epsilon,fixed_time))
+        if(!determine_fixed_space_time(p,time_step,sptial_step_size,hessian_det_epsilon,fixed_time,core_mins,core_maxs,function_type,b))
         {
             return false;
         }
 
         // std::cout<<"determined fixed time "<<fixed_time<<std::endl;
 
-        if(RK4_choose_direction(b,p,result,time_step,sptial_step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time))
+        if(RK4_choose_direction(p,result,time_step,sptial_step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time,core_mins,core_maxs,function_type,b))
         {
             return true;
         }
