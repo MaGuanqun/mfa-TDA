@@ -49,11 +49,12 @@ namespace RK4
         }
 
         Eigen::ColPivHouseholderQR<MatrixX<T>> qr(hessian);
-        if(qr.rank() < domain_dim)
-        {
-            // std::cout<<"Hessian is not full rank"<<std::endl;
-            return false;
-        }
+        // if(qr.rank() < domain_dim)
+        // {
+        //     std::cout<<hessian<<std::endl;
+        //     std::cout<<"Hessian is not full rank"<<std::endl;
+        //     return false;
+        // }
         gradient =-1.0*qr.solve(dev_f);
 
         return true;
@@ -63,9 +64,10 @@ namespace RK4
     bool compute_direction(VectorX<T>& p, VectorX<T>& direction, T hessian_det_epsilon, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         VectorX<T> gradient;
+        // std::cout<<"p in compute direction "<<  p.transpose() <<std::endl;
         if(!utility::In_Domain(p,core_mins,core_maxs))
         {
-            // std::cout<<"outside the domain "<<p.transpose()<<" "<<b->core_mins.transpose()<<" "<<b->core_maxs.transpose()<<std::endl;
+
             return false;
         }
 
@@ -300,6 +302,7 @@ namespace RK4
     bool RK4_choose_direction(VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size, T hessian_det_epsilon, T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, bool first_fixed_time,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
         
+
         if(first_fixed_time)
         {
             if(RK4(p,result,time_step,hessian_det_epsilon,upper_search,core_mins,core_maxs,function_type,b))
@@ -364,7 +367,7 @@ namespace RK4
     template<typename T>
     bool determine_fixed_space_time(VectorX<T>& p, T time_step, T sptial_step_size, T hessian_det_epsilon, bool& fixed_time,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {
-        VectorX<T> m(b->dom_dim);
+        VectorX<T> m(p.size());
         if(!compute_direction(p, m,hessian_det_epsilon,core_mins,core_maxs,function_type,b))
         {
             return false;

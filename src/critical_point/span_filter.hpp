@@ -186,6 +186,38 @@ void compute_boundary_span(Block<T>*              block,std::vector<std::vector<
 }
 
 
+//exclude_last_dim_max
+void compute_boundary_span(const VectorXi& block_num, vector<VectorXi>& valid_span, bool exlucde_last_dim_max = false) {
+
+    int total = block_num.prod();
+    tbb::concurrent_vector<VectorXi> concurrentResult;
+    int d= block_num.size();
+
+    tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, total),
+            [&](const tbb::blocked_range<size_t>& r) {
+                VectorXi idx(d);
+                for (size_t linear = r.begin(); linear != r.end(); ++linear) {
+                    // decode linear index -> multidimensional index
+                    size_t tmp = linear;
+                    for (int k = d - 1; k >= 0; --k) {
+                        idx[k] = tmp % block_num[k];
+                        tmp /= block_num[k];
+                    }
+
+                    if (span_on_boundary(idx, block_num,exlucde_last_dim_max)) {
+                        concurrentResult.push_back(idx);
+                    }
+                }
+            }
+        );
+
+    valid_span.assign(concurrentResult.begin(), concurrentResult.end());
+
+}
+
+
+
 //for nd domain
 //when limit_dimension_num != -1, the valid_span is the span index, but when it ==1, the valid_span is acutllay the span+p, which is the real span in the original function
 

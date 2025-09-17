@@ -58,16 +58,16 @@ namespace find_boundary_roots
     void compute_Hessian(VectorX<T>& p, MatrixX<T>& dev_f, int removed_dom, const int function_type=0, const Block<T>* b=nullptr)
     {
 
-        int domain_dim = b->dom_dim-1;
+        int domain_dim = p.size()-1;
         dev_f.resize(domain_dim,domain_dim);
         
-
+        int ori_domain_dim = p.size();
 
         VectorX<T> dev_f_vector(1);    
 
         // std::cout<<local_domain_range.transpose()<<std::endl;
 
-        VectorXi deriv(b->dom_dim);
+        VectorXi deriv(p.size());
 
         if(removed_dom==domain_dim)
         {
@@ -99,7 +99,7 @@ namespace find_boundary_roots
         {
             for(int i=0;i<domain_dim;i++)
             {
-                for(int j=i;j<b->dom_dim;j++)
+                for(int j=i;j<ori_domain_dim;j++)
                 {
                     if(j==i && j==removed_dom)
                     {
@@ -326,30 +326,30 @@ namespace find_boundary_roots
     }
 
 
-    template<typename T>
-    void span_range_for_plane(std::vector<std::vector<T>>& span_range, const Block<T>* b, int skipeed_dim,VectorX<T>& center, VectorXi& span_index)
-    {
-        VectorX<T> domain_range = b->core_maxs-b->core_mins;
-        int j=0;
-        for(int i=0;i<=span_range.size();++i)
-        {
-            if(i!=skipeed_dim)
-            {
-                span_range[j].clear();
-                span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[i][span_index[i]]*domain_range[i]+b->core_mins[i]);
-                span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[i][span_index[i]+1]*domain_range[i]+b->core_mins[i]);
-                center[j]=(span_range[j][0]+span_range[j][1])*0.5;
-                j++;
-            }
+    // template<typename T>
+    // void span_range_for_plane(std::vector<std::vector<T>>& span_range, const Block<T>* b, int skipeed_dim,VectorX<T>& center, VectorXi& span_index)
+    // {
+    //     VectorX<T> domain_range = b->core_maxs-b->core_mins;
+    //     int j=0;
+    //     for(int i=0;i<=span_range.size();++i)
+    //     {
+    //         if(i!=skipeed_dim)
+    //         {
+    //             span_range[j].clear();
+    //             span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[i][span_index[i]]*domain_range[i]+b->core_mins[i]);
+    //             span_range[j].emplace_back(b->mfa->var(0).tmesh.all_knots[i][span_index[i]+1]*domain_range[i]+b->core_mins[i]);
+    //             center[j]=(span_range[j][0]+span_range[j][1])*0.5;
+    //             j++;
+    //         }
            
-        }
+    //     }
 
-    }
+    // }
 
 
 
     template<typename T>
-    void root_finding_single_block_mfa(std::vector<VectorX<T>>& root, T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
+    void root_finding_single_block(std::vector<VectorX<T>>& root, T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
         T hessian_det_epsilon,int maxItr, T point_itr_threshold,const VectorX<T>& core_mins, const VectorX<T>& core_maxs,const VectorXi& point_num_in_block, const VectorXi& set_block_num,std::vector<vector<T>>& initial_points, const int function_type=0, const Block<T>* b=nullptr, const VectorXi& span_index= VectorXi())
         {
             root.clear();
@@ -405,8 +405,7 @@ namespace find_boundary_roots
 
     // Function to find the roots of the polynomial using Newton's method
     template<typename T>
-    bool root_finding_mfa(const Block<T>* b, std::vector<VectorXi>& span_index, std::vector<VectorX<T>>& root, T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,
-        T hessian_det_epsilon,int maxItr, T point_itr_threshold, const VectorXi& set_block_num)
+    bool root_finding(std::vector<VectorXi>& span_index, std::vector<VectorX<T>>& root, T root_finding_grad_epsilon, std::vector<T>& same_root_epsilon,T hessian_det_epsilon,int maxItr, T point_itr_threshold, const VectorXi& set_block_num, VectorXi point_num_in_block, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
     {        
         // VectorXi one = VectorXi::Ones(b->mfa->var(0).p.size());
         // int deg = (mfa_data->p-one).prod();
@@ -414,42 +413,43 @@ namespace find_boundary_roots
         int maxIter=100;
 
         int distance_stop_itr = 5;
-        auto domain_range =b->core_maxs-b->core_mins;
+        auto domain_range =core_maxs-core_mins;
 
-        VectorXi point_num_in_block = b->mfa->var(0).p + 2*VectorXi::Ones(b->mfa->var(0).p.size()); //n
+        
 
      
         std::vector<vector<T>> initial_points;
-        cp_tracking_degenerate_case::generate_initial_points(initial_points,b->core_mins,b->core_maxs,point_num_in_block,set_block_num,b);
+        cp_tracking_degenerate_case::generate_initial_points(initial_points,core_mins,core_maxs,point_num_in_block,set_block_num,b);
 
 
         tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
         tbb::affinity_partitioner ap;
 
 
-        tbb::parallel_for(tbb::blocked_range<size_t>(0,span_index.size()), //
-        [&](const tbb::blocked_range<size_t>& range)
-        {
-            auto& root_thread = local_root.local();
+        // tbb::parallel_for(tbb::blocked_range<size_t>(0,span_index.size()), //
+        // [&](const tbb::blocked_range<size_t>& range)
+        // {
+        //     auto& root_thread = local_root.local();
             std::vector<VectorX<T>> block_root;
 
-            for(int i=range.begin();i!=range.end();++i){
+        //     for(int i=range.begin();i!=range.end();++i){
 
-            // for(int i=0;i<span_index.size();++i){
-                root_finding_single_block_mfa(block_root,root_finding_grad_epsilon,same_root_epsilon,hessian_det_epsilon,maxItr,point_itr_threshold,b->core_mins,b->core_maxs,point_num_in_block,set_block_num,initial_points,0,b,span_index[i]);
+            for(int i=0;i<span_index.size();++i){
+                
+                root_finding_single_block(block_root,root_finding_grad_epsilon,same_root_epsilon,hessian_det_epsilon,maxItr,point_itr_threshold,core_mins,core_maxs,point_num_in_block,set_block_num,initial_points,function_type,b,span_index[i]);
                 if(!block_root.empty())
                 {
-                    // root.insert(root.end(), block_root.begin(), block_root.end());
-                    root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
+                    root.insert(root.end(), block_root.begin(), block_root.end());
+                    // root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
                 }
             }
 
-        },ap               
-        );
+        // },ap               
+        // );
 
-        for (const auto& thread_vec : local_root) {
-            root.insert(root.end(), thread_vec.begin(), thread_vec.end());
-        }
+        // for (const auto& thread_vec : local_root) {
+        //     root.insert(root.end(), thread_vec.begin(), thread_vec.end());
+        // }
 
         return !root.empty();
 

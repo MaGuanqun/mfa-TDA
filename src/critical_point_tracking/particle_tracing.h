@@ -43,6 +43,7 @@ namespace particle_tracing{
 
         while (utility::In_Domain(p_new, block_min,block_max))
         {           
+
             if(std::abs(p_new[p_new.size()-1]-p_old[p_old.size()-1])<0.1*time_step)
             {
                 if((p_new.head(p_new.size()-1)-p_old.head(p_old.size()-1)).squaredNorm()<0.01*spatial_step_size*spatial_step_size)
@@ -58,6 +59,7 @@ namespace particle_tracing{
             p_old = p_new;
 
             valid = RK4::RK4_correction(p_old, p_new,time_step,spatial_step_size,hessian_det_epsilon,gradient_epsilon,upper_search,max_itr, d_max_square,core_mins,core_maxs,function_type,b);
+
 
 
             if(!valid)
@@ -129,3 +131,4 @@ namespace particle_tracing{
         return false;
     }
 }
+

@@ -327,7 +327,6 @@ namespace degenerate_case_tracing
            
         // }
 
-        std::cout<<"start points from degenerate points size: "<<raw_start_points.size()<<" after deduplication "<<start_points.size()<<std::endl;
 
         int size = trace.size();
         
@@ -343,7 +342,7 @@ namespace degenerate_case_tracing
             // std::cout<<"upper tracing "<<upper_tracing[i]<<std::endl;
 
             tracing_from_start_points(start_points[i], true, trace[i+size].traces, time_step, spatial_step, hessian_det_epsilon, gradient_epsilon, correction_max_itr, d_max_square,core_mins, core_maxs,function_type,b);
-            // std::cout<<"tracing from start point "<<i<<" size: "<<trace[i+size].traces.size()<<std::endl;
+
         }
 
         // if (trace.size() == size)

@@ -69,10 +69,8 @@ int main(int argc, char** argv)
     diy::mpi::environment  env(argc, argv);     // equivalent of MPI_Init(argc, argv)/MPI_Finalize()
     diy::mpi::communicator world;               // equivalent of MPI_COMM_WORLD
 
-    string infile = "approx.mfa";               // diy input file
-    // string inControlPoint = "derivative_control_point.dat";
+    string input_function_name = "quartic_potential";               // diy input file
 
-    string inControlPoint = "derivative_control_point.dat";
 
     // default command line arguments
     //int  deriv     = 1;                         // which derivative to take (1st, 2nd, ...)
@@ -87,7 +85,6 @@ int main(int argc, char** argv)
 
     string cp_tracing_file = "cp_tracing.dat";
 
-    string edge_type = "";
 
 
     std::vector<double> same_root_epsilon; // same_root_epsilon
@@ -115,15 +112,11 @@ int main(int argc, char** argv)
 
     double  spatial_step_size = 1.0;
 
-    ops >> opts::Option('f', "infile",  infile,  " diy input file name");
+    ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
     ops >> opts::Option('z', "time_step",    time_step,       " time step size");
     ops >> opts::Option('g', "spatial_step_size",    spatial_step_size,       " spatial step size");
-    // ops >> opts::Option('g', "grad_threshold",    grad_threshold,       " gradient is smaller enough to change to permutate the point a little bit");
-    ops >> opts::Option('q', "edge_type",    edge_type,       "edge type file, (pseudo) ridge/valley");
-
-    ops >> opts::Option('a', "inControlPoint",  inControlPoint,  " diy input derivative control point file name");
 
     ops >> opts::Option('x', "root_finding_grad_epsilon",    root_finding_grad_epsilon,       "first root finding epsilon");
 
@@ -152,64 +145,30 @@ int main(int argc, char** argv)
         }
     }  
 
+    int function_type = closed_form_function::initial_func_type(input_function_name);
 
+    Eigen::VectorXd local_domain_range=closed_form_function::domain_max(function_type)-closed_form_function::domain_min(function_type);
+    VectorXd core_maxs = closed_form_function::domain_max(function_type);
+    VectorXd core_mins = closed_form_function::domain_min(function_type);
 
+    VectorXi span_num = closed_form_function::block_num(function_type);
 
-    // initialize DIY
-    diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks to be moved out of core
-    diy::Master      master(world,
-            -1,
-            -1,
-            &Block<real_t>::create,
-            &Block<real_t>::destroy,
-            &storage,
-            &Block<real_t>::save,
-            &Block<real_t>::load);
-    diy::ContiguousAssigner   assigner(world.size(), -1);   // number of blocks set by read_blocks()
+    VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
-     // read MFA model
-    diy::io::read_blocks(infile.c_str(), world, assigner, master, &Block<real_t>::load);
-    int nblocks = master.size();
-    std::cout << nblocks << " blocks read from file "<< infile << "\n";
+    std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
+    step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
 
-
-    std::vector<std::vector<std::vector<std::vector<double>>>> geo_control_point; //[deriv][vars][dom][...]
-    std::vector<std::vector<MatrixX<double>>> sci_deriv_control_points;//[vars][partial_deriv][...]
-    save_control_points::load_control_points(inControlPoint.c_str(),geo_control_point,sci_deriv_control_points);
-
-    std::vector<std::vector<VectorX<double>>> domain_root(master.size()); //[blocks,]
 
     std::vector<VectorX<double>> degenerate_points;
     degenerate_case_tracing::read_degenerate_point(singular_point_file,degenerate_points);
 
 
     std::vector<CP_Trace<double>> traces;
-    std::vector<double> step_size;
-
-    VectorXd core_mins;
-
-    master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
-    {
-        
-        Eigen::VectorXd local_domain_range=b->core_maxs-b->core_mins;
-        core_mins=b->core_mins;
-
-        double min_ = local_domain_range.minCoeff();
-        auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
-        VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
-
-        VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-
-        step_size.resize(span_num.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
-
-       
-        step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
    
+    same_root_epsilon = step_size; // same_root_epsilon
 
-        same_root_epsilon = step_size; // same_root_epsilon
-
-        std::cout<<Span_size.transpose()<<std::endl;
-        std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
+    std::cout<<Span_size.transpose()<<std::endl;
+    std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
 
         int spanned_block_num =span_num.prod();
 
@@ -217,34 +176,21 @@ int main(int argc, char** argv)
         utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
 
 
-        // std::vector<double> shrink_ratio_in_unit;
-        // for(int i=0;i<shrink_ratio.size()/2;i++)
-        // {
-        //     shrink_ratio_in_unit.emplace_back((shrink_ratio[2*i]-b->core_mins[i])/ local_domain_range[i]);
-        //     shrink_ratio_in_unit.emplace_back((shrink_ratio[2*i+1]-b->core_mins[i])/ local_domain_range[i]);
-        // }
-
         std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
 
-        std::vector<std::vector<VectorXi>> selected_span;//[vars,span index]
+        std::vector<VectorXi> selected_span;
+        span_filter::compute_boundary_span(span_num,selected_span,true);
+        std::cout<<"valid span num "<<selected_span.size()<<std::endl;
+        // std::vector<VectorXi> selected_span;
 
-
-
-
-        span_filter::compute_valid_span(sci_deriv_control_points,b,selected_span,shrink_ratio,2,true);
-
-
-        span_filter::compute_boundary_span(b,selected_span,true);
-
-        std::cout<<"valid span num "<<selected_span[0].size()<<std::endl;
-            
         auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
 
 
-        VectorXi point_num_in_block = b->mfa->var(0).p + 2*VectorXi::Ones(b->mfa->var(0).p.size()); //n
- 
-        find_boundary_roots::root_finding(selected_span[0], root, root_finding_grad_epsilon, same_root_epsilon,
-            initial_point_finding_hessian_threshold, max_itr, point_itr_threshold, span_num,point_num_in_block,b->core_mins,b->core_maxs,0,b);
+        VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of 
+
+
+        find_boundary_roots::root_finding(selected_span, root, root_finding_grad_epsilon, same_root_epsilon,
+            initial_point_finding_hessian_threshold, max_itr, point_itr_threshold, span_num,point_num_in_block,core_mins,core_maxs,function_type);
 
 
         std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
@@ -264,13 +210,9 @@ int main(int argc, char** argv)
         // find_boundary_roots::test_root_finding(b,root,root_finding_grad_epsilon);
 
 
-
-
-
         traces.resize(root_unique.size());
-        int function_type=0;
 
-        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr,b->core_mins,b->core_maxs,function_type,b);
+        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr,core_mins,core_maxs,function_type);
 
         double max_dis_stop_square = 0.0;
         for(int  i=0;i<step_size.size()-1;++i)
@@ -279,12 +221,10 @@ int main(int argc, char** argv)
         }
         max_dis_stop_square*=25.0;
 
-        VectorXi point_num_in_block = b->mfa->var(0).p + VectorXi::Ones(b->mfa->var(0).p.size()); //n
-
-        degenerate_case_tracing::tracing_from_all_degenerate_points(degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold,point_num_in_block, b->core_mins, b->core_maxs, 0, b);
+        degenerate_case_tracing::tracing_from_all_degenerate_points(degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold,point_num_in_block, core_mins, core_maxs, function_type);
 
 
-    });
+
 
     int trace_size=0;
     for(auto& trace:traces)

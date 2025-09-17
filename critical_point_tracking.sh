@@ -6,6 +6,9 @@ gridded_3d="./build/src/encode/grid/gridded_3d"
 write_vtk="./build/src/convert/write_vtk"
 
 tracking="./build/src/critical_point_tracking/critical_point_tracking"
+tracking_explicit="./build/src/critical_point_tracking/critical_point_tracking_explicit"
+
+
 derivative_control_point="./build/src/critical_point/derivative_control_point"
 
 degenerate_case="./build/src/critical_point_tracking/degenerate_case"
@@ -16,10 +19,11 @@ convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
 
 export_raw_data="./build/src/encode/analytical/export_raw_data"
 
+
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
-data_type="rotating_gaussian"
-# data_type="quartic_potential"
+# data_type="rotating_gaussian"
+data_type="quartic_potential"
 # data_type="sinc"
 save_folder="${data_type}"
 
@@ -90,7 +94,7 @@ point_itr_threshold="4.0"
 
 
 # gdb --args 
-"${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}"
+# "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}"
 
 
 
@@ -139,6 +143,9 @@ conda activate mfa_env
 ##########################################################
 # directly work on raw explicit function
 
-# "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+"${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
 # "${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0
+
+#gdb --args 
+"${tracking_explicit}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}" -p "${point_itr_threshold}"

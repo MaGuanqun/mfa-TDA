@@ -208,6 +208,7 @@ using namespace std;
         }     
         else
         {
+            std::cout<<"input "<<input<<std::endl;
             cerr << "Unrecognized input in set_dom_bounds(). Exiting." << endl;
             exit(1);
         }
