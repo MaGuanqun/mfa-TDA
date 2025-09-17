@@ -212,6 +212,7 @@ int main(int argc, char** argv)
 
         traces.resize(root_unique.size());
 
+
         xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr,core_mins,core_maxs,function_type);
 
         double max_dis_stop_square = 0.0;

@@ -11,9 +11,8 @@
 #include "opts.h"
 
 #include "block.hpp"
-#include "mfa_extend.h"
 #include "utility_function.h"
-#include "closed_form_function.h"
+#include "query_function.h"
 
 namespace cp_tracking_degenerate_case
 {
@@ -72,19 +71,8 @@ namespace cp_tracking_degenerate_case
                 deriv.setZero();
                 deriv[i]+=1;
                 deriv[j]+=1;
-                switch (function_type)
-                {
-                case 0:
-                    mfa_extend::recover_mfa(b, p, result, deriv);
-                    break;
-                case 1:
-                    closed_form_function::quartic_potential(p, result, deriv);
-                    break;
-                default:
-                    std::cerr<<"invalid function type"<<std::endl;
-                    exit(0);
-                    break;
-                }
+
+                query_function::query_function(p, result, function_type, b, deriv);
                 
                 Hessian(j,i) = result[0];
                 Hessian(i,j) = result[0];
@@ -105,19 +93,10 @@ namespace cp_tracking_degenerate_case
             deriv.setZero();
             deriv[i]+=1;
             deriv[n_var_dim]+=1;
-            switch (function_type)
-            {
-            case 0:
-                mfa_extend::recover_mfa(b, p, out, deriv);
-                break;
-            case 1:
-                closed_form_function::quartic_potential(p, out, deriv);
-                break;
-            default:
-                std::cerr<<"invalid function type"<<std::endl;
-                exit(0);
-                break;
-            }
+
+            
+            query_function::query_function(p, out, function_type, b, deriv);
+
             result(i) = out[0];
         }
     }
@@ -139,19 +118,9 @@ namespace cp_tracking_degenerate_case
                 deriv[i]+=1;
                 deriv[j]+=1;
                 deriv[partial_deriv_index] += 1; // partial derivative with respect to the partial_deriv_index
-                switch (function_type)
-                {
-                case 0:
-                    mfa_extend::recover_mfa(b, p, result, deriv);
-                    break;
-                case 1:
-                    closed_form_function::quartic_potential(p, result, deriv);
-                    break;
-                default:
-                    std::cerr<<"invalid function type"<<std::endl;
-                    exit(0);
-                    break;
-                }
+
+                query_function::query_function(p, result, function_type, b, deriv);
+
                 p_Hessian(j,i) = result[0];
                 p_Hessian(i,j) = result[0];
             }
@@ -194,19 +163,8 @@ namespace cp_tracking_degenerate_case
             deriv.setZero();
             deriv[i]+=1;
 
-            switch (function_type)
-            {   
-            case 0:
-                mfa_extend::recover_mfa(b, p,result, deriv);
-                break;
-            case 1:
-                closed_form_function::quartic_potential(p, result, deriv);
-                break;
-            default:
-                std::cerr<<"invalid function type"<<std::endl;
-                exit(0);
-                break;
-            }
+
+            query_function::query_function(p, result, function_type, b, deriv);
 
             J[i+1] = result[0];
         }
@@ -233,19 +191,9 @@ namespace cp_tracking_degenerate_case
         {
             deriv.setZero();
             deriv[i]+=1;
-            switch (function_type)
-            {
-            case 0:
-                mfa_extend::recover_mfa(b, p,result, deriv);
-                break;
-            case 1:
-                closed_form_function::quartic_potential(p, result, deriv);
-                break;
-            default:
-                std::cerr<<"invalid function type"<<std::endl;
-                exit(0);
-                break;
-            }
+
+            query_function::query_function(p, result, function_type, b, deriv);
+
 
             J[i+1] = result[0];
         }

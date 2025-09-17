@@ -14,8 +14,7 @@
 #include "block.hpp"
 
 #include "utility_function.h"
-#include "mfa_extend.h"
-#include "closed_form_function.h"
+#include "query_function.h"
 
 namespace RK4
 {
@@ -36,15 +35,7 @@ namespace RK4
             deriv.setZero();
             deriv[i]=1;
             deriv[2]=1;
-            switch (function_type)
-            {
-            case 0:
-                mfa_extend::recover_mfa(b,p,f_vector,deriv);
-                break;
-            default:
-                closed_form_function::closed_form_function(p, f_vector, function_type, deriv);
-                break;
-            }
+            query_function::query_function(p, f_vector, function_type, b, deriv);
             dev_f[i] = f_vector[0];
         }
 

@@ -73,7 +73,7 @@ if function == 'rotating_gaussian':
     min = np.array([-2.0, -2.0, 0.0])
     max =np.array([2.0, 2.0, 4.0])
     dim = np.array([100,100,100])
-elif function == 'quartic_potential':
+elif function == 'quartic_potential' or function == 'quartic_potential_2':
     min = np.array([-2.0, -2.0, 0.0])
     max =np.array([2.0, 2.0, 4.0])
     dim = np.array([100,100,100])

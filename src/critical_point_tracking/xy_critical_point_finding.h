@@ -15,8 +15,7 @@
 #include "block.hpp"
 
 #include "utility_function.h"
-#include "mfa_extend.h"
-#include "closed_form_function.h"
+#include "query_function.h"
 #include "degenerate_case.h"
 
 namespace find_boundary_roots
@@ -38,17 +37,8 @@ namespace find_boundary_roots
         {
             deriv.setZero();
             deriv[i]+=1;
-            switch (function_type)
-            {
-            case 0:
-                mfa_extend::recover_mfa(b, p,f_vector, deriv);
-                break;
-            case 1:
-                closed_form_function::closed_form_function(p, f_vector, function_type, deriv);
-                break;
-            default:
-                break;
-            }
+            query_function::query_function(p, f_vector, function_type, b, deriv);
+            
             
             f[i] = f_vector[0];
         }
@@ -78,17 +68,9 @@ namespace find_boundary_roots
                     deriv.setZero();
                     deriv[i]+=1;
                     deriv[j]+=1;
-                    switch (function_type)
-                    {
-                    case 0:
-                        mfa_extend::recover_mfa(b, p,dev_f_vector,deriv);
-                        break;
-                    case 1:
-                        closed_form_function::quartic_potential(p, dev_f_vector, deriv);
-                        break;
-                    default:
-                        break;
-                    }
+
+                    query_function::query_function(p, dev_f_vector, function_type, b, deriv);
+
                     
                     dev_f(j,i) = dev_f_vector[0];// / (local_domain_range[i]*local_domain_range[j]);
                     dev_f(i,j) = dev_f_vector[0];
@@ -108,17 +90,9 @@ namespace find_boundary_roots
                     deriv.setZero();
                     deriv[i]+=1;
                     deriv[j]+=1;
-                    switch (function_type)
-                    {
-                    case 0:
-                        mfa_extend::recover_mfa(b, p,dev_f_vector,deriv);
-                        break;
-                    case 1:
-                        closed_form_function::quartic_potential(p, dev_f_vector, deriv);
-                        break;
-                    default:
-                        break;
-                    }
+
+                    query_function::query_function(p, dev_f_vector, function_type, b, deriv);
+                   
                     if(j==domain_dim)
                     {
                         dev_f(i,domain_dim-1) = dev_f_vector[0];

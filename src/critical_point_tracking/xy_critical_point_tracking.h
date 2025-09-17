@@ -107,6 +107,8 @@ namespace xy_cp_tracking{
 
                 // std::cout<<"start tracing on certain point"<<i<<std::endl;
 
+                std::cout<<"tracing point "<<i<<" "<<initial[i].transpose()<<std::endl;
+
                 tracing_single_cpt(time_step,spatial_step_size,initial[i],traces[i].traces,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square,core_mins,core_maxs,function_type,b);           
             }
         },ap);

@@ -373,7 +373,7 @@ struct MFAParser
 
 
 
-        if(input == "quartic_potential")
+        if(input == "quartic_potential" || input == "quartic_potential_2")
         {
 
             d_args.full_dom_pts = {100,100,100};      // Hard-coded to full data set size

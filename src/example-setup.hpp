@@ -201,7 +201,7 @@ using namespace std;
                 dom_bounds.max[i] = 1.0;
             }
         }
-        else if(input =="quartic_potential")
+        else if(input =="quartic_potential" || input == "quartic_potential_2")
         {
             dom_bounds.min = {-2.0, -2.0, 0.0};
             dom_bounds.max = { 2.0, 2.0, 4.0};
@@ -409,7 +409,7 @@ using namespace std;
             }
         }
 
-        if(input == "quartic_potential")
+        if(input == "quartic_potential" || input == "quartic_potential_2")
         {
             d_args.min.resize(dom_dim);
             d_args.max.resize(dom_dim);

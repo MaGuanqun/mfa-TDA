@@ -23,7 +23,7 @@ export_raw_data="./build/src/encode/analytical/export_raw_data"
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
 # data_type="rotating_gaussian"
-data_type="quartic_potential"
+data_type="quartic_potential_2"
 # data_type="sinc"
 save_folder="${data_type}"
 
@@ -79,7 +79,6 @@ point_itr_threshold="4.0"
 # "${gridded_2d}" -d 3 -f "${raw_data_file}" -i "${data_type}" -q 3 -a 0 -o "${mfa_file}"
 # fi
 
-# "${export_raw_data}" -d 4 -m 3 -q 4 -s 0.0 -i "${data_type}" -f "${ori_raw_data}"
 
 
 # "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
@@ -107,8 +106,11 @@ conda activate mfa_env
 # python ./src/critical_point_tracking/time_data_convert.py -i "rotating_gaussian_raw.vtk" -o "rotating_gaussian_raw.vti"
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_raw.vti" -o "rotating_gaussian_raw.csv"
 
-# python ./src/critical_point_tracking/binary_time_data_convert.py -i "${ori_raw_data}" -o "${mfa_file}_raw.vti" -f "${data_type}"
-# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}_raw.vti" -o "${ttk_critical_point_file}_raw.csv"
+
+"${export_raw_data}" -d 4 -m 3 -q 4 -s 0.0 -i "${data_type}" -f "${ori_raw_data}"
+
+python ./src/critical_point_tracking/binary_time_data_convert.py -i "${ori_raw_data}" -o "${mfa_file}_raw.vti" -f "${data_type}"
+pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}_raw.vti" -o "${ttk_critical_point_file}_raw.csv"
 
 # python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
 
@@ -143,9 +145,9 @@ conda activate mfa_env
 ##########################################################
 # directly work on raw explicit function
 
-"${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
 # "${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0
 
 #gdb --args 
-"${tracking_explicit}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}" -p "${point_itr_threshold}"
+# "${tracking_explicit}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}" -p "${point_itr_threshold}"
