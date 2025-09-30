@@ -74,6 +74,7 @@ int main(int argc, char** argv)
     real_t grad_epsilon = 1e-8;
     string input_function_name="quartic_potential";
     
+    int max_itr=50;
 
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input function name");
     ops >> opts::Option('h', "help",    help,    " show help");
@@ -130,10 +131,9 @@ int main(int argc, char** argv)
 
         VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of initial points in a block
 
+        Tracking_degenerate_case tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type);
 
-        cp_tracking_degenerate_case::degenerate_finding(root,
-            J_threshold, step_size, hessian_threshold, point_itr_threshold, grad_epsilon,
-            core_mins, core_maxs,point_num_in_block, span_num, function_type);
+        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
 
 
 

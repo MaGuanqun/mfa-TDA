@@ -3,11 +3,12 @@ I'm using the corresponding version to CUDA 12.6.
 
 1. Download the `libtorch` package.
 ```bash
+cd ~
 wget "https://download.pytorch.org/libtorch/cu126/libtorch-shared-with-deps-2.8.0%2Bcu126.zip"
 unzip libtorch-shared-with-deps-2.8.0%2Bcu126.zip
 rm libtorch-shared-with-deps-2.8.0%2Bcu126.zip
 ```
-2. Convert the `\libtorch` to a Spack repo.
+2. Convert the `/libtorch` to a Spack repo.
 ```bash
 cd libtorch
 echo -e "repo:\n  namespace: libtorch" > repo.yaml

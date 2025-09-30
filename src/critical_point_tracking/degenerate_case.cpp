@@ -66,7 +66,7 @@ int main(int argc, char** argv)
     
     double J_threshold = 1e-5;
 
-    int correction_max_itr = 30;
+    int max_itr = 50;
     double time_step = 1e-3;
     double spatial_step_size = 1.0;
 
@@ -169,54 +169,9 @@ int main(int argc, char** argv)
 
         VectorXi point_num_in_block = b->mfa->var(0).p + VectorXi::Ones(b->mfa->var(0).p.size()); //number of initial points in a block
 
-
-        cp_tracking_degenerate_case::degenerate_finding(root,
-            J_threshold, step_size, hessian_threshold, point_itr_threshold, grad_epsilon,
-            b->core_mins, b->core_maxs,point_num_in_block, span_num,0, b, selected_span[0]);
-
-
-        // tbb::enumerable_thread_specific<std::vector<VectorXd>> local_root;
-        // tbb::affinity_partitioner ap;
-
-        // std::cout<<"start find degenerate point "<<std::endl;
-        // tbb::parallel_for(tbb::blocked_range<size_t>(0,selected_span[0].size()), //
-        // [&](const tbb::blocked_range<size_t>& range)
-        // {
-        //     auto& root_thread = local_root.local();
-
-        //     for(auto i=range.begin();i!=range.end();++i)
-        //     {
-
-        //     // for(auto i=0;i!=selected_span[0].size();++i)
-        //     // {
-        //         if(i%1000==0)
-        //         {
-        //             std::cout<<"find span "<<i<<std::endl;
-        //         }
-        //         // std::cout<<"find span "<<i<<std::endl;
-        //         // std::cout<<selected_span[0][i][2]<<std::endl;
-        //         std::vector<VectorX<real_t>> root_block;
-        //         root_block.reserve(16);
-        //         // std::vector<VectorXd> root_span;
-        //         if(cp_tracking_degenerate_case::degenerate_finding(b,selected_span,root_block,i,J_threshold, step_size,hessian_threshold,point_itr_threshold,grad_epsilon))
-        //         {
-
-        //             root_thread.insert(root_thread.end(), root_block.begin(), root_block.end());
-
-        //         }
-        //         if(i%100000==0)
-        //         {
-        //             std::cout<<"finish find span "<<i<<std::endl;
-        //         }
-        //         // break;
-        //         //multiplicity_root[index].insert(multiplicity_root[index].end(),multi_root_span.begin(),multi_root_span.end());
-        //     }
-        // },ap               
-        // );
-        // for (const auto& thread_vec : local_root) {
-        //     root.insert(root.end(), thread_vec.begin(), thread_vec.end());
-        // }
-
+        Tracking_degenerate_case tracking_degenerate_case(b->core_mins, b->core_maxs, J_threshold, grad_epsilon,step_size, max_itr,0,b);
+        tracking_degenerate_case.degenerate_finding(root,
+            point_num_in_block, span_num, selected_span[0]);
 
         std::vector<VectorX<double>> root_unique;
         spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());

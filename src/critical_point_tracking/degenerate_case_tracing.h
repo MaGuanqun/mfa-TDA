@@ -13,13 +13,13 @@
 
 #include "block.hpp"
 
-#include "utility_function.h"
-#include "mfa_extend.h"
+// #include "mfa_extend.h"
 #include "CP_Trace.h"
 #include "find_boundary_roots.h"
 #include "particle_tracing.h"
 #include "spatial_hashing_spatial_temporal.h"
 #include "degenerate_case.h"
+#include "tracking_utility.h"
 
 
 template<typename T>
@@ -104,7 +104,7 @@ private:
 
         std::vector<std::vector<T>>initial_points;
         VectorXi set_block_num = VectorXi::Ones(point_num_in_block.size());
-        cp_tracking_degenerate_case::generate_initial_points(initial_points,block_min,block_max,point_num_in_block,set_block_num,b);
+        tracking_utility::generate_initial_points(initial_points,block_min,block_max,point_num_in_block,set_block_num,b);
 
         std::vector<std::array<int,2>> initial_point_range(domain_range.size());
         for(int i=0;i<domain_range.size();++i)

@@ -14,9 +14,9 @@
 
 #include "block.hpp"
 
-#include "utility_function.h"
 #include "tracking_derivatives.h"
 #include "degenerate_case.h"
+#include "tracking_utility.h"
 
 template<typename T>
 class Find_boundary_roots
@@ -125,31 +125,6 @@ private:
     }
 
 
-    bool check_new_root(std::vector<T>& threshold, VectorX<T>& z, VectorX<T>& existed_point)
-    {
-        if((z.head(z.size()-1)-existed_point.head(z.size()-1)).squaredNorm()<threshold[0]*threshold[0])
-        {
-            if(std::abs(z[z.size()-1]-existed_point[existed_point.size()-1])<threshold.back())
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    bool newRoot(VectorX<T>& z, std::vector<VectorX<T>>& root_so_far, std::vector<T>& threshold)
-    {
-        for(int i=0;i<root_so_far.size();++i)
-        {
-            if(!check_new_root(threshold, z, root_so_far[i]))
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-
 public:
     Find_boundary_roots(T root_finding_epsi, const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, const VectorXi set_block_n,std::vector<T> same_root_epsi, int func_type=0, int max_it=50, T point_itr_thres=0.5, const Block<T>* block=nullptr): root_finding_epsilon(root_finding_epsi), core_mins(domain_min), core_maxs(domain_max), point_num_in_block(point_num_in_b), b(block), function_type(func_type),max_itr(max_it), point_itr_threshold(point_itr_thres), set_block_num(set_block_n), same_root_epsilon(same_root_epsi) {}
     
@@ -203,7 +178,7 @@ public:
             if(newton(next_root, current_initial_point,used_dom,boundary_dim_index,point_update_epsilon))
             {
         
-                if(newRoot(next_root,root_in_original_domain,same_root_epsilon_))
+                if(tracking_utility::newRoot(next_root,root_in_original_domain,same_root_epsilon_))
                 {        
                     root_in_original_domain.emplace_back(next_root);
                 } 
@@ -290,7 +265,7 @@ public:
 
      
         std::vector<vector<T>> initial_points;
-        cp_tracking_degenerate_case::generate_initial_points(initial_points,core_mins,core_maxs,point_num_in_block,set_block_num,b);
+        tracking_utility::generate_initial_points(initial_points,core_mins,core_maxs,point_num_in_block,set_block_num,b);
 
 
         tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
