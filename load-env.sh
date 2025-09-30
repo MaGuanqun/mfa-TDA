@@ -10,6 +10,7 @@ echo "setting flags for building mfa-TDA"
 export MFA_PATH=$(spack location -i mfa)
 export TBB_PATH=$(spack location -i tbb)
 export EIGEN_PATH=$(spack location -i eigen)
+export TORCH_PATH=$(spack location -i libtorch)
 
 # Optional: extend your library path if you plan to run compiled executables
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -18,10 +19,21 @@ else
     export LD_LIBRARY_PATH=$HDF5_PATH/lib:$TBB_PATH/lib:$LD_LIBRARY_PATH
 fi
 
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    export DYLD_LIBRARY_PATH=$HDF5_PATH/$TORCH_PATH/lib:$TBB_PATH/lib:$DYLD_LIBRARY_PATH
+else
+    export CUDA_PATH=/usr/local/cuda-12.6
+    export LD_LIBRARY_PATH=$HDF5_PATH/$TORCH_PATH/lib:$CUDA_PATH/lib:$TBB_PATH/lib:$LD_LIBRARY_PATH
+fi
+
 # Optional: echo them for debugging
 echo "MFA_PATH        = $MFA_PATH"
 echo "TBB_PATH        = $TBB_PATH"
 echo "EIGEN_PATH      = $EIGEN_PATH"
+echo "TORCH_PATH      = $TORCH_PATH"
+if [[ "$OSTYPE" != "darwin"* ]]; then
+    echo "CUDA_PATH       = $CUDA_PATH"
+fi
 # give openMP 1 core for now to prevent using all cores for threading
 # could set a more reasonable number to distribute cores between mpi + openMP
 # export OMP_NUM_THREADS=1

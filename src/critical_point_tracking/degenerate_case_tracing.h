@@ -16,41 +16,30 @@
 #include "utility_function.h"
 #include "mfa_extend.h"
 #include "CP_Trace.h"
-#include "xy_critical_point_finding.h"
+#include "find_boundary_roots.h"
 #include "particle_tracing.h"
 #include "spatial_hashing_spatial_temporal.h"
 #include "degenerate_case.h"
 
-namespace degenerate_case_tracing
-{
-    template<typename T>
-    void read_degenerate_point(std::string& filename, std::vector<VectorX<T>>& singular_points)
-    {
-        std::vector<Eigen::MatrixXd> root;
 
-        std::ifstream file(filename.c_str());
-        if (!file) {
-            std::cerr << "File does not exist: "<< std::endl;
-            return;
-        }
+template<typename T>
+class Degenerate_case_tracing{
 
+private:
 
+    const Block<T>* b;
+    const int function_type;
+    const VectorX<T> core_mins;
+    const VectorX<T> core_maxs;
+    const VectorXi point_num_in_block;
+    T time_step;
+    T spatial_step;
+    std::vector<T> ori_step_size;
+    T root_finding_grad_epsilon;
+    int correction_max_itr;
 
-        utility::loadMatrixVector(filename.c_str(),root);
+    Find_boundary_roots<T>* find_boundary_roots;
 
-        std::cout<<"read critical points 0"<<root[0].rows()<<std::endl;
-        
-        singular_points.resize(root[0].rows());
-        for(auto i=0;i<root[0].rows();++i)
-        {
-            singular_points[i]=root[0].row(i).transpose();
-        }
-        
-
-    }
-  
-
-    template<typename T>
     void set_one_dim_range(T degenerate_point, T step_size, T core_min, T core_max, T& min, T& max)
     {
         if(degenerate_point-step_size> core_min)
@@ -72,39 +61,9 @@ namespace degenerate_case_tracing
         }
     }
 
-    template<typename T>
-    void set_one_boudary_range(int dim, const VectorX<T>& degenerate_point,std::vector<std::vector<T>>& span_range_for_one_plane, std::vector<T>& step_size, const VectorX<T>& max, const VectorX<T>& min)
-    {
-        int j=0;
-        for(int i=0;i<degenerate_point.size();++i)
-        {
-            if(i!=dim)
-            {                
-                span_range_for_one_plane[j].clear();
-                if(degenerate_point[i]-step_size[i]> min[i])
-                {
-                    span_range_for_one_plane[j].emplace_back(degenerate_point[i]-step_size[i]);
-                }
-                else
-                {
-                    span_range_for_one_plane[j].emplace_back(min[i]);
-                }
-                if(degenerate_point[i]+step_size[i]<max[i])
-                {
-                    span_range_for_one_plane[j].emplace_back(degenerate_point[i]+step_size[i]);
-                }
-                else
-                {
-                    span_range_for_one_plane[j].emplace_back(max[i]);
-                }
-                j++;
-            }
-        }
-    }
+    
 
-
-    template<typename T>
-    void find_neighbor_critical_points(std::vector<T>& ori_step_size, std::vector<T>& step_size, const VectorX<T>& degenerate_point, std::vector<VectorX<T>>& start_points,T root_finding_grad_epsilon, T hessian_det_epsilon,int maxIter, T point_itr_threshold, VectorXi point_num_in_block, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
+    void find_neighbor_critical_points(std::vector<T>& step_size, const VectorX<T>& degenerate_point, std::vector<VectorX<T>>& start_points)
     {
 
         auto domain_range = core_maxs-core_mins;
@@ -143,8 +102,6 @@ namespace degenerate_case_tracing
         }
 
 
-        // VectorXi point_num_in_block = b->mfa->var(0).p + VectorXi::Ones(b->mfa->var(0).p.size()); //n
-
         std::vector<std::vector<T>>initial_points;
         VectorXi set_block_num = VectorXi::Ones(point_num_in_block.size());
         cp_tracking_degenerate_case::generate_initial_points(initial_points,block_min,block_max,point_num_in_block,set_block_num,b);
@@ -170,7 +127,7 @@ namespace degenerate_case_tracing
         {
             start_points_on_one_boundary.clear();
 
-            find_boundary_roots::root_finding_on_one_boundary(start_points_on_one_boundary, fixed_value[i], fixed_dim[i/2], root_finding_grad_epsilon, step_size, hessian_det_epsilon, used_domain[i/2], maxIter, initial_points,  initial_point_range, point_itr_threshold,core_mins, core_maxs, function_type, b);
+            find_boundary_roots->root_finding_on_one_boundary(start_points_on_one_boundary, fixed_value[i], fixed_dim[i/2], used_domain[i/2], initial_points,  initial_point_range, step_size);
 
 
 
@@ -186,73 +143,65 @@ namespace degenerate_case_tracing
 
     }
 
-    template<typename T>
-    bool check_boundary_point_pass_degenerate(const VectorX<T>& degenerate_point, VectorX<T>& point, std::vector<T>& step_size,std::vector<T>& ori_step_size, T hessian_det_epsilon, T gradient_epsilon, int max_itr,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
-    {
-        VectorX<T> step(point.size());
-        for(int i=0;i<point.size();++i)
-        {
-            step[i] = ori_step_size[i];
-        }
-
-        VectorX<T> block_min = degenerate_point- step;
-        VectorX<T> block_max = degenerate_point+ step;
-        for(int i=0;i<point.size();++i)
-        {
-            if(block_min[i]<core_mins[i])
-            {
-                block_min[i] = core_mins[i];
-            }
-            if(block_max[i]>core_maxs[i])
-            {
-                block_max[i] = core_maxs[i];
-            }
-        }
-
-        int distance_stop_itr = 2;
-        T d_max_square = distance_stop_itr*distance_stop_itr*(block_max - block_min).squaredNorm();
-
-        std::vector<VectorX<T>> trajectory;
-
-        bool pass =  particle_tracing::trajectory_pass_degenerate_point(step_size.back(), step_size[0], point, point[point.size()-1]<degenerate_point[degenerate_point.size()-1], hessian_det_epsilon, gradient_epsilon, max_itr, d_max_square, block_min, block_max,degenerate_point,trajectory,core_mins, core_maxs,function_type,b);
 
 
-        // std::cout<<"====="<<step_size.back()<<" "<<step_size[0]<<" "<<trajectory.size()<<std::endl;
+    
+    // bool check_boundary_point_pass_degenerate(const VectorX<T>& degenerate_point, VectorX<T>& point, std::vector<T>& step_size, int max_itr)
+    // {
+    //     VectorX<T> step(point.size());
+    //     for(int i=0;i<point.size();++i)
+    //     {
+    //         step[i] = ori_step_size[i];
+    //     }
+
+    //     VectorX<T> block_min = degenerate_point- step;
+    //     VectorX<T> block_max = degenerate_point+ step;
+    //     for(int i=0;i<point.size();++i)
+    //     {
+    //         if(block_min[i]<core_mins[i])
+    //         {
+    //             block_min[i] = core_mins[i];
+    //         }
+    //         if(block_max[i]>core_maxs[i])
+    //         {
+    //             block_max[i] = core_maxs[i];
+    //         }
+    //     }
+
+    //     int distance_stop_itr = 2;
+    //     T d_max_square = distance_stop_itr*distance_stop_itr*(block_max - block_min).squaredNorm();
+
+    //     std::vector<VectorX<T>> trajectory;
+
+    //     bool pass =  particle_tracing::trajectory_pass_degenerate_point(step_size.back(), step_size[0], point, point[point.size()-1]<degenerate_point[degenerate_point.size()-1],  root_finding_grad_epsilon, max_itr, d_max_square, block_min, block_max,degenerate_point,trajectory,core_mins, core_maxs,function_type,b);
+
+
+    //     // std::cout<<"====="<<step_size.back()<<" "<<step_size[0]<<" "<<trajectory.size()<<std::endl;
  
-        string name = "trajectory.csv";
-        utility::saveToCSV(name, trajectory);
+    //     string name = "trajectory.csv";
+    //     utility::saveToCSV(name, trajectory);
         
-        //determine if the trajectory passes the degenerate point
-        return pass;
-    }
+    //     //determine if the trajectory passes the degenerate point
+    //     return pass;
+    // }
 
-    template<typename T>
-    void find_neighbor_start_points(const VectorX<T>& degenerate_point, std::vector<T>& ori_step_size, std::vector<T>& step_size, T root_finding_grad_epsilon, T hessian_det_epsilon,int maxIter, int correction_itr,std::vector<VectorX<T>>& start_points, T point_itr_threshold,VectorXi point_num_in_block, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
+    void find_neighbor_start_points(const VectorX<T>& degenerate_point, std::vector<T>& step_size, std::vector<VectorX<T>>& start_points)
     {
         start_points.clear();
 
              
         std::vector<VectorX<T>> critical_points;
-        find_neighbor_critical_points(ori_step_size, step_size, degenerate_point, critical_points, root_finding_grad_epsilon,hessian_det_epsilon, maxIter,point_itr_threshold, point_num_in_block, core_mins, core_maxs,function_type,b);
+        find_neighbor_critical_points(step_size, degenerate_point, critical_points);
 
         start_points = critical_points;
 
-        // for(auto& cp: critical_points)
-        // {
-        //     if(check_boundary_point_pass_degenerate(degenerate_point, cp, b, step_size, ori_step_size, hessian_det_epsilon, root_finding_grad_epsilon, correction_itr))
-        //     {
-        //         start_points.emplace_back(cp);
-        //     }
-        // }
     }
 
-
-
-    template<typename T>
-    void tracing_from_start_points(VectorX<T>& start_point, bool upper_tracing, std::vector<VectorX<T>>& trace, T time_step, T spatial_step, T hessian_det_epsilon, T gradient_epsilon, int correction_max_itr, T d_max_square, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
+    
+    void tracing_from_start_points(VectorX<T>& start_point, bool upper_tracing, std::vector<VectorX<T>>& trace, T d_max_square)
     {
 
-        particle_tracing::tracing_one_direction(time_step, spatial_step, start_point, trace, upper_tracing, hessian_det_epsilon, gradient_epsilon, correction_max_itr, d_max_square,
+        particle_tracing::tracing_one_direction(time_step, spatial_step, start_point, trace, upper_tracing,  root_finding_grad_epsilon, correction_max_itr, d_max_square,
         core_mins, core_maxs, core_mins, core_maxs, function_type,b);
         
         if(!upper_tracing)
@@ -261,23 +210,55 @@ namespace degenerate_case_tracing
         }
     }
 
+
+public:
+
+    Degenerate_case_tracing(const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, Find_boundary_roots<T>* find_boundary_roots_, T time_step_, T spatial_step_size_, T root_finding_grad_epsilon_, int correction_max_it, int func_type=0, const Block<T>* block=nullptr): core_mins(domain_min), core_maxs(domain_max), b(block), function_type(func_type), point_num_in_block(point_num_in_b),find_boundary_roots(find_boundary_roots_), time_step(time_step_), spatial_step(spatial_step_size_), root_finding_grad_epsilon(root_finding_grad_epsilon_),correction_max_itr(correction_max_it)
+    {
+        ori_step_size.resize(domain_min.size(), spatial_step_size_);
+        ori_step_size.back() = time_step_; // the last dimension is time
+    }
+
+    static void read_degenerate_point(std::string& filename, std::vector<VectorX<T>>& singular_points)
+    {
+        std::vector<Eigen::MatrixXd> root;
+
+        std::ifstream file(filename.c_str());
+        if (!file) {
+            std::cerr << "File does not exist: "<< std::endl;
+            return;
+        }
+
+
+
+        utility::loadMatrixVector(filename.c_str(),root);
+
+        std::cout<<"read critical points 0"<<root[0].rows()<<std::endl;
+        
+        singular_points.resize(root[0].rows());
+        for(auto i=0;i<root[0].rows();++i)
+        {
+            singular_points[i]=root[0].row(i).transpose();
+        }
+        
+
+    }
+  
+
     
-    template<typename T>
-    void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T time_step, T spatial_step, T step_ratio, T hessian_det_epsilon, T gradient_epsilon, int maxIter, int correction_max_itr, T d_max_square, T point_itr_threshold,VectorXi point_num_in_block,  const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
+    
+    void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T step_ratio,  T d_max_square)
     {
 
         std::vector<VectorX<T>> raw_start_points;
         std::vector<int> upper_tracing; 
 
 
-        std::vector<T> ori_step_size(core_mins.size(), spatial_step);
-        ori_step_size.back() = time_step; // the last dimension is time
 
         std::vector<T> step_size(core_mins.size(),spatial_step* step_ratio);
         step_size.back() = time_step* step_ratio; // the last dimension is time
   
-        // std::cout<<"ori step size "<<ori_step_size[0]<<" "<<ori_step_size.back()<<std::endl;
-        // std::cout<<step_size[0]<<" "<<step_size.back()<<std::endl;
+
 
         for(int i=0;i<degenerate_points.size();++i)
         {
@@ -291,7 +272,7 @@ namespace degenerate_case_tracing
             // std::cout<<degenerate_points[i].transpose()<<std::endl;
 
             std::vector<VectorX<T>> temp_start_points;
-            find_neighbor_start_points(degenerate_points[i], ori_step_size, step_size, gradient_epsilon, hessian_det_epsilon, maxIter, correction_max_itr,temp_start_points,point_itr_threshold, point_num_in_block, core_mins, core_maxs,function_type,b);
+            find_neighbor_start_points(degenerate_points[i], step_size, temp_start_points);
 
             // std::vector<int> temp_upper_tracing;
             for(auto& start_point: temp_start_points)
@@ -341,7 +322,7 @@ namespace degenerate_case_tracing
             // std::cout<<start_points[i].transpose()<<std::endl;
             // std::cout<<"upper tracing "<<upper_tracing[i]<<std::endl;
 
-            tracing_from_start_points(start_points[i], true, trace[i+size].traces, time_step, spatial_step, hessian_det_epsilon, gradient_epsilon, correction_max_itr, d_max_square,core_mins, core_maxs,function_type,b);
+            tracing_from_start_points(start_points[i], true, trace[i+size].traces, d_max_square);
 
         }
 
@@ -354,4 +335,4 @@ namespace degenerate_case_tracing
     }
 
 
-}
+};

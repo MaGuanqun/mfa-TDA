@@ -38,8 +38,8 @@
 #include <iostream>
 #include <Eigen/Dense>
 
-#include "xy_critical_point_finding.h"
-#include "xy_critical_point_tracking.h"
+#include "find_boundary_roots.h"
+#include "boundary_critical_point_tracking.h"
 
 #include "tracking_utility.h"
 #include "trace_deduplication.h"
@@ -180,7 +180,7 @@ int main(int argc, char** argv)
     std::vector<std::vector<VectorX<double>>> domain_root(master.size()); //[blocks,]
 
     std::vector<VectorX<double>> degenerate_points;
-    degenerate_case_tracing::read_degenerate_point(singular_point_file,degenerate_points);
+    Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
 
 
     std::vector<CP_Trace<double>> traces;
@@ -241,10 +241,12 @@ int main(int argc, char** argv)
         auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
 
 
-        VectorXi point_num_in_block = b->mfa->var(0).p + 2*VectorXi::Ones(b->mfa->var(0).p.size()); //n
+        VectorXi point_num_in_block = b->mfa->var(0).p +2 * VectorXi::Ones(b->mfa->var(0).p.size()); //n
  
-        find_boundary_roots::root_finding(selected_span[0], root, root_finding_grad_epsilon, same_root_epsilon,
-            initial_point_finding_hessian_threshold, max_itr, point_itr_threshold, span_num,point_num_in_block,b->core_mins,b->core_maxs,0,b);
+
+        Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,b->core_mins,b->core_maxs,point_num_in_block,span_num,same_root_epsilon,0,max_itr,point_itr_threshold,b);
+
+        find_boundary_roots.root_finding(selected_span[0], root);
 
 
         std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
@@ -261,7 +263,6 @@ int main(int argc, char** argv)
         string test_file=cp_tracing_file+"_test.obj";
 
         tracking_utility::convert_to_obj(test_file,root_unique);
-        // find_boundary_roots::test_root_finding(b,root,root_finding_grad_epsilon);
 
 
 
@@ -270,7 +271,10 @@ int main(int argc, char** argv)
         traces.resize(root_unique.size());
         int function_type=0;
 
-        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr,b->core_mins,b->core_maxs,function_type,b);
+
+        Boundary_critical_point_tracking boundary_critical_point_tracking(b->core_mins, b->core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], function_type, correction_max_itr,b);
+
+        boundary_critical_point_tracking.find_trace(root_unique, traces);
 
         double max_dis_stop_square = 0.0;
         for(int  i=0;i<step_size.size()-1;++i)
@@ -279,9 +283,10 @@ int main(int argc, char** argv)
         }
         max_dis_stop_square*=25.0;
 
-        VectorXi point_num_in_block = b->mfa->var(0).p + VectorXi::Ones(b->mfa->var(0).p.size()); //n
 
-        degenerate_case_tracing::tracing_from_all_degenerate_points(degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold,point_num_in_block, b->core_mins, b->core_maxs, 0, b);
+        Degenerate_case_tracing degenerate_case_tracing(b->core_mins, b->core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, 0, b);
+
+        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
 
 
     });

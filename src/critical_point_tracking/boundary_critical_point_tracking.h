@@ -14,25 +14,33 @@
 #include "block.hpp"
 
 #include "particle_tracing.h"
-#include "xy_critical_point_finding.h"
+#include "find_boundary_roots.h"
 #include "CP_Trace.h"
 #include "degenerate_case_tracing.h"
 
-namespace xy_cp_tracking{
 
-    template<typename T>
-    bool tracing_single_cpt(T time_step, T spatial_step_size, VectorX<T>& initial, std::vector<VectorX<T>>& result, int correction_max_itr, 
-    T hessian_det_epsilon, T gradient_epsilon, T d_max_square,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
+template<typename T>
+class Boundary_critical_point_tracking{
+
+private:
+
+    const Block<T>* b;
+    const int function_type;
+    const VectorX<T> core_mins;
+    const VectorX<T> core_maxs;
+    int correction_max_itr;
+    T gradient_epsilon;
+    T time_step;
+    T spatial_step_size;
+    
+    
+    bool tracing_single_cpt(VectorX<T>& initial, std::vector<VectorX<T>>& result,
+    T d_max_square)
     {
         result.clear();
-        
-        // particle_tracing::tracing_one_direction(time_step,spatial_step_size,b,initial,result,false,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square,
-        //     b->core_mins, b->core_maxs);
-        // std::reverse(result.begin(),result.end());
-
 
         std::vector<VectorX<T>> temp_result;
-        particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,true,hessian_det_epsilon,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b);
+        particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,true,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b);
         // if(temp_result.size()>1)
         // {
         //     result.pop_back();
@@ -45,7 +53,6 @@ namespace xy_cp_tracking{
 
 
 
-    template<typename T>
     bool check_duplication(CP_Trace<T>& trace_in_span, std::vector<VectorX<T>>& result, T threshold_square)
     {
         
@@ -73,10 +80,15 @@ namespace xy_cp_tracking{
 
 
 
-    template<typename T>
-    void find_trace(T time_step, T spatial_step_size,int max_step, std::vector<VectorX<T>>& initial,
-    std::vector<CP_Trace<T>>& traces, 
-    T hessian_det_epsilon, T gradient_epsilon,int correction_max_itr,const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr)
+public:
+    Boundary_critical_point_tracking(const VectorX<T> domain_min, const VectorX<T> domain_max, T gradient_epsi, T time_step_, T spatial_step_size_, int func_type=0, int correction_max_it=50, const Block<T>* block=nullptr): core_mins(domain_min), core_maxs(domain_max),  b(block), function_type(func_type),correction_max_itr(correction_max_it), gradient_epsilon(gradient_epsi), time_step(time_step_), spatial_step_size(spatial_step_size_) {}
+
+    ~Boundary_critical_point_tracking(){}
+
+
+
+    void find_trace(std::vector<VectorX<T>>& initial,
+    std::vector<CP_Trace<T>>& traces)
     {
         // auto& tc = b->mfa->var(0).tmesh.tensor_prods[0];
         // VectorXi span_num = tc.nctrl_pts-b->mfa->var(0).p;
@@ -107,9 +119,9 @@ namespace xy_cp_tracking{
 
                 // std::cout<<"start tracing on certain point"<<i<<std::endl;
 
-                std::cout<<"tracing point "<<i<<" "<<initial[i].transpose()<<std::endl;
+                // std::cout<<"tracing point "<<i<<" "<<initial[i].transpose()<<std::endl;
 
-                tracing_single_cpt(time_step,spatial_step_size,initial[i],traces[i].traces,correction_max_itr,hessian_det_epsilon,gradient_epsilon,d_max_square,core_mins,core_maxs,function_type,b);           
+                tracing_single_cpt(initial[i],traces[i].traces,d_max_square);           
             }
         },ap);
 
@@ -119,4 +131,4 @@ namespace xy_cp_tracking{
 
 
 
-}
+};

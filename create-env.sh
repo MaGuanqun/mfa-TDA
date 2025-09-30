@@ -18,7 +18,6 @@ spack add tbb
 spack add eigen
 spack add mfa~examples~tests thread=tbb
 
-
 # Optional: add other dependencies you may need
 # spack add zlib
 # spack add fmt
@@ -29,6 +28,7 @@ echo "installing dependencies in environment"
 spack install mfa~examples~tests thread=tbb   # install separately so that MFA_PATH is set for later packages
 export MFA_PATH=`spack location -i mfa`
 
+spack add libtorch
 
 # Install everything else
 echo "Installing remaining dependencies"

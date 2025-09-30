@@ -38,8 +38,8 @@
 #include <iostream>
 #include <Eigen/Dense>
 
-#include "xy_critical_point_finding.h"
-#include "xy_critical_point_tracking.h"
+#include "find_boundary_roots.h"
+#include "boundary_critical_point_tracking.h"
 
 #include "tracking_utility.h"
 #include "trace_deduplication.h"
@@ -78,7 +78,6 @@ int main(int argc, char** argv)
     bool help;                                  // show help
     // get command line arguments
     opts::Options ops;
-    int max_step = 5000; //max point number in one isocontour
 
     double shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
     // string input_sample_point_number = "100-100";
@@ -99,14 +98,13 @@ int main(int argc, char** argv)
 
     real_t initial_point_finding_hessian_threshold = 1e-20;
     real_t root_finding_grad_epsilon = 1e-8;
-    real_t hessian_threshold_for_cpt_tracking = 1e-12;
 
     string input_shrink_ratio = "0-1-0-1-0-1";
     real_t dxy_dt_gradient_epsilon = 1e-10;
 
     string singular_point_file = "singular_point.dat";
 
-    int max_itr=40;
+    int max_itr=50;
 
     real_t point_itr_threshold = 0.5;
 
@@ -121,7 +119,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('x', "root_finding_grad_epsilon",    root_finding_grad_epsilon,       "first root finding epsilon");
 
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
-    ops >> opts::Option('m', "max_itr", max_itr, " max_itr");
+    ops >> opts::Option('m', "max_itr", max_itr, " max iteration");
     ops >> opts::Option('s', "singular_point_file", singular_point_file, " singular point file name");
 
     ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
@@ -160,7 +158,7 @@ int main(int argc, char** argv)
 
 
     std::vector<VectorX<double>> degenerate_points;
-    degenerate_case_tracing::read_degenerate_point(singular_point_file,degenerate_points);
+    Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
 
 
     std::vector<CP_Trace<double>> traces;
@@ -188,9 +186,9 @@ int main(int argc, char** argv)
 
         VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of 
 
+        Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold);
 
-        find_boundary_roots::root_finding(selected_span, root, root_finding_grad_epsilon, same_root_epsilon,
-            initial_point_finding_hessian_threshold, max_itr, point_itr_threshold, span_num,point_num_in_block,core_mins,core_maxs,function_type);
+        find_boundary_roots.root_finding(selected_span, root);
 
 
         std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
@@ -207,13 +205,13 @@ int main(int argc, char** argv)
         string test_file=cp_tracing_file+"_test.obj";
 
         tracking_utility::convert_to_obj(test_file,root_unique);
-        // find_boundary_roots::test_root_finding(b,root,root_finding_grad_epsilon);
 
 
         traces.resize(root_unique.size());
 
+        Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], function_type, correction_max_itr);
 
-        xy_cp_tracking::find_trace(step_size.back(),step_size[0],max_step,root_unique, traces,hessian_threshold_for_cpt_tracking,root_finding_grad_epsilon,correction_max_itr,core_mins,core_maxs,function_type);
+        boundary_critical_point_tracking.find_trace(root_unique, traces);
 
         double max_dis_stop_square = 0.0;
         for(int  i=0;i<step_size.size()-1;++i)
@@ -222,7 +220,8 @@ int main(int argc, char** argv)
         }
         max_dis_stop_square*=25.0;
 
-        degenerate_case_tracing::tracing_from_all_degenerate_points(degenerate_points, traces, step_size.back(), step_size[0], 0.1, initial_point_finding_hessian_threshold, root_finding_grad_epsilon, max_itr, correction_max_itr, max_dis_stop_square,point_itr_threshold,point_num_in_block, core_mins, core_maxs, function_type);
+        Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type);
+        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
 
 
 
