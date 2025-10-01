@@ -1,0 +1,22 @@
+name: siren
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - matplotlib
+      - numpy
+      - tqdm
+      - scipy
+      - seaborn
+      - scikit-learn
+      - jupyter
+      - pandas
+      - imageio
+      - pillow
+      - tensorboard
+      - pytest
+      - setuptools
+      - wheel
