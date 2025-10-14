@@ -9,7 +9,7 @@ hidden_feature=256
 hidden_layer=8
 function_name=quartic_potential_2 #expotential #schwefel #quartic_potential_2
 model_mode=mlp # mlp,nerf
-omega=10.0
+omega=30.0
 
 out_root=logs/$function_name
 checkpoint=$out_root/checkpoints/model_final.pth

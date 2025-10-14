@@ -188,29 +188,28 @@ else:
 print(f"Normalized to [{f_true_n.min().item():.3f}, {f_true_n.max().item():.3f}]")
 
 
-# # --------------------
-# # Load SIREN and evaluate in batches (keep graph for autograd)
-# # --------------------
-# model = modules.SingleBVPNet(
-#     type=opt.model_type,
-#     mode=opt.mode,
-#     sidelength=sidelength,
-#     hidden_features=opt.hidden_features,
-#     num_hidden_layers=opt.num_hidden_layers,
-#     omega=opt.omega,
-#     in_features=len(sidelength)
-# )
+# --------------------
+# Load SIREN and evaluate in batches (keep graph for autograd)
+# --------------------
+model = modules.SingleBVPNet(
+    type=opt.model_type,
+    mode=opt.mode,
+    sidelength=sidelength,
+    hidden_features=opt.hidden_features,
+    num_hidden_layers=opt.num_hidden_layers,
+    omega=opt.omega,
+    in_features=len(sidelength)
+)
 
-# state = torch.load(model_path)  # add map_location='cpu' if needed
-# model.load_state_dict(state)
-# model.eval()
+state = torch.load(model_path)  # add map_location='cpu' if needed
+model.load_state_dict(state)
+model.eval()
 
-# # Batched derivatives & H functional
-# f_siren = compute_function_batched(
-#     model, uv, batch_size=opt.batch_size
-# )
+# Batched derivatives & H functional
+f_siren = compute_function_batched(
+    model, uv, batch_size=opt.batch_size
+)
 
-f_siren=None
 
 # --------------------
 # Write meshes
@@ -232,10 +231,10 @@ else:
     nx, ny, nz = map(int, sidelength)  # expected (x, y, z)
 
     # # SIREN output: (N,1) -> (nx, ny, nz) then ravel in Fortran order (x fastest)
-    # arr_siren = f_siren.detach().cpu().numpy().reshape(nx, ny, nz, order='C')
-    # vals_siren = np.asarray(arr_siren, dtype='<f8').ravel(order='F')
-    # with open(out_f_3d_bin, 'wb') as fh:
-    #     vals_siren.tofile(fh)
+    arr_siren = f_siren.detach().cpu().numpy().reshape(nx, ny, nz, order='C')
+    vals_siren = np.asarray(arr_siren, dtype='<f8').ravel(order='F')
+    with open(out_f_3d_bin, 'wb') as fh:
+        vals_siren.tofile(fh)
 
     # True function: same treatment
     arr_true = f_true.detach().cpu().numpy().reshape(nx, ny, nz, order='C')
