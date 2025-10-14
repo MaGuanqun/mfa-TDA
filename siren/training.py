@@ -44,6 +44,7 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
     with tqdm(total=len(train_dataloader) * epochs) as pbar:
         train_losses = []
         for epoch in range(epochs):
+            torch.cuda.empty_cache()
             if not epoch % epochs_til_checkpoint and epoch:
                 torch.save(model.state_dict(),
                            os.path.join(checkpoints_dir, 'model_epoch_%04d.pth' % epoch))

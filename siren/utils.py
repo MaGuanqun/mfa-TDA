@@ -360,38 +360,83 @@ def write_image_summary(image_resolution, model, model_input, gt,
     
 def write_function_summary(image_resolution, model, model_input, gt,
                         model_output, writer, total_steps, prefix='train_'):
+    """
+    Dimension-aware summary for function fitting WITHOUT external imports.
 
-    gt = gt['func'].detach().cpu().numpy()
-    preds = model_output['model_out'].detach().cpu().numpy()
+    image_resolution:
+      • 2D: [H, W, xmin, xmax, ymin, ymax]
+      • 3D: [D, H, W, xmin, xmax, ymin, ymax, zmin, zmax]
+    """
+    # Tensors only (no numpy). TB accepts CHW torch tensors in [0,1].
 
-    # Reshape data assuming it forms a grid
-    # sidelength = int(np.sqrt(coords.shape[0]))
-    sidelength = image_resolution[:2]
-    gt = gt.reshape(sidelength[0], sidelength[1])
-    preds = preds.reshape(sidelength[0], sidelength[1])
+    # Flatten to 1D first (torch tensors)
+    gt_flat   = gt['func'].detach().cpu().view(-1)
+    pred_flat = model_output['model_out'].detach().cpu().view(-1)
 
-    # Plot ground truth and predictions
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-    
-    range =image_resolution[2:]
-    
-    im = axs[0].imshow(gt, extent=[range[0], range[1], range[2], range[3]],
-                       origin='lower', cmap='viridis')
-    axs[0].set_title('Ground Truth Function')
-    fig.colorbar(im, ax=axs[0])
+    dim = model_input['coords'].shape[-1] if 'coords' in model_input else (3 if len(image_resolution) >= 9 else 2)
 
-    im = axs[1].imshow(preds, extent=[range[0], range[1], range[2], range[3]],
-                       origin='lower', cmap='viridis')
-    axs[1].set_title('Model Prediction')
-    fig.colorbar(im, ax=axs[1])
+    def norm01_t(t):
+        # Normalize tensor to [0,1] robustly
+        tmin = t.min()
+        tmax = t.max()
+        denom = (tmax - tmin)
+        denom = denom if denom.item() > 0 else (tmin - tmin + 1.0)  # fallback to 1.0
+        return (t - tmin) / denom
 
-    plt.suptitle(f'Step {total_steps}')
-    plt.tight_layout()
+    if dim == 2:
+        H, W = int(image_resolution[0]), int(image_resolution[1])
+        # Try the declared shape; fallback to square if mismatch
+        try:
+            gt_img   = gt_flat.view(H, W)
+            pred_img = pred_flat.view(H, W)
+        except Exception:
+            sidelength = int(float(gt_flat.numel()) ** 0.5)
+            H = W = sidelength
+            gt_img   = gt_flat.view(H, W)
+            pred_img = pred_flat.view(H, W)
 
-    # Log the figure to TensorBoard
-    writer.add_figure('Function Approximation', fig, global_step=total_steps)
-    plt.close(fig)
-    
+        writer.add_image('Function Approximation/GT',   norm01_t(gt_img).unsqueeze(0),   total_steps)
+        writer.add_image('Function Approximation/Pred', norm01_t(pred_img).unsqueeze(0), total_steps)
+
+    elif dim == 3:
+        # Parse D,H,W; be permissive if only H,W provided and infer D
+        if len(image_resolution) >= 3:
+            D, H, W = [int(v) for v in image_resolution[:3]]
+        else:
+            H = W = int(float(gt_flat.numel()) ** (1/3))
+            D = H
+        # Reshape as torch tensors
+        try:
+            gt_vol   = gt_flat.view(D, H, W)
+            pred_vol = pred_flat.view(D, H, W)
+        except Exception:
+            guess = int(round(float(gt_flat.numel()) ** (1/3)))
+            D = H = W = guess
+            gt_vol   = gt_flat.view(D, H, W)
+            pred_vol = pred_flat.view(D, H, W)
+
+        # Central orthogonal slices
+        cz, cy, cx = D // 2, H // 2, W // 2
+        slices = {
+            'GT_XY_zmid':   gt_vol[cz, :, :],
+            'GT_XZ_ymid':   gt_vol[:, cy, :],
+            'GT_YZ_xmid':   gt_vol[:, :, cx],
+            'Pred_XY_zmid': pred_vol[cz, :, :],
+            'Pred_XZ_ymid': pred_vol[:, cy, :],
+            'Pred_YZ_xmid': pred_vol[:, :, cx],
+        }
+
+        for tag, sl in slices.items():
+            writer.add_image('Function Approximation/3D/' + tag,
+                             norm01_t(sl).unsqueeze(0),  # [1,H,W]
+                             total_steps)
+
+    # Scalar ranges
+    writer.add_scalar(prefix + 'gt_min',   float(gt_flat.min().item()),   total_steps)
+    writer.add_scalar(prefix + 'gt_max',   float(gt_flat.max().item()),   total_steps)
+    writer.add_scalar(prefix + 'pred_min', float(pred_flat.min().item()), total_steps)
+    writer.add_scalar(prefix + 'pred_max', float(pred_flat.max().item()), total_steps)
+
 
 def write_laplace_summary(model, model_input, gt, model_output, writer, total_steps, prefix='train_'):
     # Plot comparison images

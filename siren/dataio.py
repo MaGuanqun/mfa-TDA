@@ -612,6 +612,48 @@ class Implicit2DFuncWrapper(torch.utils.data.Dataset):
         return in_dict, gt_dict
 
 
+# --- leave all your existing imports and code above as-is ---
+
+class Implicit3DFuncWrapper(torch.utils.data.Dataset):
+    """
+    Wraps a dataset that provides a scalar field "func" defined on a fixed 3D grid.
+    This wrapper:
+      - Builds a canonical [-1, 1]^3 coordinate grid (SIREN-friendly)
+      - Returns (coords, func) without mutating dataset state
+
+    Expected inner dataset contract:
+      - __len__ returns number of samples (often 1)
+      - __getitem__(idx) returns ({}, {'func': <Tensor[N,1]>})
+        where N = sidelength[0] * sidelength[1] * sidelength[2].
+        'func' must align with the flattening order of the grid produced here
+        (i.e., the same ordering as get_mgrid(..., dim=3)).
+    """
+    def __init__(self, dataset, sidelength=None, compute_diff=None):
+        self.dataset = dataset
+        if isinstance(sidelength, int):
+            sidelength = (sidelength, sidelength, sidelength)
+        assert sidelength is not None and len(sidelength) == 3, \
+            "sidelength must be a 3-tuple like (D, H, W)"
+
+        self.sidelength = sidelength
+        self.compute_diff = compute_diff  # kept for API symmetry; not used here
+        # Always use canonical [-1,1]^3 grid for SIREN
+        self.mgrid = get_mgrid(self.sidelength, dim=3)  # shape: [N, 3]
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        # The inner dataset should NOT mutate anything here.
+        # It should return a scalar 'func' aligned with this grid's flattening order.
+        _, gt = self.dataset[idx]
+        func = gt['func'].float()  # [N, 1]
+
+        in_dict = {'idx': torch.tensor(idx), 'coords': self.mgrid}
+        gt_dict = {'func': func}
+
+        return in_dict, gt_dict
+
 
 class Implicit2DWrapper(torch.utils.data.Dataset):
     def __init__(self, dataset, sidelength=None, compute_diff=None):

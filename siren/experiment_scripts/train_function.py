@@ -39,6 +39,7 @@ p.add_argument('--function_name', default="expotential", help='Set different fun
 p.add_argument('--hidden_features', type=int, default=16, help='Number of hidden features.')
 p.add_argument('--num_hidden_layers', type=int, default=12, help='Number of hidden layers.')
 p.add_argument('--mode', type=str, default='mlp', help='mode of modeling(mlp, nerf, rbf).')
+p.add_argument('--omega', type=float, default=20, help='omega for sine')
 
 opt = p.parse_args()
 
@@ -61,18 +62,27 @@ class XYDataset(torch.utils.data.Dataset):
         domain: [x_min, x_max, y_min, y_max] for the *physical* coords where z = f(x,y) is evaluated.
         """
         super().__init__()
-        if isinstance(sidelength, int):
-            sidelength = (sidelength, sidelength)
+        # if isinstance(sidelength, int):
+        #     if(dim==2):
+        #         sidelength = (sidelength, sidelength)
+        #     else:
+        #         sidelength = (sidelength, sidelength,sidelength)
         self.sidelength = sidelength
         self.domain = domain  # [xmin, xmax, ymin, ymax]
-
+        self.dim = len(sidelength)
         # Canonical grid in [-1,1]^2; shape [H*W, 2]
-        self.mgrid = dataio.get_mgrid(self.sidelength)
+        self.mgrid = dataio.get_mgrid(self.sidelength,dim=self.dim) 
 
         # Precompute z once (dataset length is 1)
-        x_phys, y_phys = self._denorm_to_physical(self.mgrid)  # map to requested range
-        with torch.no_grad():
-            z = function.function_2D(x_phys, y_phys,function_name).float().unsqueeze(1)  # [N,1]
+        if self.dim==2:
+            x_phys, y_phys = self._denorm_to_physical(self.mgrid)  # map to requested range
+            with torch.no_grad():
+                z = function.function_2D(x_phys, y_phys,function_name).float().unsqueeze(1)  # [N,1]
+        else:
+            x_phys, y_phys, t_phys = self._denorm_to_physical(self.mgrid)
+            with torch.no_grad():
+                z = function.function_3D(x_phys, y_phys, t_phys,function_name).float().unsqueeze(1)
+            
 
         # Min–max to [-1,1] for SIREN stability
         z_min, z_max = z.min(), z.max()
@@ -89,11 +99,18 @@ class XYDataset(torch.utils.data.Dataset):
         Map uv in [-1,1] to x,y in [xmin,xmax]x[ymin,ymax].
         uv: [N,2]
         """
-        xmin, xmax, ymin, ymax = self.domain
+        if self.dim==2:
+            xmin, xmax, ymin, ymax = self.domain
+        else:
+            xmin, xmax, ymin, ymax, zmin, zmax = self.domain
         u = uv[:, 0]
         v = uv[:, 1]
         x = 0.5 * (u + 1.0) * (xmax - xmin) + xmin
         y = 0.5 * (v + 1.0) * (ymax - ymin) + ymin
+        if self.dim==3:
+            zc = uv[:, 2]
+            z = 0.5 * (zc + 1.0) * (zmax - zmin) + ymin
+            return x, y, z
         return x, y
 
     def __len__(self):
@@ -103,13 +120,17 @@ class XYDataset(torch.utils.data.Dataset):
         # DO NOT mutate self.mgrid here.
         return {'coords': self.mgrid}, {'func': self.func}
 
-sidelength=(401,401)
+
 range=function.range(opt.function_name)
-    
+
+sidelength=function.sample_size(opt.function_name)
+
 dataset = XYDataset(sidelength, range,opt.function_name)
 
-
-coord_dataset = dataio.Implicit2DFuncWrapper(dataset, sidelength=sidelength)
+if len(sidelength)==2:
+    coord_dataset = dataio.Implicit2DFuncWrapper(dataset, sidelength=sidelength)
+else:
+    coord_dataset = dataio.Implicit3DFuncWrapper(dataset, sidelength=sidelength)
 
 # print(len(coord_dataset))
 # print(coord_dataset[0])
@@ -122,7 +143,7 @@ dataloader = DataLoader(coord_dataset, shuffle=True, batch_size=opt.batch_size, 
 
 # Define the model.
 if opt.model_type in ['sine', 'relu', 'tanh', 'selu', 'elu', 'softplus'] and opt.mode in ['mlp','nerf','rbf']:
-    model = modules.SingleBVPNet(type=opt.model_type, mode=opt.mode, sidelength=sidelength,hidden_features = opt.hidden_features, num_hidden_layers=opt.num_hidden_layers)
+    model = modules.SingleBVPNet(type=opt.model_type, mode=opt.mode, sidelength=sidelength,hidden_features = opt.hidden_features, num_hidden_layers=opt.num_hidden_layers,omega=opt.omega,in_features=len(sidelength))
 # elif opt.model_type in ['rbf' , 'nerf']:
 #     model = modules.SingleBVPNet(type='relu', mode=opt.model_type, sidelength=sidelength)
 # elif opt.model_type in ['rbf', 'nerf']:
@@ -135,16 +156,21 @@ else:
 model.cuda()
 
 root_path = os.path.join(opt.logging_root, opt.experiment_name)
+if not os.path.exists(root_path):
+    os.makedirs(root_path)
 
 # Define the loss
 
 loss_fn = partial(loss_functions.function_mse)
 
-func_info = [sidelength[0],sidelength[1],range[0],range[1],range[2],range[3]]
+if len(sidelength) == 2:
+    func_info = [sidelength[0],sidelength[1],range[0],range[1],range[2],range[3]]
+else:
+    func_info = [sidelength[0],sidelength[1],sidelength[2],range[0],range[1],range[2],range[3],range[4],range[5]]
 
 
 summary_fn = partial(utils.write_function_summary, func_info)
-
+    
 training.train(
     model=model,
     train_dataloader=dataloader,

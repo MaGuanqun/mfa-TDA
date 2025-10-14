@@ -7,6 +7,7 @@ from collections import OrderedDict
 import math
 import torch.nn.functional as F
 
+DEFAULT_SIREN_OMEGA = 10.0
 
 class BatchLinear(nn.Linear, MetaModule):
     '''A linear meta-layer that can deal with batched weight matrices and biases, as for instance output by a
@@ -26,12 +27,13 @@ class BatchLinear(nn.Linear, MetaModule):
 
 
 class Sine(nn.Module):
-    def __init(self):
+    def __init__(self, omega=DEFAULT_SIREN_OMEGA):
         super().__init__()
+        self.omega = omega
 
     def forward(self, input):
         # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of factor 30
-        return torch.sin(30 * input)
+        return torch.sin(self.omega * input)
 
 
 class FCBlock(MetaModule):
@@ -40,14 +42,14 @@ class FCBlock(MetaModule):
     '''
 
     def __init__(self, in_features, out_features, num_hidden_layers, hidden_features,
-                 outermost_linear=False, nonlinearity='relu', weight_init=None):
+                 outermost_linear=False, nonlinearity='relu', weight_init=None, omega=DEFAULT_SIREN_OMEGA):
         super().__init__()
 
         self.first_layer_init = None
 
         # Dictionary that maps nonlinearity name to the respective function, initialization, and, if applicable,
         # special first-layer initialization scheme
-        nls_and_inits = {'sine':(Sine(), sine_init, first_layer_sine_init),
+        nls_and_inits = {'sine':(Sine(omega=omega), lambda m: sine_init(m, omega), first_layer_sine_init),
                          'relu':(nn.ReLU(inplace=True), init_weights_normal, None),
                          'sigmoid':(nn.Sigmoid(), init_weights_xavier, None),
                          'tanh':(nn.Tanh(), init_weights_xavier, None),
@@ -120,7 +122,7 @@ class SingleBVPNet(MetaModule):
     '''A canonical representation network for a BVP.'''
 
     def __init__(self, out_features=1, type='sine', in_features=2,
-                 mode='mlp', hidden_features=256, num_hidden_layers=3, **kwargs):
+                 mode='mlp', hidden_features=256, num_hidden_layers=3,omega=DEFAULT_SIREN_OMEGA, **kwargs):
         super().__init__()
         self.mode = mode
 
@@ -137,7 +139,7 @@ class SingleBVPNet(MetaModule):
         self.image_downsampling = ImageDownsampling(sidelength=kwargs.get('sidelength', None),
                                                     downsample=kwargs.get('downsample', False))
         self.net = FCBlock(in_features=in_features, out_features=out_features, num_hidden_layers=num_hidden_layers,
-                           hidden_features=hidden_features, outermost_linear=True, nonlinearity=type)
+                           hidden_features=hidden_features, outermost_linear=True, nonlinearity=type,omega=omega)
         print(self)
 
     def forward(self, model_input, params=None):
@@ -619,12 +621,12 @@ def init_weights_xavier(m):
             nn.init.xavier_normal_(m.weight)
 
 
-def sine_init(m):
+def sine_init(m, omega=DEFAULT_SIREN_OMEGA):
     with torch.no_grad():
         if hasattr(m, 'weight'):
             num_input = m.weight.size(-1)
             # See supplement Sec. 1.5 for discussion of factor 30
-            m.weight.uniform_(-np.sqrt(6 / num_input) / 30, np.sqrt(6 / num_input) / 30)
+            m.weight.uniform_(-np.sqrt(6 / num_input) / omega, np.sqrt(6 / num_input) / omega)
 
 
 def first_layer_sine_init(m):

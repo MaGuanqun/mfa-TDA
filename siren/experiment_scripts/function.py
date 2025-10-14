@@ -7,15 +7,30 @@ def range(function_name='expotential'):
     elif function_name == 'schwefel':
         b=10.5 * torch.pi * 10.5 * torch.pi
         return [-b,b,-b,b]
+    elif function_name == 'quartic_potential_2':
+        return [-2.0, 2.0, -2.0, 2.0, 0.0, 4.0]
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
-    
+
+def sample_size(function_name='expotential'):
+    if function_name in ['expotential','schwefel']:
+        return (401, 401)
+    elif function_name in ['quartic_potential_2']:
+        return (50, 50, 50)
+    else:
+        raise NotImplementedError(f"Function {function_name} not implemented.")
 
 def function_2D(x,y, function_name='expotential'):
     if function_name == 'expotential':
         return compute_expotential(x, y)
     elif function_name == 'schwefel':
         return compute_schwefel(x, y)
+    else:
+        raise NotImplementedError(f"Function {function_name} not implemented.")
+
+def function_3D(x, y, t, function_name='quartic_potential_2'):
+    if function_name == 'quartic_potential_2':
+        return compute_quartic_potential_2(x, y, t)
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
 
@@ -39,4 +54,9 @@ def compute_schwefel(x, y):
 
     result = 0.5 * (a * d - (term1 + term2))
     return result
-    
+
+def compute_quartic_potential_2(x, y, t):
+    """
+    Quartic potential function for 2D input (x, y) with time dependency.
+    """
+    return 0.25 * x**4 + 0.5 * (1 - t) * x**2 + 0.25 * y**4 + 0.5 * torch.cos(t) * y**2
