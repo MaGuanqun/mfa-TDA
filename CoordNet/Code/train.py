@@ -14,18 +14,33 @@ from skimage import data,img_as_float,img_as_int
 import lpips
 
 def trainNet(model,args,dataset):
-    if args.application == 'spatial' or args.application == 'super-spatial':
-        loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.scale)+'-'+str(args.init)+'-'+str(args.factor)+'.txt','w')
+        # ----- logging file naming follows original conventions -----
+    if args.application in ['spatial', 'super-spatial']:
+        loss_path = args.model_path + args.dataset + '/' + \
+            f'loss-{args.application}-{args.scale}-{args.init}-{args.factor}.txt'
     elif args.application == 'temporal':
-        loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.interval)+'-'+str(args.init)+'-'+str(args.factor)+'-'+str(args.active)+'.txt','w')
+        loss_path = args.model_path + args.dataset + '/' + \
+            f'loss-{args.application}-{args.interval}-{args.init}-{args.factor}-{args.active}.txt'
     else:
-        loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.factor)+'.txt','w')
+        # includes 'super-spatial-temporal' and any other fallbacks
+        loss_path = args.model_path + args.dataset + '/' + \
+            f'loss-{args.application}-{args.init}-{args.num_res}.txt'
+
+    loss = open(loss_path, 'w')
+    
+    # if args.application == 'spatial' or args.application == 'super-spatial':
+    #     loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.scale)+'-'+str(args.init)+'-'+str(args.factor)+'.txt','w')
+    # elif args.application == 'temporal':
+    #     loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.interval)+'-'+str(args.init)+'-'+str(args.factor)+'-'+str(args.active)+'.txt','w')
+    # else:
+    #     loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.factor)+'.txt','w')
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr,betas=(0.9,0.999),weight_decay=1e-6)
     criterion = nn.MSELoss()
 
     t = 0
     for itera in range(1,args.num_epochs+1):
+        torch.cuda.empty_cache()
         train_loader = dataset.GetTrainingData()
         x = time.time()
 
@@ -53,13 +68,19 @@ def trainNet(model,args,dataset):
         loss.write("Epochs "+str(itera)+": loss = "+str(loss_mse))
         loss.write('\n')
 
-        if itera%args.checkpoint == 0 or itera==1:
-            if args.application == 'spatial' or args.application == 'super-spatial':
-                torch.save(model.state_dict(),args.model_path+args.dataset+'/'+args.application+'-'+str(args.scale)+'-'+str(args.init)+'-'+str(args.factor)+'-'+str(itera)+'.pth')
+        # if itera % args.checkpoint == 0 or itera == 1:
+        if itera == args.num_epochs:
+            if args.application in ['spatial', 'super-spatial']:
+                ckpt = args.model_path + args.dataset + '/' + \
+                    f'{args.application}-{args.scale}-{args.init}-{args.factor}-{itera}.pth'
             elif args.application == 'temporal':
-                torch.save(model.state_dict(),args.model_path+args.dataset+'/'+args.application+'-'+str(args.interval)+'-'+str(args.init)+'-'+str(args.factor)+'-'+str(args.active)+'-'+str(itera)+'.pth')
+                ckpt = args.model_path + args.dataset + '/' + \
+                    f'{args.application}-{args.interval}-{args.init}-{args.factor}-{args.active}-{itera}.pth'
             else:
-                torch.save(model.state_dict(),args.model_path+args.dataset+'/'+args.application+'-'+str(args.factor)+'-'+str(itera)+'.pth')
+                # includes 'super-spatial-temporal'
+                ckpt = args.model_path + args.dataset + '/' + \
+                    f'{args.application}-{args.init}-{args.num_res}.pth'
+            torch.save(model.state_dict(), ckpt)
 
     loss.write("Time = "+str(t))
     loss.write('\n')
@@ -75,9 +96,11 @@ def inf(dataset,args):
 
     if args.application != 'viewsynthesis':
         if args.active == 'sine':
-            model =  CoordNet(4,1,args.init,args.num_res)
+            in_dim = 3 if args.application == 'super-spatial-temporal' else 4
+            model =  CoordNet(in_dim,1,args.omega_0,args.init,args.num_res)
         elif args.active == 'relu':
-            model = CoordNetReLU(4,1,args.init,args.num_res)
+            in_dim = 3 if args.application == 'super-spatial-temporal' else 4
+            model = CoordNetReLU(in_dim,1,args.init,args.num_res)
     if args.application in ['spatial','super-spatial']:
         model.load_state_dict(torch.load(args.model_path+args.dataset+'/'+args.application+'-'+str(args.scale)+'-'+str(args.init)+'-'+str(args.factor)+'-'+str(args.num_epochs)+'.pth'))
     elif args.application == 'temporal':
@@ -96,6 +119,7 @@ def inf(dataset,args):
         idx = 0
         if args.hint == 'super':
             coords = dataset.GetTestingData()
+            print(coords)
             for i in range(0,dataset.total_samples-1):
                 print(i+1)
                 s = coords[i*dataset.dim[0]*dataset.dim[1]*dataset.dim[2]:(i+1)*dataset.dim[0]*dataset.dim[1]*dataset.dim[2],:,]
@@ -251,6 +275,48 @@ def inf(dataset,args):
             v.tofile('../AO/'+args.dataset+'/MTNet/'+'{:04d}'.format(idx+1)+'.dat',format='<f')
             idx += 1
 
+    # (E) NEW: super-spatial-temporal (3D coords (t,y,x))
+    elif args.application == 'super-spatial-temporal':
+        # Build model if not built above (should be already built)
+        # Load checkpoint using the same naming as training "else" branch
+        model.load_state_dict(torch.load(
+            args.model_path + args.dataset + '/' +
+            f'{args.application}-{args.init}-{args.num_res}.pth'
+        ))
+        model.eval()
+
+        out_dtype=np.float32        
+        # Coords: [T*H*W, 3] with (t,y,x) in [-1,1], provided by ScalarDataSet.GetTestingData()
+        coords = dataset.GetTestingData()
+        T = dataset.total_samples
+        H, W = dataset.dim
+
+        loader = DataLoader(dataset=torch.FloatTensor(coords), batch_size=args.batch_size, shuffle=False)
+        preds = []
+        for batch in loader:
+            with torch.no_grad():
+                v_pred = model(batch.cuda())
+            preds.append(v_pred.view(-1).detach().cpu().numpy())
+        preds = np.concatenate(preds, axis=0).astype('<f')  # length T*H*W
+
+        # Existing context: preds is length T*H*W in blocks of H*W per t,
+        # where within each block values are in Fortran 'F' order (y-fastest).
+
+        # Rebuild a [T, H, W] volume where A[t] is the HxW slice at time t.
+        A = np.empty((T, H, W), dtype=np.float64)
+        per_t = H * W
+        for t in range(T):
+            v = preds[t * per_t:(t + 1) * per_t]      # length H*W, y-fastest inside
+            A[t] = v.reshape(W, H, order='F').transpose().astype(np.float64)         # restore the 2D slice
+
+        # Now ravel in C-order so x (last axis) is fastest, then y, then t (slowest).
+        onefile_path = os.path.join('../Result', args.dataset,
+                                    f'{args.application}-{args.init}-{args.num_res}.dat')
+        A.ravel(order='C').tofile(onefile_path)  # float64
+        print(f"Saved single 3D file with x-fastest layout to: {onefile_path}")
+
+        # If you prefer float64:
+        # A.astype('<f8', copy=False).ravel(order='C').tofile(onefile_path.replace('.dat','-f64.dat'))
 
 
 

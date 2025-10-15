@@ -77,5 +77,9 @@ elif function == 'quartic_potential' or function == 'quartic_potential_2':
     min = np.array([-2.0, -2.0, 0.0])
     max =np.array([2.0, 2.0, 4.0])
     dim = np.array([50,50,50])
+elif function == 'vortex_street':
+    dim = np.array([100, 80, 50])
+    min = np.array([0.0, 0.0, 0.0])
+    max = dim - 1
     
 convert_binary_file_to_vti(input_file, output_file,dim,min,max)

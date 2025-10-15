@@ -69,7 +69,7 @@ def compute_function_batched(model, uv, batch_size=10000):
 
     N = uv.shape[0]
     for i in range(0, N, batch_size):
-        uv_chunk = uv[i:i + batch_size].unsqueeze(0).requires_grad_(True)  # [1, B, 2]
+        uv_chunk = uv[i:min(i + batch_size, N)].unsqueeze(0).requires_grad_(True)  # [1, B, 2]
 
         # Forward
         out_chunk = model({'coords': uv_chunk})

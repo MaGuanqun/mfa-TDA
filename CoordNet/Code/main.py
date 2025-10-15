@@ -6,7 +6,7 @@ import argparse
 import torch
 from train import *
 from model import *
-
+import random
 
 p = argparse.ArgumentParser()
 
@@ -33,7 +33,7 @@ p.add_argument('--train', type=str, default='train', metavar='N',
                     help='the path where we stored the synthesized data')
 p.add_argument('--application', type=str, default='temporal', metavar='N',
                     help='the path where we stored the synthesized data')
-p.add_argument('--scale', type=int, default=4, metavar='N',
+p.add_argument('--scale', type=int, default=1, metavar='N',
                     help='spatial upscaling factor')
 p.add_argument('--interval', type=int, default=3, metavar='N',
                     help='temporal upscaling factor')
@@ -49,17 +49,49 @@ p.add_argument('--num_res', type=int, default=10, metavar='N',
                     help='number of residual blocks')
 p.add_argument('--angle', type=int, default=15, metavar='N',
                     help='sampled angle')
+p.add_argument('--omega_0', type=float, default=30, metavar='N',
+                    help='omega_0 for sine')
+
 
 opt = p.parse_args()
+
+print("epochs: ", opt.num_epochs)
+
 opt.cuda = not opt.no_cuda and torch.cuda.is_available()
 
+def set_global_seed(seed: int = 42):
+    os.environ["PYTHONHASHSEED"] = str(seed)        # Python hashing
+    random.seed(seed)                                # stdlib
+    np.random.seed(seed)                             # NumPy
+    torch.manual_seed(seed)                          # CPU
+    torch.cuda.manual_seed_all(seed)                 # all GPUs
+
+    # cuDNN + PyTorch determinism
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    try:
+        torch.use_deterministic_algorithms(True)     # may raise if an op is non-deterministic
+    except Exception as e:
+        print(f"[warn] deterministic_algorithms: {e}")
+
+    # cuBLAS reproducibility (PyTorch docs)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"  # or ":4096:2"
+
+
+
 def main():
+  set_global_seed(42)
   if opt.train == 'train':
-    if opt.application in ['spatial','temporal','super-spatial']:
+    if opt.application == 'super-spatial-temporal':
       Data = ScalarDataSet(opt)
       if opt.active == 'sine':
         print('Initalize Model Successfully using Sine Function!')
-        Model = CoordNet(4,1,opt.init,opt.num_res)
+        Model = CoordNet(3,1,opt.omega_0,opt.init,opt.num_res)
+    elif opt.application in ['spatial','temporal','super-spatial']:
+      Data = ScalarDataSet(opt)
+      if opt.active == 'sine':
+        print('Initalize Model Successfully using Sine Function!')
+        Model = CoordNet(4,1,opt.omega_0,opt.init,opt.num_res)
       elif opt.active == 'relu':
         print('Initalize Model Successfully using ReLU Function!')
         Model = CoordNetReLU(4,1,opt.init,opt.num_res)
@@ -69,12 +101,14 @@ def main():
     elif opt.application == 'AO':
       Data = AODataSet(opt)
       Model = CoordNet(4,1,opt.init,opt.num_res)
+    print("start loading data ...")
     Data.ReadData()
+    print("Data Loaded!")
     Model.cuda()
     trainNet(Model,opt,Data)
 
   elif opt.train == 'inf':
-    if opt.application in ['spatial','temporal','super-spatial','extrapolation']:
+    if opt.application in ['spatial','temporal','super-spatial','extrapolation','super-spatial-temporal']:
       Data = ScalarDataSet(opt)
     elif opt.application == 'viewsynthesis':
       Data = ViewSynthesis(opt)

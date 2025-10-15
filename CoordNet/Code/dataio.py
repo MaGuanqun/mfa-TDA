@@ -8,6 +8,7 @@ from skimage import data,img_as_float
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 import os
+import function
 
 class ScalarDataSet():
 	def __init__(self,args):
@@ -122,16 +123,21 @@ class ScalarDataSet():
 			self.total_samples = 100
 			self.data_path = '/afs/crc.nd.edu/user/j/jhan5/vis/VIS20/UA_TSSR_Data/Bubble-'
 		elif self.dataset == 'quartic_potential_2':
-			self.dim = [100,100]
-			self.total_samples = 100
-			self.data_path = self.dataset
+            # Pull sizes from function.py for consistency
+			sx, sy, st = function.sample_size(self.dataset)
+			self.dim = [sx, sy]         # spatial (H, W)
+			self.total_samples = st     # number of time steps
+			self.data_path = None       # no files needed
+		elif self.dataset == 'vortex_street':
+			self.dim = [100,80]
+			self.total_samples = 50
+			self.data_path = '../Data/vortex_street.bin'
    
 			
 		if not os.path.exists(args.result_path+args.dataset):
-			os.mkdir(args.result_path+args.dataset)
-
+			os.makedirs(args.result_path+args.dataset, exist_ok=True)
 		if not os.path.exists(args.model_path+args.dataset):
-			os.mkdir(args.model_path+args.dataset)
+			os.makedirs(args.model_path+args.dataset, exist_ok=True)
 
 		if self.application == 'extrapolation':
 			self.training_samples = self.total_samples*8//10
@@ -184,11 +190,64 @@ class ScalarDataSet():
 		elif self.application == 'super-spatial':
 			self.coords = get_mgrid([self.total_samples,self.dim[0]*self.scale,self.dim[1]*self.scale,self.dim[2]*self.scale],dim=4,s=self.scale,t=0)
 		elif self.application == 'super-spatial-temporal':
-			self.coords = get_mgrid([self.total_samples,self.dim[0]*self.scale,self.dim[1]*self.scale,self.dim[2]*self.scale],dim=4,s=self.scale,t=1)
+			self.coords = get_mgrid([self.total_samples,self.dim[0],self.dim[1]],dim=3,s=1,t=0)
    
 
 	def ReadData(self):
 		self.GetCoords()
+
+		if self.dataset in ['quartic_potential_2'] and self.application == 'super-spatial-temporal':
+			print("Generating quartic_potential_2 data from function.py (no file reads).")
+			# Get domain ranges and sizes from function.py
+			xmin, xmax, ymin, ymax, tmin, tmax = function.range(self.dataset)
+			H, W = self.dim
+			T = self.total_samples
+
+			# Build spatial grids in the math domain
+			x_vals = torch.linspace(xmin, xmax, W)  # x corresponds to width
+			y_vals = torch.linspace(ymin, ymax, H)  # y corresponds to height
+			X, Y = torch.meshgrid(x_vals, y_vals, indexing='xy')  # shape [W, H]
+			X = X.T.contiguous()  # now [H, W] to match (row = y)
+			Y = Y.T.contiguous()  # now [H, W]
+
+			# Time sampling in the math domain
+			t_vals = torch.linspace(tmin, tmax, T)
+
+			data_list = []
+			for i, t in enumerate(t_vals):
+				# Evaluate f(x,y,t) on the grid
+				F = function.function_3D(X, Y, t, function_name='quartic_potential_2')  # [H, W]
+
+				# Per-time-slice normalization to [-1, 1] to match file-based path
+				Fmin = torch.min(F)
+				Fmax = torch.max(F)
+				if (Fmax - Fmin) > 0:
+					F = 2.0 * (F - Fmin) / (Fmax - Fmin) - 1.0
+				else:
+					F = torch.zeros_like(F)
+				
+				# Flatten in column-major (Fortran) order to mirror existing codepaths
+				data_list += list(F.numpy().astype('<f').flatten('F'))
+
+				# print(f"time step {i+1}/{T} synthesized")
+
+			self.data = np.asarray(data_list)
+			return
+
+		if self.dataset in ['vortex_street'] and self.application == 'super-spatial-temporal':
+			# Load entire dataset from single binary file
+			data_all = np.fromfile(self.data_path, dtype='<f8')
+			data_all = data_all.astype(np.float32)
+			Fmin = np.min(data_all)
+			Fmax = np.max(data_all)
+			if (Fmax - Fmin) > 0:
+				data_all = 2.0 * (data_all - Fmin) / (Fmax - Fmin) - 1.0
+			else:
+				data_all = np.zeros_like(data_all) 
+			self.data = data_all
+			return
+			
+
 		self.data = []
 		for i in self.samples:
 			print(i)
@@ -220,25 +279,32 @@ class ScalarDataSet():
 			samples = (self.dim[0]*self.dim[1]*self.dim[2])//(self.scale*self.scale*self.scale)
 		elif self.application == 'super-spatial':
 			samples = (self.dim[0]*self.dim[1]*self.dim[2])
+		elif self.application == 'super-spatial-temporal':
+				# 2D spatial samples per time step
+				samples = (self.dim[0] * self.dim[1])
 		else:
 			samples = self.dim[0]*self.dim[1]*self.dim[2]
-
+		
 
 		if self.application == 'extrapolation':
 			for i in range(0,self.training_samples):
 				index = np.random.choice(np.arange(i*samples,(i+1)*samples), self.factor*self.batch_size, replace=False)
 				indices += list(index)
-		elif self.application == 'temporal':
+		elif self.application in ['temporal','super-spatial', 'super-spatial-temporal']:
 			for i in range(0,len(self.samples)):
-				index = np.random.choice(np.arange(i*samples,(i+1)*samples), self.factor*self.batch_size, replace=False)
-				indices += list(index)
-		elif self.application == 'super-spatial':
-			for i in range(0,len(self.samples)):
-				index = np.random.choice(np.arange(i*samples,(i+1)*samples), self.factor*self.batch_size, replace=False)
+				start = i * samples
+				end = (i + 1) * samples
+				population = end - start
+				k = self.factor * self.batch_size
+				if k >= population:
+					# take all samples instead of failing
+					index = np.arange(start, end)
+				else:
+					index = np.random.choice(np.arange(start, end), k, replace=False)
 				indices += list(index)
 
 
-		if self.application in ['temporal','completion','super-spatial','extrapolation']:
+		if self.application in ['temporal','completion','super-spatial','extrapolation','super-spatial-temporal']:
 			training_data_input = torch.FloatTensor(self.coords[indices])
 			training_data_output = torch.FloatTensor(self.data[indices])
 		elif self.application == 'spatial':
@@ -256,6 +322,8 @@ class ScalarDataSet():
 		return train_loader
 
 	def GetTestingData(self):
+		if self.application == 'super-spatial-temporal':
+			return get_mgrid([self.total_samples,self.dim[0],self.dim[1]],dim=3)
 		return get_mgrid([self.total_samples,self.dim[0],self.dim[1],self.dim[2]],dim=4)
 		
 
@@ -285,10 +353,10 @@ class AODataSet():
 
 
 		if not os.path.exists(args.result_path+args.dataset):
-			os.mkdir(args.result_path+args.dataset)
+			os.makedirs(args.result_path+args.dataset, exist_ok=True)
 
 		if not os.path.exists(args.model_path+args.dataset):
-			os.mkdir(args.model_path+args.dataset)
+			os.makedirs(args.model_path+args.dataset, exist_ok=True)
 
 		self.samples = [i for i in range(1,self.total_samples+1,self.interval+1)] + [self.total_samples]
 		self.total_samples = self.samples[-1]
@@ -343,10 +411,10 @@ class ViewSynthesis():
 		self.theta = [i for i in range(0,180,self.angle)]+[179]
 		self.phi = [i for i in range(0,360,self.angle)]+[359]
 		if not os.path.exists(args.result_path+args.dataset):
-			os.mkdir(args.result_path+args.dataset)
+			os.makedirs(args.result_path+args.dataset, exist_ok=True)
 
 		if not os.path.exists(args.model_path+args.dataset):
-			os.mkdir(args.model_path+args.dataset)
+			os.makedirs(args.model_path+args.dataset, exist_ok=True)
 
 	def ReadData(self):
 		self.count = 0

@@ -28,8 +28,8 @@ class SineLayer(nn.Module):
     # If is_first=False, then the weights will be divided by omega_0 so as to keep the magnitude of 
     # activations constant, but boost gradients to the weight matrix (see supplement Sec. 1.5)
     
-    def __init__(self, in_features, out_features, bias=True,
-                 is_first=False, omega_0=30):
+    def __init__(self, in_features, out_features, omega_0=30, bias=True,
+                 is_first=False):
         super().__init__()
         self.omega_0 = omega_0
         self.is_first = is_first
@@ -71,7 +71,7 @@ class LinearLayer(nn.Module):
         return self.linear(input)
 
 class ResBlock(nn.Module):
-    def __init__(self,in_features,out_features,nonlinearity='relu'):
+    def __init__(self,in_features,out_features,nonlinearity='relu', omega_0=30):
         super(ResBlock,self).__init__()
         nls_and_inits = {'sine':Sine(),
                          'relu':nn.ReLU(inplace=True),
@@ -85,14 +85,14 @@ class ResBlock(nn.Module):
 
         self.net = []
 
-        self.net.append(SineLayer(in_features,out_features))
+        self.net.append(SineLayer(in_features,out_features,omega_0=omega_0))
 
-        self.net.append(SineLayer(out_features,out_features))
+        self.net.append(SineLayer(out_features,out_features,omega_0=omega_0))
 
         self.flag = (in_features!=out_features)
 
         if self.flag:
-            self.transform = SineLayer(in_features,out_features)
+            self.transform = SineLayer(in_features,out_features,omega_0=omega_0)
 
         self.net = nn.Sequential(*self.net)
     
@@ -105,24 +105,24 @@ class ResBlock(nn.Module):
 class CoordNet(nn.Module):
     #A fully connected neural network that also allows swapping out the weights when used with a hypernetwork. Can be used just as a normal neural network though, as well.
 
-    def __init__(self, in_features, out_features, init_features=64,num_res = 10):
+    def __init__(self, in_features, out_features, omega_0=30, init_features=64,num_res = 10):
         super(CoordNet,self).__init__()
 
         self.num_res = num_res
 
         self.net = []
 
-        self.net.append(ResBlock(in_features,init_features))
+        self.net.append(ResBlock(in_features,init_features, omega_0=omega_0))
         #self.net.append(nl)
-        self.net.append(ResBlock(init_features,2*init_features))
+        self.net.append(ResBlock(init_features,2*init_features, omega_0=omega_0))
         #self.net.append(nl)
-        self.net.append(ResBlock(2*init_features,4*init_features))
+        self.net.append(ResBlock(2*init_features,4*init_features, omega_0=omega_0))
         #self.net.append(nl)
 
         for i in range(self.num_res):
-            self.net.append(ResBlock(4*init_features,4*init_features))
+            self.net.append(ResBlock(4*init_features,4*init_features, omega_0=omega_0))
 
-        self.net.append(ResBlock(4*init_features, out_features))
+        self.net.append(ResBlock(4*init_features, out_features, omega_0=omega_0))
 
         self.net = nn.Sequential(*self.net)
 

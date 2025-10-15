@@ -1,0 +1,10 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+/Exp
+/Result
+/Code/inf*
+/Code/train*
+/Data
