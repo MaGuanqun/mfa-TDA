@@ -95,11 +95,10 @@ def adjust_lr(args, optimizer, epoch):
 def inf(dataset,args):
 
     if args.application != 'viewsynthesis':
+        in_dim = 3 if args.application == 'super-spatial-temporal' else 4
         if args.active == 'sine':
-            in_dim = 3 if args.application == 'super-spatial-temporal' else 4
             model =  CoordNet(in_dim,1,args.omega_0,args.init,args.num_res)
-        elif args.active == 'relu':
-            in_dim = 3 if args.application == 'super-spatial-temporal' else 4
+        elif args.active == 'relu':            
             model = CoordNetReLU(in_dim,1,args.init,args.num_res)
     if args.application in ['spatial','super-spatial']:
         model.load_state_dict(torch.load(args.model_path+args.dataset+'/'+args.application+'-'+str(args.scale)+'-'+str(args.init)+'-'+str(args.factor)+'-'+str(args.num_epochs)+'.pth'))
@@ -317,7 +316,22 @@ def inf(dataset,args):
 
         # If you prefer float64:
         # A.astype('<f8', copy=False).ravel(order='C').tofile(onefile_path.replace('.dat','-f64.dat'))
+        
+        ts_path = args.model_path + args.dataset + '/' + f'{args.application}-{args.init}-{args.num_res}.pt'
 
+
+        
+        model.eval()
+        dev = next(model.parameters()).device
+        example = torch.zeros(1, in_dim, dtype=torch.float32,device=dev)
+        try:
+            ts_model = torch.jit.trace(model, example)
+        except Exception as e:
+            print(f"[warn] trace failed ({e}), using script()")
+            ts_model = torch.jit.script(model)
+        ts_model = torch.jit.freeze(ts_model)
+        ts_model.save(ts_path)
+        
 
 
 

@@ -32,7 +32,7 @@
 
 #include "spatial_hashing_spatial_temporal.h"
 #include "closed_form_function.h"
-
+#include "../INRModel.h"
 
 using namespace std;
 
@@ -110,16 +110,24 @@ int main(int argc, char** argv)
         }
     }  
 
-    int function_type = closed_form_function::initial_func_type(input_function_name);
+    printf(input_model.c_str());
+    std::ifstream model_file(input_model);
+    if (!model_file) {
+        std::cerr << "Error: Input model file '" << input_model << "' does not exist." << std::endl;
+        return 1;
+    }
+
+    INRModel inr_model(input_function_name,input_model);
+    int function_type=-1; 
 
     auto start_time = std::chrono::high_resolution_clock::now();
         
 
-        Eigen::VectorXd local_domain_range=closed_form_function::domain_max(function_type)-closed_form_function::domain_min(function_type);
-        VectorXd core_maxs = closed_form_function::domain_max(function_type);
-        VectorXd core_mins = closed_form_function::domain_min(function_type);
+        Eigen::VectorXd local_domain_range=INRModel::domain_max(input_function_name)-INRModel::domain_min(input_function_name);
+        VectorXd core_maxs = INRModel::domain_max(input_function_name);
+        VectorXd core_mins = INRModel::domain_min(input_function_name);
 
-        VectorXi span_num = closed_form_function::block_num(function_type);
+        VectorXi span_num = INRModel::block_num(input_function_name);
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
@@ -131,32 +139,36 @@ int main(int argc, char** argv)
         std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
 
 
-        VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of initial points in a block
+        VectorXi point_num_in_block = INRModel::point_num_in_block(input_function_name); //number of initial points in a block
 
-        Tracking_degenerate_case tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type);
+        VectorXd p_test(2);
+        p_test<<0.5,0.5,0.5;
+        inr_model.derivative(p_test);
 
-        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
+        // Tracking_degenerate_case tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type);
+
+        // tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
 
 
 
 
-        std::vector<VectorX<double>> root_unique;
-        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
-        std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
+        // std::vector<VectorX<double>> root_unique;
+        // spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
+        // std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
+        // auto end_time = std::chrono::high_resolution_clock::now();
+        // std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
 
-        //save roots to a file
-        std::vector<MatrixXd> root_matrix(1);
+        // //save roots to a file
+        // std::vector<MatrixXd> root_matrix(1);
 
-        root_matrix[0].resize(root_unique.size(),root_unique[0].size());
-        for(int j=0;j<root_unique.size();j++)
-        {
-            root_matrix[0].row(j) = root_unique[j].transpose();
-        }
+        // root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+        // for(int j=0;j<root_unique.size();j++)
+        // {
+        //     root_matrix[0].row(j) = root_unique[j].transpose();
+        // }
 
-        utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
+        // utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
 
 
 }

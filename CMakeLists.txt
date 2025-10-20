@@ -1,22 +1,20 @@
 project                     (mfa-TDA)
 cmake_minimum_required      (VERSION 3.15)
 
-# set                         (CMAKE_CXX_STANDARD 17)
-# set                         (CMAKE_CXX_STANDARD_REQUIRED ON)
-# set                         (CMAKE_CXX_EXTENSIONS OFF)
+set                         (CMAKE_CXX_STANDARD 17)
+set                         (CMAKE_CXX_STANDARD_REQUIRED ON)
+set                         (CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-if                          (NOT DEFINED CMAKE_CXX_STANDARD)
-    set                     (CMAKE_CXX_STANDARD 17)
-endif                       ()   
+set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+
+# if                          (NOT DEFINED CMAKE_CXX_STANDARD)
+#     set                     (CMAKE_CXX_STANDARD 17)
+# endif                       ()   
 
 message(STATUS "${CMAKE_CXX_STANDARD}")
 
-# set                         (CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-# ignore variadic args warning (no other good solution)
-# set                         (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-varargs")
-
-# Default to Release
 
 if                          (NOT CMAKE_BUILD_TYPE)
     set                     (CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
@@ -25,6 +23,9 @@ endif                       (NOT CMAKE_BUILD_TYPE)
 
 option                      (mfa_thread     "tbb, kokkos, sycl, or serial (default tbb)"                                 "tbb"  )
 set(mfa_thread "tbb")
+
+
+
 
 # MPI
 find_package                (MPI REQUIRED)
@@ -64,26 +65,31 @@ else                        ()
     add_definitions         (-DMFA_SERIAL)
 endif                       ()
 
+# -----------------------------------------------------------------------------
+# Find LibTorch (installed via Spack)
+# Make sure Torch_DIR points to the correct cmake package directory, e.g.:
+# export Torch_DIR=/home/guanqunma/spack/opt/spack/linux-x86_64_v4/libtorch-2.8.0_cu126-xxxx/share/cmake/Torch
+# -----------------------------------------------------------------------------
+find_package(Torch REQUIRED)
 
+set(Torch_DIR $ENV{Torch_DIR} CACHE PATH "Path to Torch CMake config" FORCE)
+set(TBB_DIR $ENV{TBB_DIR} CACHE PATH "Path to TBB CMake config" FORCE)
+set(CMAKE_PREFIX_PATH $ENV{CMAKE_PREFIX_PATH} CACHE PATH "Prefix path for CMake packages" FORCE)
 
+message(STATUS "Found LibTorch at: ${Torch_DIR}")
+message(STATUS "Torch include dirs: ${TORCH_INCLUDE_DIRS}")
+message(STATUS "Torch libraries: ${TORCH_LIBRARIES}")
 
-# Threads
-# find_package                (Threads)
+if(NOT TARGET Torch::Torch)
+  add_library(Torch::Torch INTERFACE IMPORTED)
+  set_property(TARGET Torch::Torch PROPERTY
+    INTERFACE_LINK_LIBRARIES "${TORCH_LIBRARIES}")
+  target_include_directories(Torch::Torch INTERFACE ${TORCH_INCLUDE_DIRS})
+endif()
 
-# # DIY
-# option                      (build_examples "" OFF)
-# option                      (build_tests "" OFF)
-# add_subdirectory            (ext/diy)
-# set                         (libraries ${libraries} diy)
-# 
-# # fmt
-# option                      (FMT_INSTALL "" OFF)
-# add_subdirectory            (ext/fmt)
-# set                         (libraries ${libraries} fmt::fmt)
-
-# # zlib
-# find_package 		        (ZLIB)
-# set 			            (libraries ${libraries} ${ZLIB_LIBRARIES})
+# Add Torch C++ flags
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+# list(APPEND libraries ${TORCH_LIBRARIES})   # do this BEFORE the target
 
 
 # MFA
@@ -102,6 +108,18 @@ include_directories         (${MFA_PATH}/include
                             ${HIGHFIVE_PATH}/include/
                             SYSTEM ${MPI_C_INCLUDE_PATH})
 
+# ---- Prefer Spack libs at runtime (avoid system TBB) ----
+# Requires env script to export TORCH_PATH and TBB_PATH (see below).
+list(APPEND CMAKE_BUILD_RPATH
+  $ENV{TORCH_PATH}/lib
+  $ENV{TBB_PATH}/lib
+  /usr/local/cuda-12.6/lib64
+)
+
+set(CMAKE_INSTALL_RPATH "${CMAKE_BUILD_RPATH}")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 
 get_property(dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES)
 foreach(dir ${dirs})

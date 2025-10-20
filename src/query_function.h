@@ -10,7 +10,7 @@
 #include "../utility/utility_function.h"
 #include "mfa_extend.h"
 #include "closed_form_function.h"
-
+#include "INRModel.h"
 
 namespace query_function
 {
@@ -19,10 +19,13 @@ namespace query_function
     template<typename T>
     void query_function(
             const VectorX<T>&   p,                  // parameters of point to decode
-            VectorX<T>&         out,const int function_type=0, const Block<T>* b=nullptr, const VectorXi&     deriv = VectorXi())
+            VectorX<T>&         out,const int function_type=0, const Block<T>* b=nullptr, const VectorXi&     deriv = VectorXi(), const INRModel* inr_model = nullptr)
     {
         switch (function_type)
         {
+        // case -1:
+        //     inr_model->query_derivative(p, out, deriv);
+        //     break;
         case 0:
             mfa_extend::recover_mfa(b, p, out, deriv);
             break;
