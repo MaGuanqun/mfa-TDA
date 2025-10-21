@@ -141,9 +141,22 @@ int main(int argc, char** argv)
 
         VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
 
-        VectorXd p_test(2);
+        VectorXd p_test(3);
         p_test<<0.5,0.5,0.5;
-        inr_model.derivative(p_test);
+        VectorXd result;
+        inr_model.query(p_test,result);
+        std::cout<<"test query "<<result.transpose()<<std::endl;
+        VectorXi deriv(3);
+        deriv<<1,1,0;
+        inr_model.query(p_test,result,deriv);
+        std::cout<<"test second derivative "<<result.transpose()<<std::endl;
+        deriv<<1,0,0;
+        inr_model.query(p_test,result,deriv);
+        std::cout<<"test first derivative " <<result.transpose()<<std::endl;
+        deriv<<1,1,1;
+        inr_model.query(p_test,result,deriv);
+        std::cout<<"test third derivative " <<result.transpose()<<std::endl;
+        // inr_model.derivative(p_test);
 
         // Tracking_degenerate_case tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type);
 

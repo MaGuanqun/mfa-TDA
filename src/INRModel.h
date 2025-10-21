@@ -109,85 +109,73 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
 
 
-
-
-
-        if(derivs.size()==0)
+        if(derivs.size()==0 || derivs.sum()==0)
         {
            // Forward pass
-            torch::Tensor output = module.forward({input}).toTensor(); // [1,1]
-            output = output.to(torch::kCPU);
-            output = output.reshape({});
-            out(0) = static_cast<T>(output.item<float>());
+            torch::Tensor output = module.forward({input}).toTensor().reshape({}); // [1,1]
+            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<float>());
             return;
         }
 
         input.set_requires_grad(true);
         // Forward pass
-        torch::Tensor output = module.forward({input}).toTensor(); // [1,1]
-        output = output.reshape({});
+        torch::Tensor output = module.forward({input}).toTensor().reshape({}); // [1,1]
 
 
 
         if(derivs.sum()==1)
         {
-            torch::Tensor dim;
-
-            if(derivs(0)==1)
-            {
-                dim = input.index({0, 0});
-            }
-            else if (derivs(1)==1)
-            {
-                dim = input.index({0, 1});
-            }
-            else
-            {
-                dim = input.index({0, 2});
-            }
-
-            auto dx_list = torch::autograd::grad(
-                /*outputs=*/{output},
-                /*inputs=*/{dim},                  // <-- only x / y /t!
-                /*grad_outputs=*/{},
-                /*retain_graph=*/false,          // free graph after use
-                /*create_graph=*/false           // faster: no higher-order graph
+            int coord = (derivs(0)==1) ? 0 : (derivs(1)==1 ? 1 : 2);
+            auto g_list = torch::autograd::grad(
+            /*outputs=*/{output},
+            /*inputs=*/{input},
+            /*grad_outputs=*/{},
+            /*retain_graph=*/false,
+            /*create_graph=*/false,
+            /*allow_unused=*/true
             );
 
-            out(0) = dx_list[0].detach().to(torch::kCPU).item<float>();
+            torch::Tensor g_full = g_list[0];  // may be undefined if unused
+            float val = 0.0f;
+            if (g_full.defined()) {
+                // g_full is [1,3]
+                val = g_full.index({0, coord}).detach().to(torch::kCPU).item<float>();
+            } else {
+                // input truly not used in graph => derivative is 0
+                val = 0.0f;
+            }
+
+            out(0) = static_cast<T>(val);
             return;
         }
 
+
+            // Helper to map (nx,ny,nt) -> which coord (0,1,2) is still “active” at each step
+        auto pick_coord = [](int nx, int ny, int nt) {
+            if (nx > 0) return 0;
+            if (ny > 0) return 1;
+            return 2;
+        };
+
+
         if(derivs.sum()==2)
         {
-            //--- First derivative ---
-            torch::Tensor first_deriv;
-            torch::Tensor dim;
-            if (derivs(0) > 0) {
-                dim = input.index({0, 0});
-            } else if (derivs(1) > 0) {
-                dim = input.index({0, 1});
-            } else if (derivs(2) > 0) {
-                dim = input.index({0, 2});
-            }
-            first_deriv = torch::autograd::grad({output}, {dim}, {}, true, true)[0];
-            //--- Second derivative ---
-            torch::Tensor second_deriv;
-            if (derivs(0) == 2) {
-                dim = input.index({0, 0});
-            } else if (derivs(1) == 2) {
-                dim = input.index({0, 1});
-            } else if (derivs(2) == 2) {
-                dim = input.index({0, 2});
-            } else if (derivs(0) == 1 && derivs(1) == 1) {
-                dim = input.index({0, 1});
-            } else if (derivs(0) == 1 && derivs(2) == 1) {
-                dim = input.index({0, 2});
-            } else if (derivs(1) == 1 && derivs(2) == 1) {
-                dim = input.index({0, 2});
-            }
-            second_deriv = torch::autograd::grad({first_deriv}, {dim}, {}, false, false)[0];
-            out(0) = second_deriv.detach().to(torch::kCPU).item<float>();
+            int nx = derivs(0), ny = derivs(1), nt = derivs(2);
+            int c1 = pick_coord(nx, ny, nt);
+
+            // full gradient of f wrt input
+            auto g_full = torch::autograd::grad({output}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/true)[0]; // [1,3]
+            auto g1 = g_full.index({0, c1});  // scalar: ∂f/∂x or ∂f/∂y or ∂f/∂t
+            // consume that count
+            if      (c1==0) --nx;
+            else if (c1==1) --ny;
+            else            --nt;
+
+            // Second derivative: grad of that scalar wrt full input, then index the remaining coord
+            auto g2_full = torch::autograd::grad({g1}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
+            int c2 = pick_coord(nx, ny, nt);
+            auto g2 = g2_full.index({0, c2});
+            out(0) = g2.detach().to(torch::kCPU).item<float>();
             return;
         }
 
@@ -195,42 +183,28 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         {
             int nx=derivs(0), ny=derivs(1), nt=derivs(2);
             // Helper lambda to take grad of a scalar tensor 's' w.r.t. a single coordinate
-            auto grad_wrt_coord = [&](const torch::Tensor& s, int coord, bool need_more) -> torch::Tensor {
-                // coord: 0=x, 1=y, 2=t
-                torch::Tensor var = input.index({0, coord});  // scalar view
-                // create_graph/retain_graph only if more higher-order grads follow
-                auto g = torch::autograd::grad(
-                    /*outputs=*/{s},
-                    /*inputs=*/{var},
-                    /*grad_outputs=*/{},
-                    /*retain_graph=*/need_more,
-                    /*create_graph=*/need_more,
-                    /*allow_unused=*/false
-                )[0];
-                return g; // scalar tensor
-            };
+            int c1 = pick_coord(nx, ny, nt);
+            auto g1_full = torch::autograd::grad({output}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/true)[0]; // [1,3]
+            auto d1 = g1_full.index({0, c1}); // scalar
+            if      (c1==0) --nx;
+            else if (c1==1) --ny;
+            else            --nt;
 
-            torch::Tensor cur = output;
-            int total = nx + ny + nt;
-            // Apply ∂/∂x nx times
-            for (int i = 0; i < nx; ++i) {
-                bool need_more = (i+1 < nx) || (ny > 0) || (nt > 0);
-                cur = grad_wrt_coord(cur, /*x=*/0, need_more);
-            }
-            // Apply ∂/∂y ny times
-            for (int i = 0; i < ny; ++i) {
-                bool need_more = (i+1 < ny) || (nt > 0);
-                cur = grad_wrt_coord(cur, /*y=*/1, need_more);
-            }
-            // Apply ∂/∂t nt times
-            for (int i = 0; i < nt; ++i) {
-                bool need_more = (i+1 < nt);
-                cur = grad_wrt_coord(cur, /*t=*/2, need_more);
-            }
+            // 2nd derivative
+            int c2 = pick_coord(nx, ny, nt);
+            auto g2_full = torch::autograd::grad({d1}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/true)[0]; // [1,3]
+            auto d2 = g2_full.index({0, c2}); // scalar
+            if      (c2==0) --nx;
+            else if (c2==1) --ny;
+            else            --nt;
 
-            out(0) = cur.detach().to(torch::kCPU).item<float>();
+            // 3rd derivative
+            int c3 = pick_coord(nx, ny, nt);
+            auto g3_full = torch::autograd::grad({d2}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
+            auto d3 = g3_full.index({0, c3}); // scalar
+
+            out(0) = d3.detach().to(torch::kCPU).item<float>();
             return;
-
         }
 
         
