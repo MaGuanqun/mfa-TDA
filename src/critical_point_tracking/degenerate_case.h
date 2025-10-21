@@ -23,8 +23,8 @@ private:
     const int function_type;
     const VectorX<T> domain_min;
     const VectorX<T> domain_max;
-    const INRModel* inr_model;
-
+    INRModel<T>* inr_model;
+    
     T degenerate_finding_epsilon;
     T gradient_epsilon;
     int max_itr;
@@ -167,7 +167,7 @@ private:
         }
 
         MatrixX<T> Hessian_f;
-        Hessian(b, p, Hessian_f);
+        Hessian(p, Hessian_f);
         J[0] = Hessian_f.determinant();        
     }
 
@@ -323,7 +323,7 @@ private:
 
 public:
 
-    Tracking_degenerate_case(const VectorX<T>& core_mins_, const VectorX<T>& core_maxs_, T degenerate_finding_epsilon_, T gradient_epsilon_,std::vector<T> same_root_epsilon_, int max_itr_=50,  const int function_type_=0, const Block<T>* b_=nullptr, const INRModel* inr_model_=nullptr)
+    Tracking_degenerate_case(const VectorX<T>& core_mins_, const VectorX<T>& core_maxs_, T degenerate_finding_epsilon_, T gradient_epsilon_,std::vector<T> same_root_epsilon_, int max_itr_=50,  const int function_type_=0, const Block<T>* b_=nullptr, INRModel<T>* inr_model_=nullptr)
     : domain_min(core_mins_), domain_max(core_maxs_), b(b_), function_type(function_type_), degenerate_finding_epsilon(degenerate_finding_epsilon_), gradient_epsilon(gradient_epsilon_), max_itr(max_itr_), same_root_epsilon(same_root_epsilon_), inr_model(inr_model_)
     {
         

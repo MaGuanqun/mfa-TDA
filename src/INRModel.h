@@ -7,9 +7,15 @@
 #include <tuple>
 #include <type_traits>
 
+template<typename T>
 class INRModel {
 public:
     const string function_name;
+    VectorX<T> domain_min;
+    VectorX<T> domain_max;
+    VectorX<T> function_range;
+    VectorXi block_num;
+    VectorXi point_num_in_block;
 
     INRModel(const string& func_name, const std::string& model_path = "inr_base.pt"): function_name(func_name),
     device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU),
@@ -25,13 +31,19 @@ public:
             std::cerr << "Error loading INR model: " << e.what() << std::endl;
             loaded = false;
         }
+        this->domain_min = domain_min_(func_name);
+        this->domain_max = domain_max_(func_name);
+        this->function_range = function_range_(func_name);
+        this->block_num = block_num_(func_name);
+        this->point_num_in_block = point_num_in_block_(func_name);
+
     }
 
     bool isLoaded() const { return loaded; }
 
-static VectorXd domain_min(const string& func_name)
+static VectorX<T> domain_min_(const string& func_name)
     {
-        VectorXd result(3);
+        VectorX<T> result(3);
         if(func_name=="quartic_potential_2")
         {
             result << -2.0,-2.0,0.0;
@@ -39,9 +51,9 @@ static VectorXd domain_min(const string& func_name)
         return result;
     } 
 
-static VectorXd domain_max(const string& func_name)
+static VectorX<T> domain_max_(const string& func_name)
     {
-        VectorXd result(3);
+        VectorX<T> result(3);
         if(func_name=="quartic_potential_2")
         {
             result << 2.0,2.0,4.0;
@@ -49,9 +61,9 @@ static VectorXd domain_max(const string& func_name)
         return result;
     } 
 
-static VectorXd function_range(const string& func_name)
+static VectorX<T> function_range_(const string& func_name)
     {
-        VectorXd result(2);
+        VectorX<T> result(2);
         if(func_name=="quartic_potential_2")
         {
             result <<  -2.0, 2.0;
@@ -59,7 +71,7 @@ static VectorXd function_range(const string& func_name)
         return result;
     }
 
-static VectorXi block_num(const string& func_name) //number of blocks that splits the domain in each dimension
+static VectorXi block_num_(const string& func_name) //number of blocks that splits the domain in each dimension
     {
         VectorXi result(3);
         if(func_name=="quartic_potential_2")
@@ -71,7 +83,7 @@ static VectorXi block_num(const string& func_name) //number of blocks that split
     }
 
 
-static VectorXi point_num_in_block(const string& func_name) //number of initial points in each block in each dimension
+static VectorXi point_num_in_block_(const string& func_name) //number of initial points in each block in each dimension
     {
         VectorXi result(3);
         if(func_name=="quartic_potential_2")
@@ -81,7 +93,150 @@ static VectorXi point_num_in_block(const string& func_name) //number of initial 
         return result;
     }
 
-    template <typename T>
+
+    void query(const VectorX<T>& p_, VectorX<T>& out, const VectorXi& derivs = VectorXi()) {
+        out.resize(1);
+        if (!loaded) throw std::runtime_error("INR model not loaded");
+
+        // Convert input (float or double) -> float32 tensor
+        Eigen::VectorXf p = p_.template cast<float>();
+
+        torch::Tensor input = torch::from_blob(
+            (void*)p.data(),
+            {1, p_.size()},
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+        ).clone();
+        input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
+
+
+
+
+
+        if(derivs.size()==0)
+        {
+           // Forward pass
+            torch::Tensor output = module.forward({input}).toTensor(); // [1,1]
+            output = output.to(torch::kCPU);
+            output = output.reshape({});
+            out(0) = static_cast<T>(output.item<float>());
+            return;
+        }
+
+        input.set_requires_grad(true);
+        // Forward pass
+        torch::Tensor output = module.forward({input}).toTensor(); // [1,1]
+        output = output.reshape({});
+
+
+
+        if(derivs.sum()==1)
+        {
+            torch::Tensor dim;
+
+            if(derivs(0)==1)
+            {
+                dim = input.index({0, 0});
+            }
+            else if (derivs(1)==1)
+            {
+                dim = input.index({0, 1});
+            }
+            else
+            {
+                dim = input.index({0, 2});
+            }
+
+            auto dx_list = torch::autograd::grad(
+                /*outputs=*/{output},
+                /*inputs=*/{dim},                  // <-- only x / y /t!
+                /*grad_outputs=*/{},
+                /*retain_graph=*/false,          // free graph after use
+                /*create_graph=*/false           // faster: no higher-order graph
+            );
+
+            out(0) = dx_list[0].detach().to(torch::kCPU).item<float>();
+            return;
+        }
+
+        if(derivs.sum()==2)
+        {
+            //--- First derivative ---
+            torch::Tensor first_deriv;
+            torch::Tensor dim;
+            if (derivs(0) > 0) {
+                dim = input.index({0, 0});
+            } else if (derivs(1) > 0) {
+                dim = input.index({0, 1});
+            } else if (derivs(2) > 0) {
+                dim = input.index({0, 2});
+            }
+            first_deriv = torch::autograd::grad({output}, {dim}, {}, true, true)[0];
+            //--- Second derivative ---
+            torch::Tensor second_deriv;
+            if (derivs(0) == 2) {
+                dim = input.index({0, 0});
+            } else if (derivs(1) == 2) {
+                dim = input.index({0, 1});
+            } else if (derivs(2) == 2) {
+                dim = input.index({0, 2});
+            } else if (derivs(0) == 1 && derivs(1) == 1) {
+                dim = input.index({0, 1});
+            } else if (derivs(0) == 1 && derivs(2) == 1) {
+                dim = input.index({0, 2});
+            } else if (derivs(1) == 1 && derivs(2) == 1) {
+                dim = input.index({0, 2});
+            }
+            second_deriv = torch::autograd::grad({first_deriv}, {dim}, {}, false, false)[0];
+            out(0) = second_deriv.detach().to(torch::kCPU).item<float>();
+            return;
+        }
+
+        if(derivs.sum()==3)
+        {
+            int nx=derivs(0), ny=derivs(1), nt=derivs(2);
+            // Helper lambda to take grad of a scalar tensor 's' w.r.t. a single coordinate
+            auto grad_wrt_coord = [&](const torch::Tensor& s, int coord, bool need_more) -> torch::Tensor {
+                // coord: 0=x, 1=y, 2=t
+                torch::Tensor var = input.index({0, coord});  // scalar view
+                // create_graph/retain_graph only if more higher-order grads follow
+                auto g = torch::autograd::grad(
+                    /*outputs=*/{s},
+                    /*inputs=*/{var},
+                    /*grad_outputs=*/{},
+                    /*retain_graph=*/need_more,
+                    /*create_graph=*/need_more,
+                    /*allow_unused=*/false
+                )[0];
+                return g; // scalar tensor
+            };
+
+            torch::Tensor cur = output;
+            int total = nx + ny + nt;
+            // Apply ∂/∂x nx times
+            for (int i = 0; i < nx; ++i) {
+                bool need_more = (i+1 < nx) || (ny > 0) || (nt > 0);
+                cur = grad_wrt_coord(cur, /*x=*/0, need_more);
+            }
+            // Apply ∂/∂y ny times
+            for (int i = 0; i < ny; ++i) {
+                bool need_more = (i+1 < ny) || (nt > 0);
+                cur = grad_wrt_coord(cur, /*y=*/1, need_more);
+            }
+            // Apply ∂/∂t nt times
+            for (int i = 0; i < nt; ++i) {
+                bool need_more = (i+1 < nt);
+                cur = grad_wrt_coord(cur, /*t=*/2, need_more);
+            }
+
+            out(0) = cur.detach().to(torch::kCPU).item<float>();
+            return;
+
+        }
+
+        
+    }
+
+
     void derivative(const VectorX<T>& p_) {
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
@@ -90,11 +245,12 @@ static VectorXi point_num_in_block(const string& func_name) //number of initial 
 
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),
-            {1, 3},
+            {1, p_.size()},
             torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
         ).clone();
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
         input.set_requires_grad(true);
+
 
         // Forward pass
         torch::Tensor output = module.forward({input}).toTensor(); // [1,1]
@@ -141,7 +297,7 @@ static VectorXi point_num_in_block(const string& func_name) //number of initial 
         torch::Tensor dyyt = gyy3.index({0, 2}); // ∂³f/∂y²∂t
 
         std::vector<torch::Tensor> third_order_xy = torch::autograd::grad(
-            {dxy}, {input}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/true);
+            {dxy}, {input}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/false);
         torch::Tensor gxy3=third_order_xy.at(0);
         torch::Tensor dxyt = gxy3.index({0, 2}); // ∂³f/∂x∂y∂t
 

@@ -117,17 +117,17 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    INRModel inr_model(input_function_name,input_model);
+    INRModel<double> inr_model(input_function_name,input_model);
     int function_type=-1; 
 
     auto start_time = std::chrono::high_resolution_clock::now();
         
 
-        Eigen::VectorXd local_domain_range=INRModel::domain_max(input_function_name)-INRModel::domain_min(input_function_name);
-        VectorXd core_maxs = INRModel::domain_max(input_function_name);
-        VectorXd core_mins = INRModel::domain_min(input_function_name);
+        Eigen::VectorXd local_domain_range=inr_model.domain_max-inr_model.domain_min;
+        VectorXd core_maxs = inr_model.domain_max;
+        VectorXd core_mins = inr_model.domain_min;
 
-        VectorXi span_num = INRModel::block_num(input_function_name);
+        VectorXi span_num = inr_model.block_num;
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
@@ -139,7 +139,7 @@ int main(int argc, char** argv)
         std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
 
 
-        VectorXi point_num_in_block = INRModel::point_num_in_block(input_function_name); //number of initial points in a block
+        VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
 
         VectorXd p_test(2);
         p_test<<0.5,0.5,0.5;
