@@ -64,7 +64,7 @@ J_threshold="1e-12"
 
 
 if [ "${data_type}" = "quartic_potential_2" ]; then
-    input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
+    input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
 fi
 
 # gdb --args 

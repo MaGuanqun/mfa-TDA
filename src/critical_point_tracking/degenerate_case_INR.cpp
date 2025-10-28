@@ -81,21 +81,21 @@ int main(int argc, char** argv)
     opts::Options ops;
 
 
-    double shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
+    float shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
     // string input_sample_point_number = "100-100";
 
     string degenerate_point_file = "degenerate_point.dat";
     
-    double J_threshold = std::numeric_limits<double>::epsilon();
+    float J_threshold = std::numeric_limits<float>::epsilon();
 
     int correction_max_itr = 30;
-    double time_step = 1e-3;
-    double spatial_step_size = 1.0;
+    float time_step = 1e-3;
+    float spatial_step_size = 1.0;
 
     string input_shrink_ratio = "0-1-0-1-0-1";
 
 
-    double grad_epsilon = std::numeric_limits<double>::epsilon();
+    float grad_epsilon = std::numeric_limits<float>::epsilon();
     string input_function_name="quartic_potential";
     
     int max_itr=50;
@@ -123,8 +123,8 @@ int main(int argc, char** argv)
 
 
     std::istringstream iss(input_shrink_ratio);
-    std::vector<double> shrink_ratio;
-    double number;
+    std::vector<float> shrink_ratio;
+    float number;
     std::string token;
     while (std::getline(iss, token, '-')) {
         std::istringstream tokenStream(token);
@@ -140,33 +140,33 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    INRModel<double> inr_model(input_function_name,input_model);
+    INRModel<float> inr_model(input_function_name,input_model);
     int function_type=-1; 
 
     auto start_time = std::chrono::high_resolution_clock::now();
         
 
-        Eigen::VectorXd local_domain_range=inr_model.domain_max-inr_model.domain_min;
-        VectorXd core_maxs = inr_model.domain_max;
-        VectorXd core_mins = inr_model.domain_min;
+        Eigen::VectorXf local_domain_range=inr_model.domain_max-inr_model.domain_min;
+        VectorXf core_maxs = inr_model.domain_max;
+        VectorXf core_mins = inr_model.domain_min;
 
         VectorXi span_num = inr_model.block_num;
 
-        VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
+        VectorXf Span_size = local_domain_range.cwiseQuotient(span_num.cast<float>());
 
-        std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
+        std::vector<float> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
         step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
 
 
 
-        std::vector<VectorX<double>> root; //the inner vector store the root in a span
+        std::vector<VectorX<float>> root; //the inner vector store the root in a span
 
 
         VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
 
-        // VectorXd p_test(3);
+        // VectorXf p_test(3);
         // p_test<<0.5,0.5,0.5;
-        // VectorXd result;
+        // VectorXf result;
         // inr_model.query(p_test,result);
         // std::cout<<"test query "<<result.transpose()<<std::endl;
         // VectorXi deriv(3);
@@ -182,12 +182,12 @@ int main(int argc, char** argv)
 
         // inr_model.derivative(p_test);
 
-        Tracking_degenerate_case<double> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model);
+        Tracking_degenerate_case<float> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model);
 
-        std::vector<VectorXi> record_span;
-        choose_span(record_span);
+        // std::vector<VectorXi> record_span;
+        // choose_span(record_span);
 
-        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num,record_span);
+        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
 
         std::cout<<root.size()<<" roots before deduplication"<<std::endl;
         if(root.empty())
@@ -198,7 +198,7 @@ int main(int argc, char** argv)
         }
 
 
-        std::vector<VectorX<double>> root_unique;
+        std::vector<VectorX<float>> root_unique;
         spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
         std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
 
@@ -206,7 +206,7 @@ int main(int argc, char** argv)
         std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
 
         //save roots to a file
-        std::vector<MatrixXd> root_matrix(1);
+        std::vector<MatrixXf> root_matrix(1);
 
         root_matrix[0].resize(root_unique.size(),root_unique[0].size());
         for(int j=0;j<root_unique.size();j++)

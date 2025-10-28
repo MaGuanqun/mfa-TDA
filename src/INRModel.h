@@ -19,8 +19,8 @@ public:
     VectorXi point_num_in_block;
 
     INRModel(const string& func_name, const std::string& model_path = "inr_base.pt"): function_name(func_name),
-    // device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU),
-    device(torch::kCPU),
+    device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU),
+    // device(torch::kCPU),
     loaded(false) {
         try {
             module = torch::jit::load(model_path, device);
@@ -43,6 +43,8 @@ public:
         std::cout<<"INR model domain min: "<<this->domain_min.transpose()<<std::endl;
         std::cout<<"INR model domain max: "<<this->domain_max.transpose()<<std::endl;
         std::cout<<"INR model domain_range range: "<<this->domain_range.transpose()<<std::endl;
+
+        init_buffers();
 
     }
 
@@ -162,21 +164,52 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         // TORCH_CHECK(p_.size() == 3, "Input must be (x,y,t)");
 
         // 0) Build input (CPU -> clone -> to(device))
-        // Eigen::VectorXf p = p_.template cast<double>();
-        torch::Tensor input = torch::from_blob(
-            (void*)p.data(), {1, 3},
-            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
-        ).clone();//.to(device, /*non_blocking=*/false, /*copy=*/true);
+        // Eigen::VectorXf p = p_.template cast<float>();
 
-        // 1) Forward (scalar)
-        input.set_requires_grad(true);
-        torch::Tensor f = module.forward({input}).toTensor().reshape({});  // scalar
+        input_.detach_();                 // drop previous graph
+
+        // torch::NoGradGuard nog;
+
+
+        if (input_.is_cpu()) {
+            // CPU path: write directly via pointer (no accessor overhead)
+            float* buf = input_.data_ptr<float>();   // contiguous [1,3]
+            buf[0] = static_cast<float>(p(0));
+            buf[1] = static_cast<float>(p(1));
+            buf[2] = static_cast<float>(p(2));
+        } else {
+            // CUDA path: never use accessor or data_ptr to write from host.
+            float* h = input_host_.data_ptr<float>();
+            h[0] = static_cast<float>(p(0));
+            h[1] = static_cast<float>(p(1));
+            h[2] = static_cast<float>(p(2));
+            input_.copy_(input_host_, /*non_blocking=*/false);
+        }
+
+
+        input_.requires_grad_(true);      // we need autograd
+        // auto in_acc = input_.accessor<T,2>();
+        // in_acc[0][0] = p[0];
+        // in_acc[0][1] = p[1];
+        // in_acc[0][2] = p[2];
+
+        torch::Tensor f = module.forward({input_}).toTensor().reshape({}); // scalar
+
+
+        // torch::Tensor input = torch::from_blob(
+        //     (void*)p.data(), {1, 3},
+        //     torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+        // ).clone();//.to(device, /*non_blocking=*/false, /*copy=*/true);
+
+        // // 1) Forward (scalar)
+        // input.set_requires_grad(true);
+        // torch::Tensor f = module.forward({input}).toTensor().reshape({});  // scalar
 
         // ---- First order gradient wrt FULL input (needed once) ----
         // Keep graph because we'll need higher-order derivatives.
         torch::Tensor g_full = torch::autograd::grad(
             /*outputs=*/{f},
-            /*inputs=*/{input},
+            /*inputs=*/{input_},
             /*grad_outputs=*/{},
             /*retain_graph=*/true,
             /*create_graph=*/true
@@ -191,7 +224,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         // We exclude any t-columns for the Hessian output (xy-block only).
         torch::Tensor Hx_full = torch::autograd::grad(
             /*outputs=*/{fx},
-            /*inputs=*/{input},
+            /*inputs=*/{input_},
             /*grad_outputs=*/{},
             /*retain_graph=*/true,
             /*create_graph=*/true
@@ -199,7 +232,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         torch::Tensor Hy_full = torch::autograd::grad(
             /*outputs=*/{fy},
-            /*inputs=*/{input},
+            /*inputs=*/{input_},
             /*grad_outputs=*/{},
             /*retain_graph=*/true,
             /*create_graph=*/true
@@ -214,37 +247,37 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         // Grad of fxx wrt FULL input -> [fxxx, fxxy, fxxt]
         torch::Tensor G_fxx = torch::autograd::grad(
-            {fxx}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/false
+            {fxx}, {input_}, {}, /*retain_graph=*/true, /*create_graph=*/false
         )[0]; // [1,3]
 
         // Grad of fxy wrt FULL input -> [fxyx, fxyy, fxyt]
         torch::Tensor G_fxy = torch::autograd::grad(
-            {fxy}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/false
+            {fxy}, {input_}, {}, /*retain_graph=*/true, /*create_graph=*/false
         )[0]; // [1,3]
 
         // Grad of fyy wrt FULL input -> [fyyx, fyyy, fyyt]
         torch::Tensor G_fyy = torch::autograd::grad(
-            {fyy}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/false
+            {fyy}, {input_}, {}, /*retain_graph=*/true, /*create_graph=*/false
         )[0]; // [1,3]
 
         // Grad (fx, fy)
         grad_out.resize(3);
-        grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<double>());
-        grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<double>());
-        grad_out(2) = static_cast<T>(ft.detach().to(torch::kCPU).item<double>());
+        grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<float>());
+        grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<float>());
+        grad_out(2) = static_cast<T>(ft.detach().to(torch::kCPU).item<float>());
 
         convert_gradient_to_domain(grad_out);
 
 
         // 
         Hessian.resize(3,3);
-        Hessian(0,0) = static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<double>()); // fxx
-        Hessian(0,1) = static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<double>()); // fxy
+        Hessian(0,0) = static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<float>()); // fxx
+        Hessian(0,1) = static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<float>()); // fxy
         Hessian(1,0) = Hessian(0,1); 
-        Hessian(1,1) = static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<double>()); // fyy
-        Hessian(0,2) = static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<double>()); // fxt
+        Hessian(1,1) = static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<float>()); // fyy
+        Hessian(0,2) = static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<float>()); // fxt
         Hessian(2,0) = Hessian(0,2);
-        Hessian(1,2) = static_cast<T>(Hy_full.index({0,2}).detach().to(torch::kCPU).item<double>()); // fyt
+        Hessian(1,2) = static_cast<T>(Hy_full.index({0,2}).detach().to(torch::kCPU).item<float>()); // fyt
         Hessian(2,1) = Hessian(1,2);
         Hessian(2,2) = 0.0; // ftt excluded
 
@@ -252,16 +285,16 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         // Third (spatial only): [fxxx, fxxy, fxyy, fyyy]
         third_spatial_out.resize(4);
-        third_spatial_out(0) = static_cast<T>(G_fxx.index({0,0}).detach().to(torch::kCPU).item<double>()); // fxxx
-        third_spatial_out(1) = static_cast<T>(G_fxx.index({0,1}).detach().to(torch::kCPU).item<double>()); // fxxy
-        third_spatial_out(2) = static_cast<T>(G_fxy.index({0,1}).detach().to(torch::kCPU).item<double>()); // fxyy
-        third_spatial_out(3) = static_cast<T>(G_fyy.index({0,1}).detach().to(torch::kCPU).item<double>()); // fyyy
+        third_spatial_out(0) = static_cast<T>(G_fxx.index({0,0}).detach().to(torch::kCPU).item<float>()); // fxxx
+        third_spatial_out(1) = static_cast<T>(G_fxx.index({0,1}).detach().to(torch::kCPU).item<float>()); // fxxy
+        third_spatial_out(2) = static_cast<T>(G_fxy.index({0,1}).detach().to(torch::kCPU).item<float>()); // fxyy
+        third_spatial_out(3) = static_cast<T>(G_fyy.index({0,1}).detach().to(torch::kCPU).item<float>()); // fyyy
 
         // Third (with exactly one t): [fxxt, fxyt, fyyt]
         third_tmix_out.resize(3);
-        third_tmix_out(0) = static_cast<T>(G_fxx.index({0,2}).detach().to(torch::kCPU).item<double>()); // fxxt
-        third_tmix_out(1) = static_cast<T>(G_fxy.index({0,2}).detach().to(torch::kCPU).item<double>()); // fxyt
-        third_tmix_out(2) = static_cast<T>(G_fyy.index({0,2}).detach().to(torch::kCPU).item<double>()); // fyyt
+        third_tmix_out(0) = static_cast<T>(G_fxx.index({0,2}).detach().to(torch::kCPU).item<float>()); // fxxt
+        third_tmix_out(1) = static_cast<T>(G_fxy.index({0,2}).detach().to(torch::kCPU).item<float>()); // fxyt
+        third_tmix_out(2) = static_cast<T>(G_fyy.index({0,2}).detach().to(torch::kCPU).item<float>()); // fyyt
 
         convert_third_order_to_domain(third_spatial_out, third_tmix_out);
     }
@@ -271,13 +304,13 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         out.resize(1);
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
-        // Convert input (double or double) -> float32 tensor
+        // Convert input (float or float) -> float32 tensor
         
 
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),
             {1, p.size()},
-            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
         ).clone();
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
 
@@ -286,7 +319,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         {
            // Forward pass
             torch::Tensor output = module.forward({input}).toTensor().reshape({}); // [1,1]
-            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<double>());
+            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<float>());
             return;
         }
 
@@ -309,10 +342,10 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             );
 
             torch::Tensor g_full = g_list[0];  // may be undefined if unused
-            double val = 0.0f;
+            float val = 0.0f;
             if (g_full.defined()) {
                 // g_full is [1,3]
-                val = g_full.index({0, coord}).detach().to(torch::kCPU).item<double>();
+                val = g_full.index({0, coord}).detach().to(torch::kCPU).item<float>();
             } else {
                 // input truly not used in graph => derivative is 0
                 val = 0.0f;
@@ -348,7 +381,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             auto g2_full = torch::autograd::grad({g1}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
             int c2 = pick_coord(nx, ny, nt);
             auto g2 = g2_full.index({0, c2});
-            out(0) = g2.detach().to(torch::kCPU).item<double>();
+            out(0) = g2.detach().to(torch::kCPU).item<float>();
             return;
         }
 
@@ -376,7 +409,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             auto g3_full = torch::autograd::grad({d2}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
             auto d3 = g3_full.index({0, c3}); // scalar
 
-            out(0) = d3.detach().to(torch::kCPU).item<double>();
+            out(0) = d3.detach().to(torch::kCPU).item<float>();
             return;
         }
 
@@ -390,12 +423,12 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
     void derivative(const VectorX<T>& p) {
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
-        // Convert input (double or double) -> float32 tensor
+        // Convert input (float or float) -> float32 tensor
 
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),
             {1, p.size()},
-            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
         ).clone();
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
         input.set_requires_grad(true);
@@ -453,9 +486,9 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         // Return the required derivatives as a custom structure or vector
         VectorX<T> grad(p.size());
 
-        grad(0) = static_cast<T>(dx.item<double>());
-        grad(1) = static_cast<T>(dy.item<double>());
-        grad(2) = static_cast<T>(dz.item<double>());
+        grad(0) = static_cast<T>(dx.item<float>());
+        grad(1) = static_cast<T>(dy.item<float>());
+        grad(2) = static_cast<T>(dz.item<float>());
 
         std::cout<<"grad "<<grad.transpose()<<std::endl;
     }
@@ -464,4 +497,26 @@ private:
     torch::jit::script::Module module;
     torch::Device device{torch::kCPU};
     bool loaded = false;
+
+    torch::Tensor input_;        // [1,3], cached
+    torch::Tensor input_host_;   // [1,3], pinned CPU (only used when device is CUDA)
+    torch::Tensor grad_buf_;     // [1,3], cached
+
+    // Call this once after loading module
+    void init_buffers() {
+        auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+        input_    = torch::zeros({1,3}, opts);
+        grad_buf_ = torch::empty({1,3}, opts);
+
+        if (device.is_cuda()) {
+            input_host_ = torch::empty({1,3},
+                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU).pinned_memory(true));
+        } else {
+            input_host_ = torch::Tensor();
+        }
+
+        at::set_num_threads(std::max(1u, std::thread::hardware_concurrency()));
+        at::set_num_interop_threads(2);
+    }
+
 };
