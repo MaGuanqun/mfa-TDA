@@ -16,7 +16,7 @@ def sample_size(function_name='expotential'):
     if function_name in ['expotential','schwefel']:
         return (401, 401)
     elif function_name in ['quartic_potential_2']:
-        return (50, 50, 50)
+        return (200, 200, 100)
     elif function_name == 'vortex_street':
         return (50, 80, 100)
     else:

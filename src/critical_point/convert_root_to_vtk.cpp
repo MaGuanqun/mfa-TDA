@@ -143,7 +143,7 @@ int main(int argc, char** argv)
     
     // initialize DIY
     
-    std::vector<Eigen::MatrixXd> root;
+    std::vector<Eigen::MatrixXf> root_;
 
     std::ifstream file(infile.c_str());
     if (!file) {
@@ -152,7 +152,13 @@ int main(int argc, char** argv)
     }
 
 
-    utility::loadMatrixVector(infile.c_str(),root);
+    utility::loadMatrixVector(infile.c_str(),root_);
+
+    std::vector<Eigen::MatrixXd> root;
+    for(auto mat:root_)
+    {
+        root.push_back(mat.cast<double>());
+    }
 
     std::vector<Eigen::MatrixXd> duplicate_num;
     if(!duplicate_file.empty())
@@ -203,7 +209,7 @@ int main(int argc, char** argv)
         diy::io::read_blocks(input_mfa_file.c_str(), world, assigner, master, &Block<real_t>::load);
         std::cout << master.size() << " blocks read from file "<< input_mfa_file << "\n\n";
 
-
+        
 
         VectorXd min_ori,max_ori;
 

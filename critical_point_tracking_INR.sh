@@ -7,6 +7,7 @@ write_vtk="./build/src/convert/write_vtk"
 tracking_explicit="./build/src/critical_point_tracking/critical_point_tracking_explicit"
 
 degenerate_case_INR="./build/src/critical_point_tracking/degenerate_case_INR"
+test_derivatives="./build/src/critical_point_tracking/test_derivatives"
 
 convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
 
@@ -60,17 +61,19 @@ upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 root_finding_epsilon="1e-12"
 J_threshold="1e-12"
 
-point_itr_threshold="4.0"
 
 
 if [ "${data_type}" = "quartic_potential_2" ]; then
-    input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
+    input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
 fi
 
+# gdb --args 
 
+"${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
 
-"${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
-
+# "${test_derivatives}" -f "${data_type}" -m "${input_model}"
+# # 
+# "${convert_root_to_vtk}" -f "${degenerate_point_INR}" -o "${degenerate_point_INR}.csv" -j 0
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
@@ -102,7 +105,7 @@ conda activate mfa_env
 # directly work on raw explicit function
 
 # 
-# "${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0
+
 
 #gdb --args 
 # "${tracking_explicit}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}" -p "${point_itr_threshold}"

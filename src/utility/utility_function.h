@@ -86,7 +86,7 @@ namespace utility
             in.read((char*)(&matrix_row), sizeof(size_t));
             in.read((char*)(&matrix_col), sizeof(size_t));
             root[i].resize(matrix_row,matrix_col);
-            in.read((char*)(root[i].data()), matrix_row*matrix_col*sizeof(double));
+            in.read((char*)(root[i].data()), matrix_row*matrix_col*sizeof(T));
         }
         in.close();
     }

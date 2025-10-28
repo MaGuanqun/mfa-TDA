@@ -9,6 +9,7 @@ import argparse
 def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max):
     data =np.fromfile(input_bin, dtype=np.float64)
     if data.size != dims[0] * dims[1] * dims[2]:
+        print(data.size)
         raise ValueError("Data size does not match the provided dimensions.")
 
 
@@ -38,6 +39,7 @@ def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max):
         z_array = vtk.vtkDoubleArray()
         z_array.SetName(f"{z:03d}")
         z_array.SetNumberOfComponents(1)
+        # z_array.InsertNextValue(3.0)
         z_array.InsertNextValue(min[2]+z_value*z)
         image_data.GetFieldData().AddArray(z_array)
 
@@ -76,7 +78,7 @@ if function == 'rotating_gaussian':
 elif function == 'quartic_potential' or function == 'quartic_potential_2':
     min = np.array([-2.0, -2.0, 0.0])
     max =np.array([2.0, 2.0, 4.0])
-    dim = np.array([50,50,50])
+    dim = np.array([200,200,100])
 elif function == 'vortex_street':
     dim = np.array([100, 80, 50])
     min = np.array([0.0, 0.0, 0.0])

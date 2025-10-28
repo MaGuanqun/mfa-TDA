@@ -13,19 +13,21 @@ public:
     const string function_name;
     VectorX<T> domain_min;
     VectorX<T> domain_max;
+    VectorX<T> domain_range;
     VectorX<T> function_range;
     VectorXi block_num;
     VectorXi point_num_in_block;
 
     INRModel(const string& func_name, const std::string& model_path = "inr_base.pt"): function_name(func_name),
-    device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU),
+    // device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU),
+    device(torch::kCPU),
     loaded(false) {
         try {
-            module = torch::jit::load(model_path);
-            module.to(device);
+            module = torch::jit::load(model_path, device);
+            // module.to(device);
             module.eval();
             loaded = true;
-            std::cout << "Loaded INR base model (float32) on "
+            std::cout << "Loaded INR base model on "
                       << (device.is_cuda() ? "CUDA" : "CPU") << std::endl;
         } catch (const c10::Error& e) {
             std::cerr << "Error loading INR model: " << e.what() << std::endl;
@@ -33,9 +35,14 @@ public:
         }
         this->domain_min = domain_min_(func_name);
         this->domain_max = domain_max_(func_name);
+        this->domain_range = this->domain_max - this->domain_min;
         this->function_range = function_range_(func_name);
         this->block_num = block_num_(func_name);
         this->point_num_in_block = point_num_in_block_(func_name);
+
+        std::cout<<"INR model domain min: "<<this->domain_min.transpose()<<std::endl;
+        std::cout<<"INR model domain max: "<<this->domain_max.transpose()<<std::endl;
+        std::cout<<"INR model domain_range range: "<<this->domain_range.transpose()<<std::endl;
 
     }
 
@@ -93,18 +100,184 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         return result;
     }
 
+    // data is in [-1,1]
+    VectorX<T> convert_point_to_domain(const VectorX<T>& p_) 
+    {
+        VectorX<T> param = (p_-domain_min).cwiseQuotient(domain_range) * 2.0 - VectorX<T>::Constant(p_.size(),1.0);
+        return param;
+    }
 
-    void query(const VectorX<T>& p_, VectorX<T>& out, const VectorXi& derivs = VectorXi()) {
+    void convert_gradient_to_domain(VectorX<T>& grad)
+    {
+        grad = grad.cwiseQuotient(domain_range)*2.0;
+    }
+
+    void convert_hessian_to_domain(Eigen::MatrixX<T>& Hessian)
+    {
+        for(int i=0;i<Hessian.rows();++i)
+        {
+            for(int j=i;j<Hessian.cols();++j)
+            {
+                Hessian(i,j)=4.0*Hessian(i,j)/(domain_range(i)*domain_range(j));
+                Hessian(j,i)=Hessian(i,j);
+            }
+        }
+    }
+
+
+    // VectorX<T>& third_spatial_out,            // size 4: [fxxx, fxxy, fxyy, fyyy]
+    // VectorX<T>& third_tmix_out)               // size 3: [fxxt, fxyt, fyyt]
+    void convert_third_order_to_domain(VectorX<T>& third_spatial, VectorX<T>& third_tmix)
+    {
+        // Spatial third
+        third_spatial(0)=third_spatial(0)/(domain_range(0)*domain_range(0)*domain_range(0)); //fxxx
+        third_spatial(1)=third_spatial(1)/(domain_range(0)*domain_range(0)*domain_range(1)); //fxxy
+        third_spatial(2)=third_spatial(2)/(domain_range(0)*domain_range(1)*domain_range(1)); //fxyy
+        third_spatial(3)=third_spatial(3)/(domain_range(1)*domain_range(1)*domain_range(1)); //fyyy
+
+        third_spatial = third_spatial * 8.0;
+
+        // Time-mixed third
+        third_tmix(0)=third_tmix(0)/(domain_range(0)*domain_range(0)*domain_range(2)); //fxxt
+        third_tmix(1)=third_tmix(1)/(domain_range(0)*domain_range(1)*domain_range(2)); //fxyt
+        third_tmix(2)=third_tmix(2)/(domain_range(1)*domain_range(1)*domain_range(2)); //fyyt
+
+        third_tmix = third_tmix * 8.0;
+    }
+
+
+    // Computes value, grad, Hessian (xy-only), and selected 3rd-order partials.
+    // Excludes any Hessian entries with t and any 3rd-order terms with t^2 or t^3.
+    void query_up_to_third_derivative(const VectorX<T>& point,
+                VectorX<T>& grad_out,                     // size 3: [fx, fy]
+                Eigen::MatrixX<T>& Hessian,            // [ [fxx, fxy, fxt], [fyx, fyy, fyt], [fxt, fyt]], exclude ftt
+                VectorX<T>& third_spatial_out,            // size 4: [fxxx, fxxy, fxyy, fyyy]
+                VectorX<T>& third_tmix_out)               // size 3: [fxxt, fxyt, fyyt]
+    {
+
+        
+        VectorX<T> p = convert_point_to_domain(point);
+
+        if (!loaded) throw std::runtime_error("INR model not loaded");
+        // TORCH_CHECK(p_.size() == 3, "Input must be (x,y,t)");
+
+        // 0) Build input (CPU -> clone -> to(device))
+        // Eigen::VectorXf p = p_.template cast<double>();
+        torch::Tensor input = torch::from_blob(
+            (void*)p.data(), {1, 3},
+            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
+        ).clone();//.to(device, /*non_blocking=*/false, /*copy=*/true);
+
+        // 1) Forward (scalar)
+        input.set_requires_grad(true);
+        torch::Tensor f = module.forward({input}).toTensor().reshape({});  // scalar
+
+        // ---- First order gradient wrt FULL input (needed once) ----
+        // Keep graph because we'll need higher-order derivatives.
+        torch::Tensor g_full = torch::autograd::grad(
+            /*outputs=*/{f},
+            /*inputs=*/{input},
+            /*grad_outputs=*/{},
+            /*retain_graph=*/true,
+            /*create_graph=*/true
+        )[0];  // shape [1,3]
+
+        // Extract grad components
+        auto fx = g_full.index({0, 0});
+        auto fy = g_full.index({0, 1});
+        auto ft = g_full.index({0, 2});
+
+        // ---- Second order: rows of Hessian are grads of fx and fy wrt FULL input ----
+        // We exclude any t-columns for the Hessian output (xy-block only).
+        torch::Tensor Hx_full = torch::autograd::grad(
+            /*outputs=*/{fx},
+            /*inputs=*/{input},
+            /*grad_outputs=*/{},
+            /*retain_graph=*/true,
+            /*create_graph=*/true
+        )[0];  // [1,3] = [fxx, fxy, fxt]
+
+        torch::Tensor Hy_full = torch::autograd::grad(
+            /*outputs=*/{fy},
+            /*inputs=*/{input},
+            /*grad_outputs=*/{},
+            /*retain_graph=*/true,
+            /*create_graph=*/true
+        )[0];  // [1,3] = [fyx, fyy, fyt]
+
+        // ---- Third order (no t^2 or t^3): take grads of second-order spatial terms ----
+        // Spatial third: from fxx and fyy and fxy
+        torch::Tensor fxx = Hx_full.index({0, 0}); // fxx
+        torch::Tensor fxy = Hx_full.index({0, 1}); // fxy
+        torch::Tensor fyx = Hy_full.index({0, 0}); // fyx (== fxy ideally)
+        torch::Tensor fyy = Hy_full.index({0, 1}); // fyy
+
+        // Grad of fxx wrt FULL input -> [fxxx, fxxy, fxxt]
+        torch::Tensor G_fxx = torch::autograd::grad(
+            {fxx}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/false
+        )[0]; // [1,3]
+
+        // Grad of fxy wrt FULL input -> [fxyx, fxyy, fxyt]
+        torch::Tensor G_fxy = torch::autograd::grad(
+            {fxy}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/false
+        )[0]; // [1,3]
+
+        // Grad of fyy wrt FULL input -> [fyyx, fyyy, fyyt]
+        torch::Tensor G_fyy = torch::autograd::grad(
+            {fyy}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/false
+        )[0]; // [1,3]
+
+        // Grad (fx, fy)
+        grad_out.resize(3);
+        grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<double>());
+        grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<double>());
+        grad_out(2) = static_cast<T>(ft.detach().to(torch::kCPU).item<double>());
+
+        convert_gradient_to_domain(grad_out);
+
+
+        // 
+        Hessian.resize(3,3);
+        Hessian(0,0) = static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<double>()); // fxx
+        Hessian(0,1) = static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<double>()); // fxy
+        Hessian(1,0) = Hessian(0,1); 
+        Hessian(1,1) = static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<double>()); // fyy
+        Hessian(0,2) = static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<double>()); // fxt
+        Hessian(2,0) = Hessian(0,2);
+        Hessian(1,2) = static_cast<T>(Hy_full.index({0,2}).detach().to(torch::kCPU).item<double>()); // fyt
+        Hessian(2,1) = Hessian(1,2);
+        Hessian(2,2) = 0.0; // ftt excluded
+
+        convert_hessian_to_domain(Hessian);
+
+        // Third (spatial only): [fxxx, fxxy, fxyy, fyyy]
+        third_spatial_out.resize(4);
+        third_spatial_out(0) = static_cast<T>(G_fxx.index({0,0}).detach().to(torch::kCPU).item<double>()); // fxxx
+        third_spatial_out(1) = static_cast<T>(G_fxx.index({0,1}).detach().to(torch::kCPU).item<double>()); // fxxy
+        third_spatial_out(2) = static_cast<T>(G_fxy.index({0,1}).detach().to(torch::kCPU).item<double>()); // fxyy
+        third_spatial_out(3) = static_cast<T>(G_fyy.index({0,1}).detach().to(torch::kCPU).item<double>()); // fyyy
+
+        // Third (with exactly one t): [fxxt, fxyt, fyyt]
+        third_tmix_out.resize(3);
+        third_tmix_out(0) = static_cast<T>(G_fxx.index({0,2}).detach().to(torch::kCPU).item<double>()); // fxxt
+        third_tmix_out(1) = static_cast<T>(G_fxy.index({0,2}).detach().to(torch::kCPU).item<double>()); // fxyt
+        third_tmix_out(2) = static_cast<T>(G_fyy.index({0,2}).detach().to(torch::kCPU).item<double>()); // fyyt
+
+        convert_third_order_to_domain(third_spatial_out, third_tmix_out);
+    }
+
+
+    void query(const VectorX<T>& p, VectorX<T>& out, const VectorXi& derivs = VectorXi()) {
         out.resize(1);
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
-        // Convert input (float or double) -> float32 tensor
-        Eigen::VectorXf p = p_.template cast<float>();
+        // Convert input (double or double) -> float32 tensor
+        
 
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),
-            {1, p_.size()},
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+            {1, p.size()},
+            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
         ).clone();
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
 
@@ -113,7 +286,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         {
            // Forward pass
             torch::Tensor output = module.forward({input}).toTensor().reshape({}); // [1,1]
-            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<float>());
+            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<double>());
             return;
         }
 
@@ -136,10 +309,10 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             );
 
             torch::Tensor g_full = g_list[0];  // may be undefined if unused
-            float val = 0.0f;
+            double val = 0.0f;
             if (g_full.defined()) {
                 // g_full is [1,3]
-                val = g_full.index({0, coord}).detach().to(torch::kCPU).item<float>();
+                val = g_full.index({0, coord}).detach().to(torch::kCPU).item<double>();
             } else {
                 // input truly not used in graph => derivative is 0
                 val = 0.0f;
@@ -175,7 +348,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             auto g2_full = torch::autograd::grad({g1}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
             int c2 = pick_coord(nx, ny, nt);
             auto g2 = g2_full.index({0, c2});
-            out(0) = g2.detach().to(torch::kCPU).item<float>();
+            out(0) = g2.detach().to(torch::kCPU).item<double>();
             return;
         }
 
@@ -203,7 +376,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             auto g3_full = torch::autograd::grad({d2}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
             auto d3 = g3_full.index({0, c3}); // scalar
 
-            out(0) = d3.detach().to(torch::kCPU).item<float>();
+            out(0) = d3.detach().to(torch::kCPU).item<double>();
             return;
         }
 
@@ -211,16 +384,18 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
     }
 
 
-    void derivative(const VectorX<T>& p_) {
+
+
+
+    void derivative(const VectorX<T>& p) {
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
-        // Convert input (float or double) -> float32 tensor
-        Eigen::VectorXf p = p_.template cast<float>();
+        // Convert input (double or double) -> float32 tensor
 
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),
-            {1, p_.size()},
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+            {1, p.size()},
+            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
         ).clone();
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
         input.set_requires_grad(true);
@@ -276,11 +451,11 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         torch::Tensor dxyt = gxy3.index({0, 2}); // ∂³f/∂x∂y∂t
 
         // Return the required derivatives as a custom structure or vector
-        VectorX<T> grad(p_.size());
+        VectorX<T> grad(p.size());
 
-        grad(0) = static_cast<T>(dx.item<float>());
-        grad(1) = static_cast<T>(dy.item<float>());
-        grad(2) = static_cast<T>(dz.item<float>());
+        grad(0) = static_cast<T>(dx.item<double>());
+        grad(1) = static_cast<T>(dy.item<double>());
+        grad(2) = static_cast<T>(dz.item<double>());
 
         std::cout<<"grad "<<grad.transpose()<<std::endl;
     }

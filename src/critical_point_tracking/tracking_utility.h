@@ -73,7 +73,7 @@ namespace tracking_utility
         {
             if(std::abs(z[z.size()-1]-root_so_far[i][z.size()-1])<threshold.back())
             {
-                if((z.head(z.size()-1)-root_so_far[i].head(z.size()-1)).squaredNorm()<threshold[0]*threshold[0])
+                if((z.head(z.size()-1)-root_so_far[i].head(z.size()-1)).norm()<threshold[0])
                 {
                     return false;
                 }

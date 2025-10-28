@@ -37,12 +37,39 @@
 using namespace std;
 
 
-// namespace {
-//     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
-// }
+namespace {
+    tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
+}
+
+void choose_span(std::vector<VectorXi>& record_span)
+{
+    std::vector<std::vector<int>> span_index(3);
+    span_index[0]={4,5};
+    span_index[1]={4,5};
+    span_index[2]={2,3};
+
+    std::cout<<"total number of spans to process: "<<span_index[0].size()<<" "<<span_index[1].size()<<" "<<span_index[2].size()<<std::endl;
+
+    for(int i=0;i<span_index[0].size();++i)
+    {
+        for(int j=0;j<span_index[1].size();++j)
+        {
+            for(int k=0;k<span_index[2].size();++k)
+            {
+                VectorXi temp(3);
+                temp<<span_index[0][i],span_index[1][j],span_index[2][k];
+                record_span.emplace_back(temp);
+            }
+        }
+    }
+}
 
 int main(int argc, char** argv)
 {
+
+    // setenv("CUDA_VISIBLE_DEVICES", "", /*overwrite=*/1);
+
+
     diy::mpi::environment  env(argc, argv);     // equivalent of MPI_Init(argc, argv)/MPI_Finalize()
     diy::mpi::communicator world;               // equivalent of MPI_COMM_WORLD
 
@@ -59,19 +86,16 @@ int main(int argc, char** argv)
 
     string degenerate_point_file = "degenerate_point.dat";
     
-    double J_threshold = 1e-5;
+    double J_threshold = std::numeric_limits<double>::epsilon();
 
     int correction_max_itr = 30;
     double time_step = 1e-3;
     double spatial_step_size = 1.0;
 
-    real_t hessian_threshold = 1e-20;
-
     string input_shrink_ratio = "0-1-0-1-0-1";
 
-    real_t point_itr_threshold = 0.5;
 
-    real_t grad_epsilon = 1e-8;
+    double grad_epsilon = std::numeric_limits<double>::epsilon();
     string input_function_name="quartic_potential";
     
     int max_itr=50;
@@ -87,7 +111,6 @@ int main(int argc, char** argv)
 
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
 
-    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point is away from block center than point_itr_threshold * block size");
 
     ops >> opts::Option('g', "grad_epsilon", grad_epsilon, " gradient epsilon for root finding");
   
@@ -136,52 +159,62 @@ int main(int argc, char** argv)
 
 
 
-        std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
+        std::vector<VectorX<double>> root; //the inner vector store the root in a span
 
 
         VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
 
-        VectorXd p_test(3);
-        p_test<<0.5,0.5,0.5;
-        VectorXd result;
-        inr_model.query(p_test,result);
-        std::cout<<"test query "<<result.transpose()<<std::endl;
-        VectorXi deriv(3);
-        deriv<<1,1,0;
-        inr_model.query(p_test,result,deriv);
-        std::cout<<"test second derivative "<<result.transpose()<<std::endl;
-        deriv<<1,0,0;
-        inr_model.query(p_test,result,deriv);
-        std::cout<<"test first derivative " <<result.transpose()<<std::endl;
-        deriv<<1,1,1;
-        inr_model.query(p_test,result,deriv);
-        std::cout<<"test third derivative " <<result.transpose()<<std::endl;
+        // VectorXd p_test(3);
+        // p_test<<0.5,0.5,0.5;
+        // VectorXd result;
+        // inr_model.query(p_test,result);
+        // std::cout<<"test query "<<result.transpose()<<std::endl;
+        // VectorXi deriv(3);
+        // deriv<<1,1,0;
+        // inr_model.query(p_test,result,deriv);
+        // std::cout<<"test second derivative "<<result.transpose()<<std::endl;
+        // deriv<<1,0,0;
+        // inr_model.query(p_test,result,deriv);
+        // std::cout<<"test first derivative " <<result.transpose()<<std::endl;
+        // deriv<<1,1,1;
+        // inr_model.query(p_test,result,deriv);
+        // std::cout<<"test third derivative " <<result.transpose()<<std::endl;
+
         // inr_model.derivative(p_test);
 
-        // Tracking_degenerate_case tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type);
+        Tracking_degenerate_case<double> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model);
 
-        // tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
+        std::vector<VectorXi> record_span;
+        choose_span(record_span);
+
+        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num,record_span);
+
+        std::cout<<root.size()<<" roots before deduplication"<<std::endl;
+        if(root.empty())
+        {
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
+            return 1;
+        }
 
 
+        std::vector<VectorX<double>> root_unique;
+        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
+        std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
 
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
 
-        // std::vector<VectorX<double>> root_unique;
-        // spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
-        // std::cout<<"degenerate case size "<<root_unique.size()<<std::endl;
+        //save roots to a file
+        std::vector<MatrixXd> root_matrix(1);
 
-        // auto end_time = std::chrono::high_resolution_clock::now();
-        // std::cout<<"degenerate case extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()/1000<<std::endl;
+        root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+        for(int j=0;j<root_unique.size();j++)
+        {
+            root_matrix[0].row(j) = root_unique[j].transpose();
+        }
 
-        // //save roots to a file
-        // std::vector<MatrixXd> root_matrix(1);
-
-        // root_matrix[0].resize(root_unique.size(),root_unique[0].size());
-        // for(int j=0;j<root_unique.size();j++)
-        // {
-        //     root_matrix[0].row(j) = root_unique[j].transpose();
-        // }
-
-        // utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
+        utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
 
 
 }
