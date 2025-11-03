@@ -280,7 +280,7 @@ private:
         MatrixX<T> dev_J;
         VectorX<T> J;
         compute_J_dev_J(p,J,dev_J);
-        if(J.squaredNorm()<degenerate_finding_epsilon*degenerate_finding_epsilon)
+        if(J.norm()<degenerate_finding_epsilon)
         {
             result = p;
             return true;
@@ -313,8 +313,8 @@ private:
             compute_J_dev_J(p,J,dev_J);   
 
             if(itr_num>0){
-                if(J.squaredNorm()< degenerate_finding_epsilon*degenerate_finding_epsilon 
-                && J.tail(J.size()-1).squaredNorm()<gradient_epsilon*gradient_epsilon
+                if(J.norm()< degenerate_finding_epsilon 
+                && J.tail(J.size()-1).norm()<gradient_epsilon
                 ){                    
                     result = p;
                     return true;

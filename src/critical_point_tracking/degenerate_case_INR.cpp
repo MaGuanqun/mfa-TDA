@@ -184,8 +184,8 @@ int main(int argc, char** argv)
 
         Tracking_degenerate_case<float> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model);
 
-        // std::vector<VectorXi> record_span;
-        // choose_span(record_span);
+        std::vector<VectorXi> record_span;
+        choose_span(record_span);
 
         tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
 

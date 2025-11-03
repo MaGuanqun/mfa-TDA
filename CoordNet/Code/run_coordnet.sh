@@ -5,7 +5,7 @@ conda activate siren
 
 
 
-function_name=quartic_potential_2 #quartic_potential_2, vortex_street
+function_name=vortex_street #quartic_potential_2, vortex_street
 
 
 omega=30.0
@@ -15,7 +15,7 @@ raw_vti_file="../Result/$function_name/raw_file.vti"
 raw_critical_point="../Result/$function_name/raw_critical_points.csv"
 
 application='super-spatial-temporal'
-num_res=5
+num_res=1
 activate='sine' # sine, tanh
 init_feature=64
 
@@ -31,7 +31,7 @@ vti_critical_point="../Result/$function_name/vti_critical_points.csv"
 
 # python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch
 
-python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000
+# python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env

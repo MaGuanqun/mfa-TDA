@@ -22,7 +22,7 @@ template<typename T>
 class Find_boundary_roots
 {
 private:
-    const Block<T>* b;
+    Block<T>* b;
     const int function_type;
     const VectorX<T> core_mins;
     const VectorX<T> core_maxs;
@@ -32,10 +32,16 @@ private:
     const VectorXi point_num_in_block;
     const VectorXi set_block_num;
     std::vector<T> same_root_epsilon;
+    INRModel<T>* inr_model=nullptr;
 
 
     void compute_f_dev_f(VectorX<T>& p, VectorX<T>& f, MatrixX<T>& dev_f, int removed_dom)
     {
+        if(inr_model!=nullptr)
+        {
+            inr_model->query_dim_reduced_grad_hessian(p, f, dev_f, removed_dom);
+            return;
+        }
         tracking_derivatives::compute_Hessian(p, dev_f, removed_dom, function_type, b);
         tracking_derivatives::compute_gradient(p, f, function_type, b);
     }
@@ -126,7 +132,7 @@ private:
 
 
 public:
-    Find_boundary_roots(T root_finding_epsi, const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, const VectorXi set_block_n,std::vector<T> same_root_epsi, int func_type=0, int max_it=50, T point_itr_thres=0.5, const Block<T>* block=nullptr): root_finding_epsilon(root_finding_epsi), core_mins(domain_min), core_maxs(domain_max), point_num_in_block(point_num_in_b), b(block), function_type(func_type),max_itr(max_it), point_itr_threshold(point_itr_thres), set_block_num(set_block_n), same_root_epsilon(same_root_epsi) {}
+    Find_boundary_roots(T root_finding_epsi, const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, const VectorXi set_block_n,std::vector<T> same_root_epsi, int func_type=0, int max_it=50, T point_itr_thres=0.5, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): root_finding_epsilon(root_finding_epsi), core_mins(domain_min), core_maxs(domain_max), point_num_in_block(point_num_in_b), b(block), function_type(func_type),max_itr(max_it), point_itr_threshold(point_itr_thres), set_block_num(set_block_n), same_root_epsilon(same_root_epsi),inr_model(inr_model_) {}
     
     ~Find_boundary_roots() {}
 

@@ -24,7 +24,7 @@ class Boundary_critical_point_tracking{
 
 private:
 
-    const Block<T>* b;
+    Block<T>* b;
     const int function_type;
     const VectorX<T> core_mins;
     const VectorX<T> core_maxs;
@@ -32,6 +32,7 @@ private:
     T gradient_epsilon;
     T time_step;
     T spatial_step_size;
+    INRModel<T>* inr_model=nullptr;
     
     
     bool tracing_single_cpt(VectorX<T>& initial, std::vector<VectorX<T>>& result,
@@ -40,7 +41,7 @@ private:
         result.clear();
 
         std::vector<VectorX<T>> temp_result;
-        particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,true,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b);
+        particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,true,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b,inr_model);
         // if(temp_result.size()>1)
         // {
         //     result.pop_back();
@@ -81,7 +82,7 @@ private:
 
 
 public:
-    Boundary_critical_point_tracking(const VectorX<T> domain_min, const VectorX<T> domain_max, T gradient_epsi, T time_step_, T spatial_step_size_, int func_type=0, int correction_max_it=50, const Block<T>* block=nullptr): core_mins(domain_min), core_maxs(domain_max),  b(block), function_type(func_type),correction_max_itr(correction_max_it), gradient_epsilon(gradient_epsi), time_step(time_step_), spatial_step_size(spatial_step_size_) {}
+    Boundary_critical_point_tracking(const VectorX<T> domain_min, const VectorX<T> domain_max, T gradient_epsi, T time_step_, T spatial_step_size_, int func_type=0, int correction_max_it=50, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): core_mins(domain_min), core_maxs(domain_max),  b(block), function_type(func_type),correction_max_itr(correction_max_it), gradient_epsilon(gradient_epsi), time_step(time_step_), spatial_step_size(spatial_step_size_), inr_model(inr_model_) {}
 
     ~Boundary_critical_point_tracking(){}
 

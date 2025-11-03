@@ -84,7 +84,7 @@ Derivatives numerical_derivatives(
         pm(i) -= h(i);
         const float fp = eval_func(model, pp);
         const float fm = eval_func(model, pm);
-        d.grad(i) = (fp - fm) / (2.0 * static_cast<float>(h(i)));
+        d.grad(2-i) = (fp - fm) / (2.0 * static_cast<float>(h(i)));
     }
 
     // Second derivatives (pure + mixed)
@@ -94,7 +94,7 @@ Derivatives numerical_derivatives(
         pm(i) -= h(i);
         const float fp = eval_func(model, pp);
         const float fm = eval_func(model, pm);
-        d.H(i,i) = (fp - 2.0*f0 + fm) / std::pow(static_cast<float>(h(i)), 2);
+        d.H(2-i,2-i) = (fp - 2.0*f0 + fm) / std::pow(static_cast<float>(h(i)), 2);
 
         for (int j = i+1; j < n; ++j) {
             Eigen::Matrix<T,-1,1> ppp = p, ppm = p, pmp = p, pmm = p;
@@ -106,7 +106,7 @@ Derivatives numerical_derivatives(
                 ( eval_func(model, ppp) - eval_func(model, ppm)
                 - eval_func(model, pmp) + eval_func(model, pmm))
                 / (4.0 * static_cast<float>(h(i)) * static_cast<float>(h(j)));
-            d.H(i,j) = d.H(j,i) = val;
+            d.H(2-i,2-j) = d.H(2-j,2-i) = val;
         }
     }
 
@@ -121,7 +121,7 @@ Derivatives numerical_derivatives(
         const float f1p = eval_func(model, p1p);
         const float f1m = eval_func(model, p1m);
         const float f2m = eval_func(model, p2m);
-        d.third.T[i][i][i] = (f2m - 2*f1m + 2*f1p - f2p)
+        d.third.T[2-i][2-i][2-i] = (f2m - 2*f1m + 2*f1p - f2p)
                            / std::pow(static_cast<float>(h(i)), 3)
                            / 2.0;
     }
@@ -146,9 +146,10 @@ Derivatives numerical_derivatives(
         const float val = (second_i(q_plus) - second_i(q_minus))
                          / (2.0 * static_cast<float>(h(j)));
 
-        d.third.T[i][i][j] = val;
-        d.third.T[i][j][i] = val;
-        d.third.T[j][i][i] = val;
+        d.third.T[2-i][2-i][2-j] = val;
+        d.third.T[2-i][2-j][2-i] = val;
+        d.third.T[2-j][2-i][2-i] = val;
+
     }
 
     // Fully mixed d^3/(dx dy dz) for 3D
@@ -165,19 +166,74 @@ Derivatives numerical_derivatives(
                 }
         const float denom = 8.0 * static_cast<float>(h(0))*static_cast<float>(h(1))*static_cast<float>(h(2));
         const float v = sum / denom;
-        d.third.T[0][1][2] = d.third.T[0][2][1] = d.third.T[1][0][2] =
-        d.third.T[1][2][0] = d.third.T[2][0][1] = d.third.T[2][1][0] = v;
+        d.third.T[2][1][0] = d.third.T[2][0][1] = d.third.T[1][2][0] =
+        d.third.T[1][0][2] = d.third.T[0][2][1] = d.third.T[0][1][2] = v;
     }
 
-    // d.grad.reverseInPlace();
+    d.grad.reverseInPlace();
 
-    // d.H.row(0).swap(d.H.row(2));
-    // d.H.col(0).swap(d.H.col(2));  // do both to preserve symmetry/semantics
+    d.H.row(0).swap(d.H.row(2));
+    d.H.col(0).swap(d.H.col(2));  // do both to preserve symmetry/semantics
 
-    // model.convert_gradient_to_domain(d.grad);
-    // model.convert_hessian_to_domain(d.H);
+    model.convert_gradient_to_domain(d.grad);
+    model.convert_hessian_to_domain(d.H);
 
     return d;
+}
+
+
+
+// ============================================================
+// Helper functions
+// ============================================================
+
+// Read vertices (v x y z) from OBJ file
+static bool read_obj_vertices(const std::string& path,
+                              std::vector<Eigen::VectorXf>& verts)
+{
+    std::ifstream in(path);
+    if (!in) {
+        std::cerr << "[err] cannot open OBJ: " << path << "\n";
+        return false;
+    }
+    verts.clear();
+    std::string line;
+    VectorXf temp(3);
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#')
+            continue;
+        if (line.size() > 2 && line[0] == 'v' && std::isspace(line[1])) {
+            std::istringstream ss(line.substr(2));
+            float x = 0.f, y = 0.f, z = 0.f;
+            if (ss >> x >> y >> z)
+                temp << x, y, z;
+                verts.emplace_back(temp);
+        }
+    }
+    std::cout << "[info] loaded " << verts.size() << " vertices from OBJ.\n";
+    return true;
+}
+
+// Write gradients to CSV
+static bool write_gradients_csv(const std::string& path,
+                                const std::vector<Eigen::VectorXf>& verts,
+                                const std::vector<Eigen::VectorXf>& grads)
+{
+    if (verts.size() != grads.size()) {
+        std::cerr << "[err] verts/grads size mismatch\n";
+        return false;
+    }
+    std::ofstream out(path);
+    if (!out) {
+        std::cerr << "[err] cannot open output CSV: " << path << "\n";
+        return false;
+    }
+    out << "x,y,t,fx,fy,ft\n";
+    for (size_t i = 0; i < verts.size(); ++i) {
+        out << verts[i](0) << ',' << verts[i](1) << ',' << verts[i](2) << ','
+            << grads[i](0) << ',' << grads[i](1) << ',' << grads[i](2) << '\n';
+    }
+    return true;
 }
 
 
@@ -222,7 +278,7 @@ int main(int argc, char** argv)
     int max_itr=50;
     string input_model="";
 
-        string trace_file="";
+    string trace_file="";
     string output_csv_path = "gradients.csv";
 
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input function name");
@@ -230,6 +286,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('m', "input_model", input_model, " input INR model");
     ops >> opts::Option('t', "trace_file", trace_file, " file name of critical point trajectory");
     ops >> opts::Option('o', "output_csv", output_csv_path, " output CSV file for gradients");
+
   
     if (!ops.parse(argc, argv) || help)
     {
@@ -278,26 +335,25 @@ int main(int argc, char** argv)
 
         Eigen::VectorXf p(3);
         // p<<-0.292091, 0.30837, 1.11537;
-        // p<<0.288695, 0.00458166,0.016144;
         p<<30, 59,20;
 
         Eigen::VectorXf h(3);
-        h << 1e-2, 1e-2, 1e-2;
-        h[0]*=inr_model.domain_range[2]/2;
-        h[1]*=inr_model.domain_range[1]/2;
-        h[2]*=inr_model.domain_range[0]/2;
+        h << 1e-3, 1e-3, 1e-3;
         // // Step sizes: choose small but not too small; scale by |p_i|+1 to reduce cancellation.
         // float eps = std::cbrt(std::numeric_limits<float>::epsilon()); // ~1.5e-5
         // float hx = eps * std::max(1.0, std::abs(p.x()));
         // float hy = eps * std::max(1.0, std::abs(p.y()));
         // float hz = eps * std::max(1.0, std::abs(p.z()));
 
+ std::cout << "CUDA available: " << torch::cuda::is_available() << "\n";
+    std::cout << "CUDA device count: " << torch::cuda::device_count() << "\n";
 
-        // VectorXf p_ = inr_model.convert_point_to_domain_reverse_order(p);
-        Derivatives d = numerical_derivatives(inr_model, p, h);
 
-        // d.H /= 4.0;
-        // d
+        VectorXf p_ = inr_model.convert_point_to_domain_reverse_order(p);
+
+        std::cout<<p.transpose()<<" "<<p_.transpose()<<std::endl;
+
+        Derivatives d = numerical_derivatives(inr_model, p_, h);
 
 
 
@@ -311,14 +367,13 @@ int main(int argc, char** argv)
         std::cout << "grad:\n" << d.grad.transpose()<<" with "<< grad.transpose() << "\n\n";
         std::cout << "Hessian:\n" << d.H << "\n\n";
         std::cout << "Hessian from INRModel:\n" << hessian << "\n\n";
-        std::cout<< d.H - hessian <<std::endl;
 
         VectorXf third_derivative_spatial_test(4);
-        third_derivative_spatial_test << d.third.T[0][0][0], d.third.T[0][0][1], d.third.T[0][1][1], d.third.T[1][1][1];
-        third_derivative_spatial_test /= 8.0;
+        third_derivative_spatial_test << d.third.T[2][2][2], d.third.T[2][2][1], d.third.T[2][1][1], d.third.T[1][1][1];
+        
         VectorXf third_derivative_time_test(3);
-        third_derivative_time_test << d.third.T[0][0][2], d.third.T[0][1][2], d.third.T[1][1][2];
-        third_derivative_time_test /= 8.0;
+        third_derivative_time_test << d.third.T[2][2][0], d.third.T[2][1][0], d.third.T[1][1][0];
+        inr_model.convert_third_order_to_domain(third_derivative_spatial_test, third_derivative_time_test);
 
         std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
         std::cout<< third_derivative_spatial_test.transpose()<< "\n\n";
@@ -326,23 +381,91 @@ int main(int argc, char** argv)
         std::cout<< third_derivative_time_test.transpose()<< "\n\n";
 
 
-        // VectorXf p_test(3);
-        // p_test<<0.5,0.5,0.5;
-        // VectorXf result;
-        // inr_model.query(p_test,result);
-        // std::cout<<"test query "<<result.transpose()<<std::endl;
-        // VectorXi deriv(3);
-        // deriv<<1,1,0;
-        // inr_model.query(p_test,result,deriv);
-        // std::cout<<"test second derivative "<<result.transpose()<<std::endl;
-        // deriv<<1,0,0;
-        // inr_model.query(p_test,result,deriv);
-        // std::cout<<"test first derivative " <<result.transpose()<<std::endl;
-        // deriv<<1,1,1;
-        // inr_model.query(p_test,result,deriv);
-        // std::cout<<"test third derivative " <<result.transpose()<<std::endl;
 
-        // inr_model.derivative(p_test);
+
+    // // ============================================================
+    // // Case 1: Compute gradients for all vertices in OBJ
+    // // ============================================================
+    // if (!trace_file.empty()) {
+    //     std::vector<Eigen::VectorXf> verts;
+    //     if (!read_obj_vertices(trace_file, verts)) {
+    //         return 1;
+    //     }
+    //     if (verts.empty()) {
+    //         std::cerr << "[warn] no 'v' lines found in OBJ.\n";
+    //         return 1;
+    //     }
+
+    //     std::vector<Eigen::VectorXf> grads(verts.size());
+    //     Eigen::VectorXf grad_out;
+    //     Eigen::MatrixXf H;
+    //     Eigen::VectorXf third_spatial, third_tmix;
+    //     int degenerate_count = 0;
+    //     // Evaluate gradient for each vertex
+    //     for (size_t i = 0; i < verts.size(); ++i) {
+    //         const Eigen::Vector3f& p = verts[i];
+    //         inr_model.query_up_to_third_derivative(
+    //             p, grad_out, H, third_spatial, third_tmix
+    //         );
+    //         grads[i] = Eigen::VectorXf(3);
+    //         grads[i] << grad_out(0), grad_out(1), grad_out(2);
+
+    //         Eigen::ColPivHouseholderQR<MatrixX<float>> qr(H);
+    //         if(qr.rank() < H.cols())
+    //         {
+    //             degenerate_count++;
+    //         }
+    //     }
+
+    //     // Save results
+    //     if (!write_gradients_csv(output_csv_path, verts, grads)) {
+    //         return 1;
+    //     }
+
+    //     // Compute summary statistics
+    //     Eigen::VectorXf mean_grad = Eigen::VectorXf::Zero(3);
+    //     double mean_mag = 0.0;
+    //     for (auto& g : grads) {
+    //         mean_grad += g;
+    //         mean_mag += g.norm();
+    //     }
+    //     mean_grad /= static_cast<float>(grads.size());
+    //     mean_mag  /= grads.size();
+
+    //     double var_mag = 0.0;
+    //     for (auto& g : grads)
+    //         var_mag += std::pow(g.norm() - mean_mag, 2.0);
+    //     var_mag /= grads.size();
+    //     double std_mag = std::sqrt(var_mag);
+
+    //     // Print summary
+    //     std::cout << "[ok] wrote gradients for " << grads.size()
+    //               << " vertices to: " << output_csv_path << "\n";
+    //     std::cout << "[summary]\n";
+    //     std::cout << "  Average gradient components: "
+    //               << mean_grad.head(2).transpose() << "\n";
+    //     std::cout << "  Average magnitude: " << mean_mag << "\n";
+    //     std::cout << "  Magnitude std. dev: " << std_mag << "\n";
+    //     std::cout<< "  Degenerate count: " << degenerate_count << "\n";
+    //     return 0;
+    // }
+    //     // VectorXf p_test(3);
+    //     // p_test<<0.5,0.5,0.5;
+    //     // VectorXf result;
+    //     // inr_model.query(p_test,result);
+    //     // std::cout<<"test query "<<result.transpose()<<std::endl;
+    //     // VectorXi deriv(3);
+    //     // deriv<<1,1,0;
+    //     // inr_model.query(p_test,result,deriv);
+    //     // std::cout<<"test second derivative "<<result.transpose()<<std::endl;
+    //     // deriv<<1,0,0;
+    //     // inr_model.query(p_test,result,deriv);
+    //     // std::cout<<"test first derivative " <<result.transpose()<<std::endl;
+    //     // deriv<<1,1,1;
+    //     // inr_model.query(p_test,result,deriv);
+    //     // std::cout<<"test third derivative " <<result.transpose()<<std::endl;
+
+    //     // inr_model.derivative(p_test);
 
 
 }

@@ -27,7 +27,7 @@ class Degenerate_case_tracing{
 
 private:
 
-    const Block<T>* b;
+    Block<T>* b;
     const int function_type;
     const VectorX<T> core_mins;
     const VectorX<T> core_maxs;
@@ -37,6 +37,7 @@ private:
     std::vector<T> ori_step_size;
     T root_finding_grad_epsilon;
     int correction_max_itr;
+    INRModel<T>* inr_model=nullptr;
 
     Find_boundary_roots<T>* find_boundary_roots;
 
@@ -146,45 +147,6 @@ private:
 
 
     
-    // bool check_boundary_point_pass_degenerate(const VectorX<T>& degenerate_point, VectorX<T>& point, std::vector<T>& step_size, int max_itr)
-    // {
-    //     VectorX<T> step(point.size());
-    //     for(int i=0;i<point.size();++i)
-    //     {
-    //         step[i] = ori_step_size[i];
-    //     }
-
-    //     VectorX<T> block_min = degenerate_point- step;
-    //     VectorX<T> block_max = degenerate_point+ step;
-    //     for(int i=0;i<point.size();++i)
-    //     {
-    //         if(block_min[i]<core_mins[i])
-    //         {
-    //             block_min[i] = core_mins[i];
-    //         }
-    //         if(block_max[i]>core_maxs[i])
-    //         {
-    //             block_max[i] = core_maxs[i];
-    //         }
-    //     }
-
-    //     int distance_stop_itr = 2;
-    //     T d_max_square = distance_stop_itr*distance_stop_itr*(block_max - block_min).squaredNorm();
-
-    //     std::vector<VectorX<T>> trajectory;
-
-    //     bool pass =  particle_tracing::trajectory_pass_degenerate_point(step_size.back(), step_size[0], point, point[point.size()-1]<degenerate_point[degenerate_point.size()-1],  root_finding_grad_epsilon, max_itr, d_max_square, block_min, block_max,degenerate_point,trajectory,core_mins, core_maxs,function_type,b);
-
-
-    //     // std::cout<<"====="<<step_size.back()<<" "<<step_size[0]<<" "<<trajectory.size()<<std::endl;
- 
-    //     string name = "trajectory.csv";
-    //     utility::saveToCSV(name, trajectory);
-        
-    //     //determine if the trajectory passes the degenerate point
-    //     return pass;
-    // }
-
     void find_neighbor_start_points(const VectorX<T>& degenerate_point, std::vector<T>& step_size, std::vector<VectorX<T>>& start_points)
     {
         start_points.clear();
@@ -202,7 +164,7 @@ private:
     {
 
         particle_tracing::tracing_one_direction(time_step, spatial_step, start_point, trace, upper_tracing,  root_finding_grad_epsilon, correction_max_itr, d_max_square,
-        core_mins, core_maxs, core_mins, core_maxs, function_type,b);
+        core_mins, core_maxs, core_mins, core_maxs, function_type,b, inr_model);
         
         if(!upper_tracing)
         {
@@ -213,7 +175,7 @@ private:
 
 public:
 
-    Degenerate_case_tracing(const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, Find_boundary_roots<T>* find_boundary_roots_, T time_step_, T spatial_step_size_, T root_finding_grad_epsilon_, int correction_max_it, int func_type=0, const Block<T>* block=nullptr): core_mins(domain_min), core_maxs(domain_max), b(block), function_type(func_type), point_num_in_block(point_num_in_b),find_boundary_roots(find_boundary_roots_), time_step(time_step_), spatial_step(spatial_step_size_), root_finding_grad_epsilon(root_finding_grad_epsilon_),correction_max_itr(correction_max_it)
+    Degenerate_case_tracing(const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, Find_boundary_roots<T>* find_boundary_roots_, T time_step_, T spatial_step_size_, T root_finding_grad_epsilon_, int correction_max_it, int func_type=0, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): core_mins(domain_min), core_maxs(domain_max), b(block), function_type(func_type), point_num_in_block(point_num_in_b),find_boundary_roots(find_boundary_roots_), time_step(time_step_), spatial_step(spatial_step_size_), root_finding_grad_epsilon(root_finding_grad_epsilon_),correction_max_itr(correction_max_it),inr_model(inr_model_)
     {
         ori_step_size.resize(domain_min.size(), spatial_step_size_);
         ori_step_size.back() = time_step_; // the last dimension is time
@@ -221,7 +183,7 @@ public:
 
     static void read_degenerate_point(std::string& filename, std::vector<VectorX<T>>& singular_points)
     {
-        std::vector<Eigen::MatrixXd> root;
+        std::vector<Eigen::MatrixX<T>> root;
 
         std::ifstream file(filename.c_str());
         if (!file) {
