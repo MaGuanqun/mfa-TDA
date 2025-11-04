@@ -353,6 +353,154 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
     }
 
+// Full batched query that mirrors your scalar query_up_to_third_derivative()
+    // points: vector of (x,y,t) in *domain* coords (same as your scalar API)
+    void query_up_to_third_derivative_batch(
+        const std::vector<Eigen::Matrix<T, -1, 1>>& points,
+        std::vector<Eigen::VectorX<T>>&       grad_B,
+        std::vector<Eigen::MatrixX<T>>& H_B,
+        std::vector<VectorX<T>>&       third_sp_B,
+        std::vector<VectorX<T>>&       third_tmix_B)
+    {
+        TORCH_CHECK(loaded, "INR model not loaded");
+        TORCH_CHECK(!points.empty(), "Empty batch");
+
+        const int B = static_cast<int>(points.size());
+        const int D = 3; // (t,y,x) inside the network; you already reverse before/after.
+
+        // Build a [B,3] tensor of normalized/reversed inputs (t, y, x) — same as your scalar path
+        torch::Tensor inputs = torch::empty({B, D}, torch::TensorOptions()
+                                                    .dtype(torch::kFloat32)
+                                                    .device(torch::kCPU));
+        {
+            auto acc = inputs.accessor<float, 2>();
+            for (int b = 0; b < B; ++b) {
+                Eigen::Matrix<T, -1, 1> pr = convert_point_to_domain_reverse_order(points[b]); // [-1,1], reversed
+                acc[b][0] = static_cast<float>(pr(0)); // t
+                acc[b][1] = static_cast<float>(pr(1)); // y
+                acc[b][2] = static_cast<float>(pr(2)); // x
+            }
+        }
+        inputs = inputs.to(device, /*non_blocking=*/false, /*copy=*/true);
+        inputs.set_requires_grad(true);
+
+        // Forward once for whole batch, keep graph for higher derivatives
+        torch::Tensor out = module.forward({inputs}).toTensor().view({B}); // shape [B]
+
+        // Prepare outputs
+        grad_B.resize(B);
+        H_B.resize(B);
+
+        third_sp_B.resize(B);
+        third_tmix_B.resize(B);
+
+
+        // Scratch tensors we reuse per row
+        torch::Tensor go = torch::zeros_like(out); // one-hot grad_outputs for each sample
+
+        for (int b = 0; b < B; ++b) {
+            // -------------------------
+            // First derivatives (per row b)
+            // -------------------------
+            go.zero_();
+            go.index_put_({b}, 1.0f); // select only row b
+
+            torch::Tensor g_full = torch::autograd::grad(
+                /*outputs=*/{out},
+                /*inputs=*/{inputs},
+                /*grad_outputs=*/{go},
+                /*retain_graph=*/true,
+                /*create_graph=*/true /* we’ll need up to 3rd order for Jacobian later */
+            )[0]; // [B,3]; only row b is non-zero
+
+            torch::Tensor gb = g_full.index({b}); // [3] in network order (t,y,x)
+            float ft_ = gb.index({0}).item<float>();
+            float fy_ = gb.index({1}).item<float>();
+            float fx_ = gb.index({2}).item<float>();
+
+            // Pack gradient in (fx, fy, ft) to match your scalar API before scaling
+            grad_B[b].resize(3);
+            grad_B[b](0) = static_cast<T>(fx_);
+            grad_B[b](1) = static_cast<T>(fy_);
+            grad_B[b](2) = static_cast<T>(ft_);
+            convert_gradient_to_domain(grad_B[b]);      // same scaling as your scalar path
+
+            // -------------------------
+            // Second derivatives (Hessian rows from grad of fx and fy)
+            // -------------------------
+            // fx:
+            torch::Tensor fx = gb.index({2}); // scalar
+            torch::Tensor Hx_full = torch::autograd::grad(
+                {fx}, {inputs}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/true
+            )[0]; // [B,3]
+            torch::Tensor Hx_b = Hx_full.index({b}); // [3] = [fxt, fxy, fxx] in (t,y,x) order
+
+            // fy:
+            torch::Tensor fy = gb.index({1}); // scalar
+            torch::Tensor Hy_full = torch::autograd::grad(
+                {fy}, {inputs}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/true
+            )[0]; // [B,3]
+            torch::Tensor Hy_b = Hy_full.index({b}); // [3] = [fyt, fyy, fxy] in (t,y,x)
+
+            Eigen::MatrixX<T> H(3,3);
+            // Map to domain-order (x,y,t) like your scalar code:
+            // H(0,0)=fxx, H(0,1)=fxy, H(1,1)=fyy, H(0,2)=fxt, H(1,2)=fyt, ftt=0
+            H(0,0) = static_cast<T>(Hx_b.index({2}).item<float>()); // fxx
+            H(0,1) = static_cast<T>(Hx_b.index({1}).item<float>()); // fxy
+            H(1,0) = H(0,1);
+            H(1,1) = static_cast<T>(Hy_b.index({1}).item<float>()); // fyy
+            H(0,2) = static_cast<T>(Hx_b.index({0}).item<float>()); // fxt
+            H(2,0) = H(0,2);
+            H(1,2) = static_cast<T>(Hy_b.index({0}).item<float>()); // fyt
+            H(2,1) = H(1,2);
+            H(2,2) = static_cast<T>(0);
+
+            convert_hessian_to_domain(H); // same scaling as your scalar path
+            H_B[b] = H;
+
+
+            // dxx, dxy, dyy via grads of fx/fy we already computed
+            torch::Tensor dxx = Hx_b.index({2});
+            torch::Tensor dxy = Hx_b.index({1});
+            torch::Tensor dyy = Hy_b.index({1});
+
+            // ∂(dxx)/∂(t,y,x)
+            torch::Tensor G_fxx = torch::autograd::grad(
+                {dxx}, {inputs}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/false
+            )[0]; // [B,3]
+            torch::Tensor G_fxx_b = G_fxx.index({b}); // [t,y,x] = [fxxt, fxxy, fxxx]
+
+            // ∂(dxy)/∂(t,y,x)
+            torch::Tensor G_fxy = torch::autograd::grad(
+                {dxy}, {inputs}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/false
+            )[0]; // [B,3]
+            torch::Tensor G_fxy_b = G_fxy.index({b}); // [fxyt, fxyy, fxxy]
+
+            // ∂(dyy)/∂(t,y,x)
+            torch::Tensor G_fyy = torch::autograd::grad(
+                {dyy}, {inputs}, /*grad_outputs=*/{}, /*retain_graph=*/true, /*create_graph=*/false
+            )[0]; // [B,3]
+            torch::Tensor G_fyy_b = G_fyy.index({b}); // [fyyt, fyyy, fxyy]
+
+            // Pack third-order like your scalar method:
+            VectorX<T> th_sp(4);   // [fxxx, fxxy, fxyy, fyyy]
+            VectorX<T> th_tmix(3); // [fxxt, fxyt, fyyt]
+
+            th_sp(0)   = static_cast<T>(G_fxx_b.index({2}).item<float>()); // fxxx
+            th_sp(1)   = static_cast<T>(G_fxy_b.index({2}).item<float>()); // fxxy
+            th_sp(2)   = static_cast<T>(G_fyy_b.index({2}).item<float>()); // fxyy
+            th_sp(3)   = static_cast<T>(G_fyy_b.index({1}).item<float>()); // fyyy
+
+            th_tmix(0) = static_cast<T>(G_fxx_b.index({0}).item<float>()); // fxxt
+            th_tmix(1) = static_cast<T>(G_fxy_b.index({0}).item<float>()); // fxyt
+            th_tmix(2) = static_cast<T>(G_fyy_b.index({0}).item<float>()); // fyyt
+
+            convert_third_order_to_domain(th_sp, th_tmix);
+            third_sp_B[b]   = th_sp;
+            third_tmix_B[b] = th_tmix;
+        
+        }
+    }
 
     // Computes value, grad, Hessian (xy-only), and selected 3rd-order partials.
     // Excludes any Hessian entries with t and any 3rd-order terms with t^2 or t^3.

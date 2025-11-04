@@ -281,6 +281,17 @@ int main(int argc, char** argv)
         // p<<0.288695, 0.00458166,0.016144;
         p<<30, 59,20;
 
+        std::vector<Eigen::VectorXf> p_batch(5);
+        for(int i=0;i<p_batch.size();++i)
+        {
+            p_batch[i]=Eigen::VectorXf(3);
+        }
+        p_batch[0]<<20,22,34;
+        p_batch[1]<<30,59,20;
+        p_batch[2]<<40,70,12;
+        p_batch[3]<<15,5,24;
+        p_batch[4]<<80,10,15;
+
         Eigen::VectorXf h(3);
         h << 1e-2, 1e-2, 1e-2;
         h[0]*=inr_model.domain_range[2]/2;
@@ -292,38 +303,60 @@ int main(int argc, char** argv)
         // float hy = eps * std::max(1.0, std::abs(p.y()));
         // float hz = eps * std::max(1.0, std::abs(p.z()));
 
+        std::vector<Eigen::VectorXf> grad_B;
+        std::vector<Eigen::MatrixXf> H_B;
+        std::vector<VectorXf> third_sp_B;
+        std::vector<VectorXf> third_tmix_B;
+        
+        auto start_derivative_time = std::chrono::high_resolution_clock::now();
 
-        // VectorXf p_ = inr_model.convert_point_to_domain_reverse_order(p);
-        Derivatives d = numerical_derivatives(inr_model, p, h);
+        inr_model.query_up_to_third_derivative_batch(p_batch, grad_B, H_B, third_sp_B, third_tmix_B);
 
-        // d.H /= 4.0;
-        // d
-
-
+        auto end_derivative_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> derivative_duration = end_derivative_time - start_derivative_time;
+        std::cout << "Time taken for derivative computation: " << derivative_duration.count() << " seconds" << std::endl;
 
         VectorXf grad(3);
         MatrixXf hessian(3,3);
         VectorXf third_derivative_spatial(4);//[fxxx, fxxy, fxyy, fyyy]
         VectorXf third_derivative_time(3);//[fxxt, fxyt, fyyt]
 
-        inr_model.query_up_to_third_derivative(p,grad,hessian,third_derivative_spatial,third_derivative_time);
+        for(int idx=0;idx<p_batch.size();++idx)
+        {
+            Derivatives d = numerical_derivatives(inr_model, p_batch[idx], h);
+            auto start_derivative_time = std::chrono::high_resolution_clock::now();
+            inr_model.query_up_to_third_derivative(p_batch[idx],grad,hessian,third_derivative_spatial,third_derivative_time);
+ std::cout << "Time taken for derivative computation: " << derivative_duration.count() << " seconds" << std::endl;
 
-        std::cout << "grad:\n" << d.grad.transpose()<<" with "<< grad.transpose() << "\n\n";
-        std::cout << "Hessian:\n" << d.H << "\n\n";
-        std::cout << "Hessian from INRModel:\n" << hessian << "\n\n";
-        std::cout<< d.H - hessian <<std::endl;
+            std::cout << "grad:\n";
+            std::cout << grad_B[idx].transpose()<<std::endl;
+            std::cout << grad.transpose()<<std::endl;
+            std::cout << d.grad.transpose()<< std::endl;
+            std::cout << "Hessian comparison:\n";
+            std::cout << H_B[idx] << "\n\n";
+            std::cout << "Hessian from INRModel:\n" << hessian << "\n\n";
+            std::cout << "Hessian:\n" << d.H << "\n\n";
 
-        VectorXf third_derivative_spatial_test(4);
-        third_derivative_spatial_test << d.third.T[0][0][0], d.third.T[0][0][1], d.third.T[0][1][1], d.third.T[1][1][1];
-        third_derivative_spatial_test /= 8.0;
-        VectorXf third_derivative_time_test(3);
-        third_derivative_time_test << d.third.T[0][0][2], d.third.T[0][1][2], d.third.T[1][1][2];
-        third_derivative_time_test /= 8.0;
+            std::cout<< "third derivative spatial:\n" ;
+            std::cout <<third_sp_B[idx].transpose()<< "\n";
+            std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
+            std::cout<<third_tmix_B[idx].transpose()<< "\n";
+            std::cout<< "third derivative time:\n" << third_derivative_time.transpose()<< "\n";
 
-        std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
-        std::cout<< third_derivative_spatial_test.transpose()<< "\n\n";
-        std::cout<< "third derivative time:\n" << third_derivative_time.transpose()<< "\n";
-        std::cout<< third_derivative_time_test.transpose()<< "\n\n";
+            // VectorXf third_derivative_spatial_test(4);
+            // third_derivative_spatial_test << d.third.T[0][0][0], d.third.T[0][0][1], d.third.T[0][1][1], d.third.T[1][1][1];
+            // third_derivative_spatial_test /= 8.0;
+            // VectorXf third_derivative_time_test(3);
+            // third_derivative_time_test << d.third.T[0][0][2], d.third.T[0][1][2], d.third.T[1][1][2];
+            // third_derivative_time_test /= 8.0;
+
+            // std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
+            // std::cout<< third_derivative_spatial_test.transpose()<< "\n\n";
+            // std::cout<< "third derivative time:\n" << third_derivative_time.transpose()<< "\n";
+            // std::cout<< third_derivative_time_test.transpose()<< "\n\n";
+
+        }
+     
 
 
         // VectorXf p_test(3);

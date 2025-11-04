@@ -72,13 +72,13 @@ fi
 
 # gdb --args 
 
-# "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
+"${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}" -a 128
 
 
 # # 
-# "${convert_root_to_vtk}" -f "${degenerate_point_INR}" -o "${degenerate_point_INR}.csv" -j 0
+"${convert_root_to_vtk}" -f "${degenerate_point_INR}" -o "${degenerate_point_INR}.csv" -j 0
 
-"${tracking_INR}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}" -p "${point_itr_threshold}" -i "${input_model}"
+# "${tracking_INR}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}" -p "${point_itr_threshold}" -i "${input_model}"
 
 # "${test_derivatives}" -f "${data_type}" -m "${input_model}" -t "${tracking_result}" -o "${gradient_file}"
 
@@ -89,7 +89,7 @@ conda activate mfa_env
 
 # python ./src/critical_point_tracking/time_data_convert.py -i "rotating_gaussian_raw.vtk" -o "rotating_gaussian_raw.vti"
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_r
-aw.vti" -o "rotating_gaussian_raw.csv"
+# aw.vti" -o "rotating_gaussian_raw.csv"
 
 
 # "${export_raw_data}" -d 4 -m 3 -q 4 -s 0.0 -i "${data_type}" -f "${ori_raw_data}"

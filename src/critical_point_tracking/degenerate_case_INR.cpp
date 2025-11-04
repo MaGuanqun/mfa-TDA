@@ -101,6 +101,8 @@ int main(int argc, char** argv)
     int max_itr=50;
     string input_model="";
 
+    int batch_size=64;
+
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input function name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "degenerate_point_file", degenerate_point_file, " file name of degenerate points");
@@ -113,6 +115,9 @@ int main(int argc, char** argv)
 
 
     ops >> opts::Option('g', "grad_epsilon", grad_epsilon, " gradient epsilon for root finding");
+    ops >> opts::Option('a', "batch_size", batch_size, " max iteration");
+
+
   
     if (!ops.parse(argc, argv) || help)
     {
@@ -182,7 +187,7 @@ int main(int argc, char** argv)
 
         // inr_model.derivative(p_test);
 
-        Tracking_degenerate_case<float> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model);
+        Tracking_degenerate_case<float> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model, batch_size);
 
         std::vector<VectorXi> record_span;
         choose_span(record_span);
