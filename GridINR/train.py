@@ -4,6 +4,7 @@ from dataset import Dataset
 import datetime
 from utils import str2bool, save_model
 from NGP import NGP_TCNN
+from fVSRN import fVSRN
 import torch
 import torch.optim as optim
 from torch.nn import functional as F
@@ -95,13 +96,13 @@ def train( model, dataset, opt):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trains an implicit model on data.')
-    # Hash Grid (NGP model) hyperparameters
+    # part of Hash Grid (NGP model) hyperparameters
+    parser.add_argument('--model_type',default='fVSRN', type=str, choices=['NGP','fVSRN'],
+        help='Type of model to use - NGP or fVSRN')
     parser.add_argument('--n_dims',default=3, type=int,
         help='Number of dimensions in the data')
     parser.add_argument('--n_outputs',default=1,type=int,
         help='Number of output channels for the data (ex. 1 for scalar field, 3 for vector field)')
-    parser.add_argument('--n_features',default=2,type=int,
-        help='Number of features in the feature grid')       
     parser.add_argument('--n_grids',default=18,type=int,
         help='Number of grids')
     parser.add_argument('--hash_log2_size',default=15,type=int,
@@ -110,11 +111,23 @@ if __name__ == '__main__':
         help='Minimum resolution of a single dimension')
     parser.add_argument('--hash_max_resolution',default=512,type=int,
         help='Maximum resolution of a single dimension') 
+    
+      
+    # part of fVSRN model hyperparameters
+    parser.add_argument('--feature_grid_shape',default='64,64,64',type=str,
+        help='Feature grid shape for fVSRN model, increase to capture more details, but may not be smooth')
+    parser.add_argument('--requires_padded_feats',default=False,type=bool,
+        help='Whether to use padded features for fVSRN model, I recommend always set to False')
+    parser.add_argument('--num_positional_encoding_terms',default=6,type=int,
+        help='Number of positional encoding terms for fVSRN model, lower values for smooth reconstruction, but may miss high frequency details')
+    
+    # hyperparameters shared by both fVSRN and NGP models
+    parser.add_argument('--n_features',default=2,type=int,
+        help='Number of features in the feature grid') 
     parser.add_argument('--n_layers',default=2,type=int,
-        help='Number of layers in the model')
+        help='Number of layers in the model') 
     parser.add_argument('--nodes_per_layer',default=64,type=int,
-        help='Nodes per layer in the model')    
-
+        help='Nodes per layer in the model')  
     
     # Training and Saving hyperparameters
     parser.add_argument('--data_path',default='./Data/vortex_street.bin',type=str,
@@ -157,7 +170,10 @@ if __name__ == '__main__':
     #opt['data_max'] = min(dataset.max(), dataset.data.mean() + dataset.data.std()*3).item()
     #opt['data_min'] = dataset.data.mean().item()
     #opt['data_max'] = max(dataset.data.mean()-dataset.data.min(), dataset.data.max() -dataset.data.mean()).item()
-    model = NGP_TCNN(args)
+    if args['model_type'] == 'NGP':
+        model = NGP_TCNN(args)
+    elif args['model_type'] == 'fVSRN':
+        model = fVSRN(args)
     model = model.to(args['device'])
     
 
@@ -165,6 +181,3 @@ if __name__ == '__main__':
     start_time = time.time()
     
     train(model, dataset, args)
-    exit()
-    args['iteration_number'] = 0
-    save_model(model, args)
