@@ -142,7 +142,8 @@ def model_reconstruction_chunked(model, opt):
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluate a model on some tests')
-
+    parser.add_argument('--model_type',default='fVSRN', type=str, choices=['NGP','fVSRN'],
+        help='Type of model to use - NGP or fVSRN')
     parser.add_argument('--load_from',default="./SavedModels/vortex_street",type=str,help="Model name to load")
     parser.add_argument('--device',default="cuda:0",type=str,
                         help="Device to load model to")
@@ -151,11 +152,16 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     
     # Load the model
+    args['load_from'] = os.path.join(args['load_from'], args['model_type'])
     opt = load_options(args['load_from'])
     opt['device'] = args['device']
     opt['data_device'] = args['data_device']
-   
-    model = NGP_TCNN(opt)
+    
+    if args['model_type'] == 'NGP':
+        model = NGP_TCNN(opt)
+    elif args['model_type'] == 'fVSRN':
+        from fVSRN import fVSRN
+        model = fVSRN(opt)
     ckpt = torch.load(os.path.join(args['load_from'], 'model.ckpt.tar'), map_location = opt['device'], weights_only=False)  
     
     model.load_state_dict(ckpt['state_dict'])

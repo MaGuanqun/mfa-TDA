@@ -359,8 +359,8 @@ def get_data_size(location, data_dims):
 
 def save_model(model,opt):
     folder = create_folder(opt["save_folder"], opt["dataset_name"])
-    path_to_save = os.path.join(opt["save_folder"], folder)
-    
+    path_to_save = os.path.join(opt["save_folder"], folder, opt['model_type'])
+    os.makedirs(path_to_save, exist_ok=True)
     torch.save({'state_dict': model.state_dict()}, 
         os.path.join(path_to_save, "model.ckpt.tar"),
         pickle_protocol=4
