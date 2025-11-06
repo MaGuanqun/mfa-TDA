@@ -43,6 +43,7 @@
 
 #include "tracking_utility.h"
 #include "trace_deduplication.h"
+#include "connect_trajectory_degenerate_point.h"
 
 // #include "trace.h"
 
@@ -252,6 +253,9 @@ int main(int argc, char** argv)
 
     std::cout<<"trace_after splitting "<<traces.size()<<std::endl;
 
+
+    connect_trajectory_degenerate_point::connect_trajectory(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
+
     trace_size=0;
     for(auto& trace:traces)
     {
@@ -262,6 +266,6 @@ int main(int argc, char** argv)
     }
     std::cout<<"traces after deduplication "<<trace_size<<std::endl;
 
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces);
+    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points);
 
 }

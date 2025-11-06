@@ -16,7 +16,7 @@ struct CP_Trace
 namespace CP_Trace_fuc
 {
     template<typename T>
-    void convert_to_obj(const std::string& filename, std::vector<CP_Trace<T>>& traces)
+    void convert_to_obj(const std::string& filename, std::vector<CP_Trace<T>>& traces, std::vector<VectorX<T>>& degenerate_points)
     {
         std::ofstream outFile(filename);
         if (!outFile.is_open()) {
@@ -24,6 +24,10 @@ namespace CP_Trace_fuc
             return;
         }
 
+        for(auto i=0;i<degenerate_points.size();++i)
+        {
+            outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] << " " << degenerate_points[i].data()[2] << "\n";
+        }
 
         for (auto i=traces.begin();i<traces.end();++i)
         {
@@ -39,12 +43,17 @@ namespace CP_Trace_fuc
         }
 
 
-        int obj_index=1;
+        int obj_index=1+degenerate_points.size();
         for (auto i=traces.begin();i<traces.end();++i)
         {
             if(i->traces.size()<2|| i->duplicated)
             {
                 continue;
+            }
+
+            if(i->connect_info[0]>-1)
+            {
+                outFile <<  "l " << i->connect_info[0]+1 << " " << obj_index << "\n";
             }
             // std::cout<<"write start "<<obj_index<< std::endl;
             for(auto j=1;j<i->traces.size();++j)
@@ -52,8 +61,12 @@ namespace CP_Trace_fuc
                 // std::cout<<"write trace "<<obj_index<< std::endl;
                 outFile <<  "l " << obj_index << " " << obj_index+1 << "\n";
                 obj_index++;
-                
             }
+            if(i->connect_info[1]>-1)
+            {
+                outFile <<  "l " << obj_index << " " << i->connect_info[1]+1 << "\n";
+            }
+
             obj_index++;
             
         }

@@ -46,11 +46,11 @@ struct Equal {
 template<typename T>
 bool check_compute_distance_from_P_to_A_B(const VectorX<T>& P, const VectorX<T>& A, const VectorX<T>& B, const T spatial_step_size)
 {
-    if((P-A).head(P.size()-1).squaredNorm() < spatial_step_size*spatial_step_size)
+    if((P-A).head(P.size()-1).norm() < spatial_step_size)
     {
         return true; //point P is close enough to point A
     }
-    if((P-B).head(P.size()-1).squaredNorm() < spatial_step_size*spatial_step_size)
+    if((P-B).head(P.size()-1).norm() < spatial_step_size)
     {
         return true; //point P is close enough to point B
     }
@@ -126,13 +126,13 @@ template<typename T>
 void splitting(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degenerate_points,T spatial_step_size)
 {
     std::cout<<"start splitting traces"<<std::endl;
-    for(auto& degerate_point: degenerate_points)
-    {
-        if(degerate_point.size()<3)
-        {
-            std::cout<<degerate_point<<std::endl;
-        }
-    }
+    // for(auto& degerate_point: degenerate_points)
+    // {
+    //     if(degerate_point.size()<3)
+    //     {
+    //         std::cout<<degerate_point<<std::endl;
+    //     }
+    // }
 
     std::cout<<"start sorting "<<degenerate_points.size()<<" degenerate points"<<std::endl;
     std::sort(degenerate_points.begin(), degenerate_points.end(), [](const VectorX<T>& a, const VectorX<T>& b) {

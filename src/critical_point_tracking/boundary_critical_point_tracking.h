@@ -122,7 +122,8 @@ public:
 
                 // std::cout<<"tracing point "<<i<<" "<<initial[i].transpose()<<std::endl;
 
-                tracing_single_cpt(initial[i],traces[i].traces,d_max_square);           
+                tracing_single_cpt(initial[i],traces[i].traces,d_max_square); 
+                traces[i].connect_info[0]=-2;        
             }
         },ap);
 
