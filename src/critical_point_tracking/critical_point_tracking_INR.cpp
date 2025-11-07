@@ -212,10 +212,13 @@ int main(int argc, char** argv)
         root.clear();
         root.shrink_to_fit();
 
+        auto finding_end_time = std::chrono::high_resolution_clock::now();
+
         string test_file=cp_tracing_file+"_test.obj";
 
         tracking_utility::convert_to_obj(test_file,root_unique);
 
+        auto tracking_start_time = std::chrono::high_resolution_clock::now();
 
         traces.resize(root_unique.size());
 
@@ -266,6 +269,18 @@ int main(int argc, char** argv)
     }
     std::cout<<"traces after deduplication "<<trace_size<<std::endl;
 
+
+  auto tracking_end_time = std::chrono::high_resolution_clock::now();
+
+    std::cout<<"overall extraction time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(tracking_end_time - cpt_extract_start_time).count()/1000<<std::endl;
+
+    std::cout<<"overall finding time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(finding_end_time - cpt_extract_start_time).count()/1000<<std::endl;
+
+
+    std::cout<<"overall tracking time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(tracking_end_time - tracking_start_time).count()/1000<<std::endl;
+
     CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points);
 
+
+  
 }

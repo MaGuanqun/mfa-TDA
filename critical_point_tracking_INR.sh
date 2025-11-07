@@ -17,8 +17,8 @@ export_raw_data="./build/src/encode/analytical/export_raw_data"
 
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
-data_type="vortex_street"
-# data_type="quartic_potential_2"
+# data_type="vortex_street"
+data_type="quartic_potential_2"
 # data_type="sinc"
 save_folder="${data_type}"
 
@@ -65,7 +65,7 @@ J_threshold="1e-6"
 point_itr_threshold="4.0"
 
 if [ "${data_type}" = "quartic_potential_2" ]; then
-    input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
+    input_model="./GridINR/SavedModels/${data_type}/fVSRN.pt"
 elif [ "${data_type}" = "vortex_street" ]; then
     input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-1.pt"
 fi
@@ -78,9 +78,9 @@ fi
 # # 
 # "${convert_root_to_vtk}" -f "${degenerate_point_INR}" -o "${degenerate_point_INR}.csv" -j 0
 
-"${tracking_INR}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}" -p "${point_itr_threshold}" -i "${input_model}"
+# "${tracking_INR}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}" -p "${point_itr_threshold}" -i "${input_model}"
 
-# "${test_derivatives}" -f "${data_type}" -m "${input_model}" -t "${tracking_result}" -o "${gradient_file}"
+"${test_derivatives}" -f "${data_type}" -m "${input_model}" -t "${tracking_result}" -o "${gradient_file}"
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
@@ -88,8 +88,7 @@ conda activate mfa_env
 # python src/python/sample_original_high_dim_func.py
 
 # python ./src/critical_point_tracking/time_data_convert.py -i "rotating_gaussian_raw.vtk" -o "rotating_gaussian_raw.vti"
-# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_r
-aw.vti" -o "rotating_gaussian_raw.csv"
+# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_raw.vti" -o "rotating_gaussian_raw.csv"
 
 
 # "${export_raw_data}" -d 4 -m 3 -q 4 -s 0.0 -i "${data_type}" -f "${ori_raw_data}"

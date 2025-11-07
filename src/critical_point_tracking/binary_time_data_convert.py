@@ -6,8 +6,10 @@ import argparse
 
 
 
-def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max):
-    data =np.fromfile(input_bin, dtype=np.float64)
+def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
+    
+    dtype = np.float32 if args.float_type == 'float32' else np.float64
+    data = np.fromfile(input_bin, dtype=dtype)
     if data.size != dims[0] * dims[1] * dims[2]:
         print(data.size)
         raise ValueError("Data size does not match the provided dimensions.")
@@ -63,6 +65,7 @@ parser = argparse.ArgumentParser(description='TTK-critical points.')
 parser.add_argument('-i', '--input_name', type=str, default='file_name.dat', help='file to compute critical points')
 parser.add_argument('-o','--output_name', type=str, default='ttk.csv', help='output csv name')
 parser.add_argument('-f', '--function', type=str, default='rotating_gaussian', help='function')
+parser.add_argument('--float_type', type=str, default='float32', help='float32 or float64')
 
 args = parser.parse_args()
 
@@ -78,10 +81,10 @@ if function == 'rotating_gaussian':
 elif function == 'quartic_potential' or function == 'quartic_potential_2':
     min = np.array([-2.0, -2.0, 0.0])
     max =np.array([2.0, 2.0, 4.0])
-    dim = np.array([200,200,100])
+    dim = np.array([100,100,100])
 elif function == 'vortex_street':
-    dim = np.array([1600, 1280, 50])
+    dim = np.array([100, 80, 50])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([99, 79, 49])
     
-convert_binary_file_to_vti(input_file, output_file,dim,min,max)
+convert_binary_file_to_vti(input_file, output_file,dim,min,max,args)

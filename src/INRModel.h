@@ -8,7 +8,6 @@
 #include <type_traits>
 
 
-
 template<typename T>
 class INRModel {
 public:
@@ -47,7 +46,8 @@ public:
         std::cout<<"INR model domain_range range: "<<this->domain_range.transpose()<<std::endl;
 
         init_buffers();
-
+        torch::jit::setGraphExecutorOptimize(false);
+        torch::jit::getProfilingMode() = false;
     }
 
     bool isLoaded() const { return loaded; }
@@ -506,12 +506,57 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
     }
 
 
+
+//     void query(const VectorX<T>& point,
+//                         VectorX<T>&       out)
+//     {
+//         if (!loaded)
+//             throw std::runtime_error("INR model not loaded");
+
+//         out.resize(1);
+//         input_.detach_(); // drop previous graph
+
+//         // Convert to model input domain and reverse order
+//         VectorX<T> p = convert_point_to_domain_reverse_order(point);
+
+//         std::cout<<"query point in model domain: "<<p.transpose()<<std::endl;
+
+//         if (input_.is_cpu()) {
+//             // CPU path: write directly via pointer (no accessor overhead)
+//             float* buf = input_.data_ptr<float>();   // contiguous [1,3]
+//             buf[0] = static_cast<float>(p(0));
+//             buf[1] = static_cast<float>(p(1));
+//             buf[2] = static_cast<float>(p(2));
+//         } else {
+//             // CUDA path: never use accessor or data_ptr to write from host.
+//             float* h = input_host_.data_ptr<float>();
+//             h[0] = static_cast<float>(p(0));
+//             h[1] = static_cast<float>(p(1));
+//             h[2] = static_cast<float>(p(2));
+//             input_.copy_(input_host_, /*non_blocking=*/false);
+//         }
+
+//         input_.requires_grad_(false);      // we need autograd
+//                 // auto in_acc = input_.accessor<T,2>();
+//                 // in_acc[0][0] = p[0];
+//                 // in_acc[0][1] = p[1];
+//                 // in_acc[0][2] = p[2];
+
+//         torch::Tensor f = module.forward({input_}).toTensor().reshape({}); // scalar
+//    // Helper to map (nx, ny, nt) → coordinate index in reversed order
+
+//         out(0) = static_cast<T>(f.detach().to(torch::kCPU).item<float>());
+       
+
+//     }
     void query(const VectorX<T>& point, VectorX<T>& out, const VectorXi& derivs = VectorXi()) {
         out.resize(1);
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
         // Convert input (float or float) -> float32 tensor
-        
+        input_.detach_();                 // drop previous graph
+
+
         VectorX<T> p = convert_point_to_domain_reverse_order(point);
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),

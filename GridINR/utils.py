@@ -8,7 +8,7 @@ import os
 import pickle
 # import h5py
 import json
-
+import copy
 
 def reset_grads(model,require_grad):
     for p in model.parameters():
@@ -366,6 +366,39 @@ def save_model(model,opt):
         pickle_protocol=4
     )
     save_options(opt, path_to_save)
+        # After training loop ends
+     # 3. Prepare a copy of the model for TorchScript export
+    #    (so we don't mutate the training model)
+    model_to_export = copy.deepcopy(model)
+    model_to_export.eval()          # eval mode
+    model_to_export.to('cpu')       # export from CPU is simplest/portable
+
+    with torch.no_grad():
+        # === (OPTIONAL) modify parameters/buffers ONLY for the exported model ===
+        # Example: clamp all parameters
+        # for p in model_to_export.parameters():
+        #     p.clamp_(-1.0, 1.0)
+
+        # Example: if fVSRN has some specific buffer to adjust:
+        # if hasattr(model_to_export, "feature_grid"):
+        #     model_to_export.feature_grid.data.clamp_(-1.0, 1.0)
+        # ======================================================================
+
+        # 4. Create example input for tracing
+        # Adjust input_dim to whatever your fVSRN expects (e.g., 3 for (x,y,z))
+        if hasattr(model_to_export, "n_dims"):
+            input_dim = int(model_to_export.n_dims)
+        else:
+            input_dim = 3  # fallback; change if needed
+
+        example_inputs = torch.randn(1, input_dim, dtype=torch.float32)
+
+        # 5. Trace and save TorchScript model
+        traced_script_module = torch.jit.trace(model_to_export, example_inputs)
+        jit_path = os.path.join(path_to_save, "fVSRN.pt")
+        traced_script_module.save(jit_path)
+
+    print(f"Saved TorchScript model to {jit_path}")
 
 def save_options(opt, save_location):
     with open(os.path.join(save_location, "options.json"), 'w') as fp:

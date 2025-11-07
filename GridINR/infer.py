@@ -9,6 +9,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from time import time
+import copy
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 project_folder_path = os.path.dirname(os.path.abspath(__file__))
 output_folder = os.path.join(project_folder_path, "Output")
@@ -59,11 +60,21 @@ def load_options(load_location):
 
     return opt2
 
-def tensor_to_raw(tensor, path):
-    v = tensor.squeeze().cpu()
-    v = np.asarray(v,dtype='<f')
-    v = v.flatten('F')
-    v.tofile(path,format='<f')
+def tensor_to_raw(v, filename):
+    # v can be a torch.Tensor, numpy array, or list
+    if isinstance(v, torch.Tensor):
+        # move to CPU, detach from graph, flatten, convert to numpy
+        v = v.detach().cpu().numpy()
+    else:
+        # make sure it's a flat numpy array
+        v = np.asarray(v)
+
+    # ensure little-endian float32 (same as '<f4')
+    v = v.astype('<f4', copy=False).flatten('F')
+
+    with open(filename, 'wb') as f:
+        v.tofile(f)
+        
 
 def model_reconstruction(model, opt):
     
@@ -90,6 +101,9 @@ def model_reconstruction_chunked(model, opt):
     output = torch.empty(full_shape, 
         dtype=torch.float32, 
         device=opt['data_device']).unsqueeze(0).unsqueeze(0)
+    
+    
+    print(full_shape)
     
     with torch.no_grad():
         for z_ind in range(0, full_shape[0], chunk_size):
@@ -168,6 +182,40 @@ if __name__ == '__main__':
     model = model.to(opt['device'])
     model.train(False)
     model.eval()
+    
+    # traced_script_module = torch.jit.trace(model, example_inputs=torch.randn(1, 3).cuda())  # adjust input shape
+    # traced_script_module.save(args['load_from']+".pt")
+
+    # print("Saved model to model.pt")
+    # 3. Prepare a copy of the model for TorchScript export
+    #    (so we don't mutate the training model)
+    model_to_export = copy.deepcopy(model)
+    model_to_export.eval()          # eval mode
+    model_to_export.to('cpu')       # export from CPU is simplest/portable
+
+    with torch.no_grad():
+        # === (OPTIONAL) modify parameters/buffers ONLY for the exported model ===
+        # Example: clamp all parameters
+        # for p in model_to_export.parameters():
+        #     p.clamp_(-1.0, 1.0)
+
+        # Example: if fVSRN has some specific buffer to adjust:
+        # if hasattr(model_to_export, "feature_grid"):
+        #     model_to_export.feature_grid.data.clamp_(-1.0, 1.0)
+        # ======================================================================
+
+        # 4. Create example input for tracing
+        # Adjust input_dim to whatever your fVSRN expects (e.g., 3 for (x,y,z))
+        if hasattr(model_to_export, "n_dims"):
+            input_dim = int(model_to_export.n_dims)
+        else:
+            input_dim = 3  # fallback; change if needed
+
+        example_inputs = torch.randn(1, input_dim, dtype=torch.float32)
+
+        # 5. Trace and save TorchScript model
+        traced_script_module = torch.jit.trace(model_to_export, example_inputs)
+        traced_script_module.save(args['load_from']+".pt")
     # print(model)
     # exit()
     # Perform tests

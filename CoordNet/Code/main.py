@@ -51,7 +51,10 @@ p.add_argument('--angle', type=int, default=15, metavar='N',
                     help='sampled angle')
 p.add_argument('--omega_0', type=float, default=30, metavar='N',
                     help='omega_0 for sine')
-
+p.add_argument('--lap_weight', type=float, default=0.0,
+                    help='Weight for Laplacian curvature penalty')
+p.add_argument('--lap_eps', type=float, default=1e-2,
+                    help='Finite-difference step for Laplacian')
 
 opt = p.parse_args()
 

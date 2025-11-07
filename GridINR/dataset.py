@@ -3,6 +3,7 @@ import torch
 from utils import make_coord_grid, dat_to_tensor, bin_to_tensor
 import torch.nn.functional as F
 import time
+import sys
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, opt):
@@ -14,7 +15,7 @@ class Dataset(torch.utils.data.Dataset):
         self.full_coord_grid = None
 
         t1 = time.time()
-        if opt['dataset_name'] in ['vortex_street']:
+        if opt['dataset_name'] in ['vortex_street', 'quartic_potential_2']:
             d, full_shape, d_min, d_max = bin_to_tensor(opt['data_path'], opt)
         if opt['dataset_name'] in ['vortex']:
             d, full_shape, d_min, d_max = dat_to_tensor(opt['data_path'], opt)

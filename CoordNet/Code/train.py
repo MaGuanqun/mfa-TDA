@@ -13,6 +13,36 @@ from skimage.io import imread
 from skimage import data,img_as_float,img_as_int
 import lpips
 
+def laplacian_loss(v_pred, coord):
+    """
+    v_pred: (B, 1) or (B,) output of the model
+    coord:  (B, D) input coordinates (x,y,t / x,y,z / ...)
+    returns: scalar Laplacian penalty
+    """
+    # We want gradients wrt coord
+    # Use mean so we get a scalar to differentiate
+    grad = torch.autograd.grad(
+        outputs=v_pred.mean(),    # scalar
+        inputs=coord,
+        create_graph=True,
+        retain_graph=True
+    )[0]                          # shape: (B, D)
+
+    # Compute second derivatives (diagonal of the Hessian) and sum to get Laplacian
+    lap = 0.0
+    for d in range(coord.shape[-1]):
+        grad_d = grad[..., d]     # (B,)
+        grad2_d = torch.autograd.grad(
+            outputs=grad_d.mean(), 
+            inputs=coord,
+            create_graph=True,
+            retain_graph=True
+        )[0][..., d]              # (B,)
+        lap = lap + grad2_d
+
+    # Penalize large Laplacian -> encourages smoothness
+    return (lap ** 2).mean()
+
 def trainNet(model,args,dataset):
         # ----- logging file naming follows original conventions -----
     if args.application in ['spatial', 'super-spatial']:
@@ -39,33 +69,76 @@ def trainNet(model,args,dataset):
     criterion = nn.MSELoss()
 
     t = 0
-    for itera in range(1,args.num_epochs+1):
+    for itera in range(1, args.num_epochs + 1):
         torch.cuda.empty_cache()
         train_loader = dataset.GetTrainingData()
         x = time.time()
 
-        print('======='+str(itera)+'========')
-        loss_mse = 0
-        loss_grad = 0
-        
-        for batch_idx, (coord,v) in enumerate(train_loader):
+        print('=======' + str(itera) + '========')
+        loss_mse = 0.0
+        loss_grad = 0.0   # still here if you use it elsewhere
+        lap_weight = getattr(args, "lap_weight", 0.0)
+        lap_eps    = getattr(args, "lap_eps", 1e-2)
+
+        total_loss_ = 0.0
+        lap_loss_   = 0.0
+
+        for batch_idx, (coord, v) in enumerate(train_loader):
             t1 = time.time()
             if args.cuda:
                 coord = coord.cuda()
                 v = v.cuda()
+
             optimizer.zero_grad()
-            v_pred = model(coord)
-            mse = criterion(v_pred.view(-1),v.view(-1))
-            mse.backward()
-            loss_mse += mse.mean().item()
+
+            # ----- Data loss -----
+            v_center = model(coord)  # f(x)
+            mse = criterion(v_center.view(-1), v.view(-1))
+
+            # ----- Finite-difference Laplacian penalty -----
+            if lap_weight > 0.0:
+                B, D = coord.shape
+
+                # Build [x, x+eps e1, x-eps e1, x+eps e2, x-eps e2, ...]
+                coord_list = [coord]
+                for d in range(D):
+                    e = torch.zeros_like(coord)
+                    e[:, d] = lap_eps
+                    coord_list.append(coord + e)
+                    coord_list.append(coord - e)
+
+                all_coords = torch.cat(coord_list, dim=0)      # [(2D+1)*B, D]
+                all_vals = model(all_coords).view(-1)          # [(2D+1)*B]
+
+                v_center_flat = all_vals[0:B]                  # f(x)
+                offset = B
+                lap = torch.zeros(B, device=coord.device)
+
+                for d in range(D):
+                    vp = all_vals[offset:offset + B]           # f(x + eps e_d)
+                    vm = all_vals[offset + B:offset + 2 * B]   # f(x - eps e_d)
+                    offset += 2 * B
+
+                    lap_d = (vp + vm - 2.0 * v_center_flat) / (lap_eps ** 2)
+                    lap += lap_d
+
+                lap_loss = (lap ** 2).mean()
+                total_loss = mse + lap_weight * lap_loss
+                lap_loss_ += lap_loss.item()
+            else:
+                total_loss = mse
+
+            total_loss.backward()
             optimizer.step()
-            #print(time.time()-t1)
+
+            loss_mse += mse.item()
+            total_loss_ += total_loss.item()
         
         y = time.time()
         t += y-x
         print(y-x)
-        print("Epochs "+str(itera)+": loss = "+str(loss_mse))
-        loss.write("Epochs "+str(itera)+": loss = "+str(loss_mse))
+        print("Epochs "+str(itera)+": mse loss = "+str(loss_mse) + ', lap_loss = ' + str(lap_loss_) + ', total_loss = ' + str(total_loss_))
+        loss.write("Epochs "+str(itera)+": mse loss = "+str(loss_mse) + ', lap_loss = ' + str(lap_loss_) + ', total_loss = ' + str(total_loss_))
         loss.write('\n')
 
         # if itera % args.checkpoint == 0 or itera == 1:
@@ -89,14 +162,14 @@ def trainNet(model,args,dataset):
     print("Converting model to float64 TorchScript .pt ...")
 
     # Move to CPU (so you can load in LibTorch without GPU dependency)
-    model = model.cpu().to(torch.float64)
+    model = model.cpu()#.to(torch.float64)
     model.eval()
 
     # Infer input dimension (3 for super-spatial-temporal, else 4)
     in_dim = 3 if args.application == 'super-spatial-temporal' else 4
 
     # Create example input in float64
-    example = torch.zeros(1, in_dim, dtype=torch.float64)
+    example = torch.zeros(1, in_dim)
 
     # Trace or script the model
     try:
@@ -155,17 +228,17 @@ def inf2(dataset,args):
             with torch.no_grad():
                 v_pred = model(batch.cuda())
             preds.append(v_pred.view(-1).detach().cpu().numpy())
-        preds = np.concatenate(preds, axis=0).astype('<f')  # length T*H*W
+        preds = np.concatenate(preds, axis=0).astype('<f4')  # length T*H*W
 
         # Existing context: preds is length T*H*W in blocks of H*W per t,
         # where within each block values are in Fortran 'F' order (y-fastest).
 
         # Rebuild a [T, H, W] volume where A[t] is the HxW slice at time t.
-        A = np.empty((T, H, W), dtype=np.float64)
+        A = np.empty((T, H, W))
         per_t = H * W
         for t in range(T):
             v = preds[t * per_t:(t + 1) * per_t]      # length H*W, y-fastest inside
-            A[t] = v.reshape(W, H, order='F').transpose().astype(np.float64)         # restore the 2D slice
+            A[t] = v.reshape(W, H, order='F').transpose()         # restore the 2D slice
 
         # Now ravel in C-order so x (last axis) is fastest, then y, then t (slowest).
         onefile_path = os.path.join('../Result', args.dataset,
@@ -408,17 +481,17 @@ def inf(dataset,args):
             with torch.no_grad():
                 v_pred = model(batch.cuda())
             preds.append(v_pred.view(-1).detach().cpu().numpy())
-        preds = np.concatenate(preds, axis=0).astype('<f')  # length T*H*W
+        preds = np.concatenate(preds, axis=0).astype('<f4')  # length T*H*W
 
         # Existing context: preds is length T*H*W in blocks of H*W per t,
         # where within each block values are in Fortran 'F' order (y-fastest).
 
         # Rebuild a [T, H, W] volume where A[t] is the HxW slice at time t.
-        A = np.empty((T, H, W), dtype=np.float64)
+        A = np.empty((T, H, W), dtype=out_dtype)
         per_t = H * W
         for t in range(T):
             v = preds[t * per_t:(t + 1) * per_t]      # length H*W, y-fastest inside
-            A[t] = v.reshape(W, H, order='F').transpose().astype(np.float64)         # restore the 2D slice
+            A[t] = v.reshape(W, H, order='F').transpose()     # restore the 2D slice
 
         # Now ravel in C-order so x (last axis) is fastest, then y, then t (slowest).
         onefile_path = os.path.join('../Result', args.dataset,

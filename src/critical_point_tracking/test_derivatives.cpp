@@ -85,6 +85,7 @@ Derivatives numerical_derivatives(
         const float fp = eval_func(model, pp);
         const float fm = eval_func(model, pm);
         d.grad(i) = (fp - fm) / (2.0 * static_cast<float>(h(i)));
+        std::cout<<"grad "<<i<<" : "<<d.grad(i)<<std::endl;
     }
 
     // Second derivatives (pure + mixed)
@@ -279,7 +280,8 @@ int main(int argc, char** argv)
         Eigen::VectorXf p(3);
         // p<<-0.292091, 0.30837, 1.11537;
         // p<<0.288695, 0.00458166,0.016144;
-        p<<30, 59,20;
+        // p<<30, 59,20;
+        p << 0.5,0.5,0.5;
 
         Eigen::VectorXf h(3);
         h << 1e-2, 1e-2, 1e-2;
@@ -292,8 +294,7 @@ int main(int argc, char** argv)
         // float hy = eps * std::max(1.0, std::abs(p.y()));
         // float hz = eps * std::max(1.0, std::abs(p.z()));
 
-
-        // VectorXf p_ = inr_model.convert_point_to_domain_reverse_order(p);
+        std::cout<< "query point in [-1,1]: "<< p.transpose() <<std::endl;
         Derivatives d = numerical_derivatives(inr_model, p, h);
 
         // d.H /= 4.0;

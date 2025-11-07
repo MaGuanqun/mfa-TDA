@@ -17,6 +17,60 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 project_folder_path = os.path.dirname(os.path.abspath(__file__))
 output_folder = os.path.join(project_folder_path, "Output")
 
+def second_derivative_xy_penalty(model, x, base_output=None, h=1e-2):
+    """
+    Approximate second derivatives f_xx and f_yy in the xy-plane using finite differences,
+    and penalize their squared magnitude.
+
+    - x: [B, 3] coordinates in [-1, 1]^3 (assumed order [x, y, z])
+    - model: fVSRN model
+    - base_output: optional precomputed f(x) of shape [B, 1] or [B]
+    - h: finite-difference step size in normalized coordinate space
+    """
+    # x is just input coordinates; it does not require gradients.
+    device = x.device
+    dtype = x.dtype
+
+    if base_output is None:
+        base_output = model(x)
+
+    # ensure h is a tensor on the right device / dtype
+    h_tensor = torch.tensor(h, device=device, dtype=dtype)
+
+    # Unit offsets in x and y (normalized domain)
+    e_x = torch.zeros_like(x)
+    e_y = torch.zeros_like(x)
+    e_x[:, 0] = h_tensor      # perturb x
+    e_y[:, 1] = h_tensor      # perturb y
+
+    # Shifted coordinates, clamped to [-1, 1] to stay in domain
+    x_plus  = (x + e_x).clamp(-1.0, 1.0)
+    x_minus = (x - e_x).clamp(-1.0, 1.0)
+    y_plus  = (x + e_y).clamp(-1.0, 1.0)
+    y_minus = (x - e_y).clamp(-1.0, 1.0)
+
+    # Batch all shifted coords into one forward pass for efficiency
+    coords_other = torch.cat([x_plus, x_minus, y_plus, y_minus], dim=0)  # [4B, 3]
+    vals_other = model(coords_other)  # [4B, 1] or [4B]
+
+    B = x.shape[0]
+    f_xplus, f_xminus, f_yplus, f_yminus = vals_other.split(B, dim=0)
+    f = base_output
+
+    # Finite-difference approximations
+    # f_xx ≈ (f(x+h, y, z) - 2 f(x, y, z) + f(x-h, y, z)) / h^2
+    # f_yy ≈ (f(x, y+h, z) - 2 f(x, y, z) + f(x, y-h, z)) / h^2
+    denom = h_tensor * h_tensor
+    f_xx = (f_xplus - 2.0 * f + f_xminus) / denom
+    f_yy = (f_yplus - 2.0 * f + f_yminus) / denom
+
+    # You can also add f_xy using cross terms if needed, but this is cheaper
+    # and already encourages smoothness.
+    penalty = (f_xx ** 2 + f_yy ** 2).mean()
+
+    return penalty
+
+
 def log_to_writer(iteration, losses, writer, opt, preconditioning=None):
     with torch.no_grad():   
         print_str = f"Iteration {iteration}/{opt['iterations']}, "
@@ -45,12 +99,42 @@ def train_step_vanilla(opt, iteration, batch, dataset, model, optimizer, schedul
     y = y.to(opt['device'])
     
     model_output = model(x)
-    loss = F.mse_loss(model_output, y, reduction='none')
-    loss.mean().backward()                   
+    
+    data_loss = F.mse_loss(model_output, y, reduction='none').mean()
+    
+    # Second-derivative regularization in xy-plane (only for 3D inputs)
+    lam = float(opt.get('second_deriv_weight', 0.0))
+    reg_loss = torch.tensor(0.0, device=opt['device'])
 
+    if lam > 0.0 and int(opt.get('n_dims', 3)) == 3:
+        reg_loss = second_derivative_xy_penalty(
+            model,
+            x,
+            base_output=model_output,
+            h=float(opt.get('second_deriv_h', 1e-2))
+        )
+
+    total_loss = data_loss + lam * reg_loss
+    total_loss.backward()
     optimizer.step()
-    scheduler.step()   
-    print(f"Iteration {iteration} loss: {loss.mean().item():0.07f}")
+    scheduler.step()
+
+    if lam > 0.0:
+        print(
+            f"Iteration {iteration} "
+            f"data_loss: {data_loss.item():0.07f} "
+            f"reg_loss: {reg_loss.item():0.07f} "
+            f"total_loss: {total_loss.item():0.07f}"
+        )
+    else:
+        print(f"Iteration {iteration} loss: {data_loss.item():0.07f}")
+
+
+    # loss = F.mse_loss(model_output, y, reduction='none')
+    # loss.mean().backward()                   
+    # optimizer.step()
+    # scheduler.step()   
+    # print(f"Iteration {iteration} loss: {loss.mean().item():0.07f}")
 
 def train( model, dataset, opt):
     model = model.to(opt['device'])
@@ -120,6 +204,20 @@ if __name__ == '__main__':
         help='Whether to use padded features for fVSRN model, I recommend always set to False')
     parser.add_argument('--num_positional_encoding_terms',default=6,type=int,
         help='Number of positional encoding terms for fVSRN model, lower values for smooth reconstruction, but may miss high frequency details')
+    
+        # Second-derivative (smoothness) regularization in xy-plane
+    parser.add_argument(
+        '--second_deriv_weight',
+        default=0.0,
+        type=float,
+        help='Weight for second-derivative smoothness penalty in the xy-plane (0 disables it)'
+    )
+    parser.add_argument(
+        '--second_deriv_h',
+        default=1e-2,
+        type=float,
+        help='Finite-difference step size in normalized coordinate space for second-derivative penalty'
+    )
     
     # hyperparameters shared by both fVSRN and NGP models
     parser.add_argument('--n_features',default=2,type=int,

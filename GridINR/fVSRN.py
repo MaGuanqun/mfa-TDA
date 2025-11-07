@@ -30,31 +30,53 @@ class PositionalEncoding(nn.Module):
         self.n_dims = n_dims      
         
         self.L = num_terms
-        L_terms = torch.arange(0, num_terms, 
-            dtype=torch.float32).repeat_interleave(2*n_dims)
-        L_terms = torch.pow(2, L_terms) * torch.pi
-        self.L_t = L_terms
-        self.register_buffer("L_terms", L_terms, persistent=False)
+        
+        # Frequencies: [L], each term = 2^i * π
+        freqs = torch.pow(2.0, torch.arange(0, num_terms, dtype=torch.float32)) * math.pi
+        self.register_buffer("freqs", freqs, persistent=False)
+        
+        # L_terms = torch.arange(0, num_terms, 
+        #     dtype=torch.float32).repeat_interleave(2*n_dims)
+        # L_terms = torch.pow(2, L_terms) * torch.pi
+        # self.L_t = L_terms
+        # self.register_buffer("L_terms", L_terms, persistent=False)
 
     def forward(self, locations):
-        repeats = len(locations.shape) * [1]
-        repeats[-1] = self.L*2
-        locations = locations.repeat(repeats)
+        loc = locations.unsqueeze(-1)                               # [..., n_dims, 1]
+        # broadcast freqs: [1, 1, L] to match [..., n_dims, L]
+        freqs = self.freqs.view(*([1] * (loc.dim() - 1)), -1)       # [..., 1, L]
+
+        # phase: [..., n_dims, L]
+        phase = loc * freqs                                         # out-of-place
+
+        sin_part = torch.sin(phase)                                 # [..., n_dims, L]
+        cos_part = torch.cos(phase)                                 # [..., n_dims, L]
+
+        # Stack sin/cos along "channel" dim -> [..., 2*n_dims, L]
+        enc = torch.cat([sin_part, cos_part], dim=-2)
+
+        # Flatten last two dims -> [..., L * 2 * n_dims]
+        enc = enc.reshape(*locations.shape[:-1], -1)
+        return enc
+    
+        # repeats = len(locations.shape) * [1]
+        # repeats[-1] = self.L*2
+        # locations = locations.repeat(repeats)
         
-        locations = locations * self.L_terms# + self.phase_shift
-        if(self.n_dims == 2):
-            locations[..., 0::4] = torch.sin(locations[..., 0::4])
-            locations[..., 1::4] = torch.sin(locations[..., 1::4])
-            locations[..., 2::4] = torch.cos(locations[..., 2::4])
-            locations[..., 3::4] = torch.cos(locations[..., 3::4])
-        else:
-            locations[..., 0::6] = torch.sin(locations[..., 0::6])
-            locations[..., 1::6] = torch.sin(locations[..., 1::6])
-            locations[..., 2::6] = torch.sin(locations[..., 2::6])
-            locations[..., 3::6] = torch.cos(locations[..., 3::6])
-            locations[..., 4::6] = torch.cos(locations[..., 4::6])
-            locations[..., 5::6] = torch.cos(locations[..., 5::6])
-        return locations
+        # locations = locations * self.L_terms# + self.phase_shift
+        # if(self.n_dims == 2):
+        #     locations[..., 0::4] = torch.sin(locations[..., 0::4])
+        #     locations[..., 1::4] = torch.sin(locations[..., 1::4])
+        #     locations[..., 2::4] = torch.cos(locations[..., 2::4])
+        #     locations[..., 3::4] = torch.cos(locations[..., 3::4])
+        # else:
+        #     locations[..., 0::6] = torch.sin(locations[..., 0::6])
+        #     locations[..., 1::6] = torch.sin(locations[..., 1::6])
+        #     locations[..., 2::6] = torch.sin(locations[..., 2::6])
+        #     locations[..., 3::6] = torch.cos(locations[..., 3::6])
+        #     locations[..., 4::6] = torch.cos(locations[..., 4::6])
+        #     locations[..., 5::6] = torch.cos(locations[..., 5::6])
+        # return locations
 
 
 class fVSRN(nn.Module):

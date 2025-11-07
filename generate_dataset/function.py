@@ -18,7 +18,7 @@ def sample_size(function_name='expotential'):
     elif function_name in ['quartic_potential_2']:
         return (100, 100, 100)
     elif function_name == 'vortex_street':
-        return (50, 80, 100)
+        return (100, 80, 50)
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
 
