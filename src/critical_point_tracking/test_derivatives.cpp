@@ -281,10 +281,10 @@ int main(int argc, char** argv)
         // p<<-0.292091, 0.30837, 1.11537;
         // p<<0.288695, 0.00458166,0.016144;
         // p<<30, 59,20;
-        p << 0.5,0.5,0.5;
+        p << 0.15,0.25,0.35;
 
         Eigen::VectorXf h(3);
-        h << 1e-2, 1e-2, 1e-2;
+        h << 1e-3, 1e-3, 1e-3;
         h[0]*=inr_model.domain_range[2]/2;
         h[1]*=inr_model.domain_range[1]/2;
         h[2]*=inr_model.domain_range[0]/2;
@@ -307,12 +307,23 @@ int main(int argc, char** argv)
         VectorXf third_derivative_spatial(4);//[fxxx, fxxy, fxyy, fyyy]
         VectorXf third_derivative_time(3);//[fxxt, fxyt, fyyt]
 
+
+
+        VectorXf grad2(3);
+        MatrixXf hessian2(3,3);
+        VectorXf third_derivative_spatial2(4);//[fxxx, fxxy, fxyy, fyyy]
+        VectorXf third_derivative_time2(3);//[fxxt, fxyt, fyyt]
+
         inr_model.query_up_to_third_derivative(p,grad,hessian,third_derivative_spatial,third_derivative_time);
 
-        std::cout << "grad:\n" << d.grad.transpose()<<" with "<< grad.transpose() << "\n\n";
+
+
+        inr_model.query_up_to_third_derivative2(p,grad2,hessian2,third_derivative_spatial2,third_derivative_time2);
+
+        std::cout << "grad:\n" << d.grad.transpose()<<" with "<< grad.transpose() <<" "<<grad2.transpose() << "\n\n";
         std::cout << "Hessian:\n" << d.H << "\n\n";
         std::cout << "Hessian from INRModel:\n" << hessian << "\n\n";
-        std::cout<< d.H - hessian <<std::endl;
+        std::cout<< hessian2 <<std::endl;
 
         VectorXf third_derivative_spatial_test(4);
         third_derivative_spatial_test << d.third.T[0][0][0], d.third.T[0][0][1], d.third.T[0][1][1], d.third.T[1][1][1];
@@ -322,8 +333,11 @@ int main(int argc, char** argv)
         third_derivative_time_test /= 8.0;
 
         std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
+        std::cout<<third_derivative_spatial2.transpose()<< "\n";
         std::cout<< third_derivative_spatial_test.transpose()<< "\n\n";
+
         std::cout<< "third derivative time:\n" << third_derivative_time.transpose()<< "\n";
+        std::cout<<third_derivative_time2.transpose()<< "\n";
         std::cout<< third_derivative_time_test.transpose()<< "\n\n";
 
 
