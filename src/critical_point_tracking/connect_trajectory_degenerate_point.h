@@ -65,6 +65,21 @@ void registerPoints(Eigen::VectorX<T>& Position, T spatial_epsilon, T temporal_e
         j++;
     }
 
+    temp_index[j].clear();
+    k0=(Position[Position.size()-1]-domain_min[j]) / (cell_size*temporal_epsilon);
+    t0=k0-std::floor(k0);
+    k1=std::floor(k0);
+    temp_index[j].emplace_back(k1);
+    if(t0<left_range)
+    {            
+        temp_index[j].emplace_back(k1-1);
+    }
+    else if(t0>right_range)
+    {
+        temp_index[j].emplace_back(k1+1);
+    }
+
+
     if(Position.size()==9) //dimension = 3
     {
         for(auto i:temp_index[0])
@@ -108,6 +123,15 @@ int check_distance(Eigen::VectorX<T>& Position, T spatial_epsilon, T temporal_ep
         j++;
     }
 
+    k0=(Position[Position.size()-1]-domain_min[j]) / (cell_size*temporal_epsilon);
+    k1=std::floor(k0);
+    temp_index[j]=k1;
+
+    for(int i=0;i<domain_min.size();++i)
+    {
+        Position[i+3]=temp_index[i]; 
+    }
+
     auto range = points_step_1.equal_range(Position);
     T distance =std::numeric_limits<T>::max();
     int degenerate_point_index=-1;
@@ -136,7 +160,7 @@ void connect_trajectory(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
     VectorX<T> Pos(2*domain_min.size()+3); //<spatial threshold, temporal threshold, point_index, current hash index, original position>
     for(int i=0;i<degenerate_points.size();++i)
     {   
-        Pos[0]= spatial_step_size; Pos[1]= time_step; Pos[2]=i;
+        Pos[0]= spatial_step_size*1.732; Pos[1]= time_step*1.732; Pos[2]=i;
         Pos.tail(domain_min.size()) = degenerate_points[i];
         registerPoints(Pos, spatial_step_size, time_step, points_step_1, domain_min);
     }
@@ -145,9 +169,10 @@ void connect_trajectory(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
     for(int i=0;i<traces.size();++i)
     {
         VectorX<T> Position(2*domain_min.size()+3); //<spatial threshold, 
+        Position[0]= spatial_step_size*1.732; Position[1]= time_step*1.732; Position[2]=i;
+
         if(traces[i].connect_info[0]==-1)
         {
-            Position[0]= spatial_step_size; Position[1]= time_step; Position[2]=i;
             Position.tail(domain_min.size()) = traces[i].traces[0];
             //find_nearest degenerate point
             int index = check_distance(Position, spatial_step_size, time_step, points_step_1, domain_min, 1);
@@ -158,7 +183,6 @@ void connect_trajectory(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
         }
         if(traces[i].connect_info[1]==-1)
         {
-            Position[0]= spatial_step_size; Position[1]= time_step; Position[2]=i;
             Position.tail(domain_min.size()) = traces[i].traces.back();
             //find_nearest degenerate point
             int index = check_distance(Position, spatial_step_size, time_step, points_step_1, domain_min, -1);

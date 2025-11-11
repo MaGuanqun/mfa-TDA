@@ -1,5 +1,6 @@
 import numpy as np
 import pyvista as pv
+import argparse
 
 
 def rotating_gaussian(domain_pt):
@@ -37,13 +38,37 @@ def rotating_gaussian(domain_pt):
         f1 = max(f1, f2)
 
     return f1
- 
- 
+
+
+def quartic_potential_2(point):
+    """
+    Quartic potential function:
+    f(x, y, z) = 0.25*(x^4 + y^4) + 0.5*(1 - z)*x^2 + 0.5*cos(z)*y^2
+    """
+    x, y, z = point
+    return 0.25 * (x ** 4 + y ** 4) + 0.5 * (1 - z) * x ** 2 + 0.5 * np.cos(z) * y ** 2
+
+
+
+parser = argparse.ArgumentParser(description='sample functions.')
+
+
+parser.add_argument('-i', '--function_name', type=str, default='function_name', help='input function name to sample')
+parser.add_argument('-o', '--output_name', type=str, default='file_name.vtk', help='output file to compute critical points tracking')
+
+
+args = parser.parse_args()
+
+
+if args.function_name in ['quartic_potential_2', 'rotating_gaussian']:
+    min=[-2,-2,0]
+    max = [2,2,4]
+
 # Grid definition
-nx, ny, nz = 64, 64, 100
-x = np.linspace(-2.0, 2.0, nx)
-y = np.linspace(-2.0, 2.0, ny)
-z = np.linspace(0.0, 4.0, nz)
+nx, ny, nz = 100, 100, 1
+x = np.linspace(min[0], max[0], nx)
+y = np.linspace(min[1], max[1], ny)
+z = np.array([0])
 
 X, Y, Z = np.meshgrid(x, y, z, indexing='ij')  # shape: (nx, ny, nz)
 
@@ -51,7 +76,10 @@ X, Y, Z = np.meshgrid(x, y, z, indexing='ij')  # shape: (nx, ny, nz)
 points = np.stack([X, Y, Z], axis=-1).reshape(-1, 3)
 
 # Evaluate rotating_gaussian at each point
-values = np.array([rotating_gaussian(p) for p in points])  # shape (N,)
+if args.function_name == 'rotating_gaussian':
+    values = np.array([rotating_gaussian(p) for p in points])  # shape (N,)
+elif args.function_name == 'quartic_potential_2':
+    values = np.array([quartic_potential_2(p) for p in points])
 
 # Reshape back to grid shape
 values = values.reshape((nx, ny, nz))
@@ -65,4 +93,4 @@ grid.dimensions = (nx, ny, nz)
 grid["var0"] = values.ravel(order='F')  # VTK expects Fortran order (z-fastest)
 
 # Save to .vts file (structured grid format)
-grid.save("rotating_gaussian_raw.vtk")
+grid.save(args.output_name)

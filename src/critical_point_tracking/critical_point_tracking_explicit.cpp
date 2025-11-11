@@ -45,6 +45,7 @@
 #include "trace_deduplication.h"
 #include "connect_trajectory_degenerate_point.h"
 
+#include "critical_point_utility.h"
 // #include "trace.h"
 
 // #include "../morse_smale/find_isocontour.h"
@@ -111,6 +112,8 @@ int main(int argc, char** argv)
 
     double  spatial_step_size = 1.0;
 
+    string edge_type_file = "";
+
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -124,6 +127,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('s', "singular_point_file", singular_point_file, " singular point file name");
 
     ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
+
+    ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -169,6 +174,9 @@ int main(int argc, char** argv)
     std::cout<<Span_size.transpose()<<std::endl;
     std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
 
+
+     auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
+
         int spanned_block_num =span_num.prod();
 
         VectorXi number_in_every_domain; //span
@@ -182,7 +190,7 @@ int main(int argc, char** argv)
         std::cout<<"valid span num "<<selected_span.size()<<std::endl;
         // std::vector<VectorXi> selected_span;
 
-        auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
+       
 
 
         VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of 
@@ -254,6 +262,19 @@ int main(int argc, char** argv)
     }
     std::cout<<"traces after deduplication "<<trace_size<<std::endl;
 
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points);
+
+    auto cpt_extract_end_time = std::chrono::high_resolution_clock::now();
+
+
+    std::vector<int> critical_point_types;
+
+    if(edge_type_file!="")
+        critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type);
+
+    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points, &critical_point_types, edge_type_file);
+
+    critical_point_utility::accuracy(traces, degenerate_points, function_type);
+
+    std::cout<<"time consuming "<<std::chrono::duration_cast<std::chrono::microseconds>(cpt_extract_end_time - cpt_extract_start_time).count()/1000<<std::endl;
 
 }

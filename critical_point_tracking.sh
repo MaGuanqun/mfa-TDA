@@ -43,8 +43,8 @@ smoothed_mfa_file="./build/src/${save_folder}/${data_type}_smoothed.mfa"
 
 ori_raw_data="./build/src/${save_folder}/${data_type}_raw.dat"
 
-step_size="16"
-t_sample_ratio="16"
+step_size="4"
+t_sample_ratio="4"
 
 degenerate_point="./build/src/${save_folder}/${data_type}_degenerate.dat"
 degenerate_point_original="./build/src/${save_folder}/${data_type}_degenerate_ori.dat"
@@ -54,6 +54,9 @@ smoothed_degenerate_point="./build/src/${save_folder}/${data_type}_degenerate_sm
 tracking_result="./build/src/${save_folder}/${data_type}.obj"
 smoothed_tracking_result="./build/src/${save_folder}/${data_type}_smoothed.obj"
 
+ori_tracking_result="./build/src/${save_folder}/ori_${data_type}.obj"
+edge_type_file="./build/src/${save_folder}/${data_type}_edge_type.csv"
+ori_tracking_result_w_type="./build/src/${save_folder}/${data_type}_original.vtp"
 
 ttk_tracking_file="./build/src/${save_folder}/ttk_${data_type}.vtu"
 ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cpt"
@@ -89,7 +92,7 @@ point_itr_threshold="4.0"
 
 # "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0
+# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0 -t 0
 
 
 # gdb --args 
@@ -101,16 +104,16 @@ point_itr_threshold="4.0"
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
 
-# python src/python/sample_original_high_dim_func.py
+python src/python/sample_original_high_dim_func.py --function_name "${data_type}" --output_name "${ori_raw_data}.vtk"
 
 # python ./src/critical_point_tracking/time_data_convert.py -i "rotating_gaussian_raw.vtk" -o "rotating_gaussian_raw.vti"
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "rotating_gaussian_raw.vti" -o "rotating_gaussian_raw.csv"
 
 
-"${export_raw_data}" -d 4 -m 3 -q 4 -s 0.0 -i "${data_type}" -f "${ori_raw_data}"
+# "${export_raw_data}" -d 4 -m 3 -q 4 -s 0.0 -i "${data_type}" -f "${ori_raw_data}"
 
-python ./src/critical_point_tracking/binary_time_data_convert.py -i "${ori_raw_data}" -o "${mfa_file}_raw.vti" -f "${data_type}"
-pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}_raw.vti" -o "${ttk_critical_point_file}_raw.csv"
+# python ./src/critical_point_tracking/binary_time_data_convert.py -i "${ori_raw_data}" -o "${mfa_file}_raw.vti" -f "${data_type}"
+# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}_raw.vti" -o "${ttk_critical_point_file}_raw.csv"
 
 # python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
 
@@ -128,7 +131,7 @@ pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_
 
 # "${degenerate_case}" -f "${smoothed_mfa_file}" -b "${smoothed_degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${smoothed_control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-# "${convert_root_to_vtk}" -f "${smoothed_degenerate_point}" -o "${smoothed_degenerate_point}.csv" -i "${smoothed_mfa_file}" -d 0
+# "${convert_root_to_vtk}" -f "${smoothed_degenerate_point}" -o "${smoothed_degenerate_point}.csv" -i "${smoothed_mfa_file}" -d 0 -t 0
 
 # "${tracking}" -f "${smoothed_mfa_file}" -b "${smoothed_tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${smoothed_control_points}" -x "${root_finding_epsilon}" -s "${smoothed_degenerate_point}" -p "${point_itr_threshold}"
 
@@ -147,7 +150,14 @@ pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_
 
 # "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-# "${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0
+# "${convert_root_to_vtk}" -f "${degenerate_point_original}" -o "${degenerate_point_original}.csv" -j 0 -t 0
 
-#gdb --args 
-# "${tracking_explicit}" -f "${data_type}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}" -p "${point_itr_threshold}"
+# gdb --args 
+# "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}" -p "${point_itr_threshold}" -e "${edge_type_file}"
+
+
+
+source ~/enter/etc/profile.d/conda.sh
+conda activate mfa
+
+# python ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}" -j "${edge_type_file}" -o "${ori_tracking_result_w_type}"

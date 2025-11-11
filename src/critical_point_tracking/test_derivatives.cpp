@@ -314,31 +314,43 @@ int main(int argc, char** argv)
         VectorXf third_derivative_spatial2(4);//[fxxx, fxxy, fxyy, fyyy]
         VectorXf third_derivative_time2(3);//[fxxt, fxyt, fyyt]
 
-        inr_model.query_up_to_third_derivative(p,grad,hessian,third_derivative_spatial,third_derivative_time);
+        MatrixXf hessian3,hessian4,hessian5,hessian6;
+        VectorXf grad3,grad4,grad5,grad6;
 
+        inr_model.query_hessian_t(p,grad,hessian);
 
-
-        inr_model.query_up_to_third_derivative2(p,grad2,hessian2,third_derivative_spatial2,third_derivative_time2);
+        inr_model.query_dim_reduced_grad_hessian(p,grad2,hessian2, 0);
+        inr_model.query_dim_reduced_grad_hessian(p,grad3,hessian3, 1);
+        inr_model.query_dim_reduced_grad_hessian(p,grad4,hessian4, 2);
+        
+        inr_model.query_up_to_third_derivative(p,grad5,hessian5,third_derivative_spatial,third_derivative_time);
+        // inr_model.query_up_to_third_derivative2(p,grad6,hessian6,third_derivative_spatial2,third_derivative_time2);
 
         std::cout << "grad:\n" << d.grad.transpose()<<" with "<< grad.transpose() <<" "<<grad2.transpose() << "\n\n";
+        std::cout<<grad3.transpose()<<" "<<grad4.transpose() <<std::endl;
         std::cout << "Hessian:\n" << d.H << "\n\n";
         std::cout << "Hessian from INRModel:\n" << hessian << "\n\n";
         std::cout<< hessian2 <<std::endl;
+        std::cout<< hessian3 <<std::endl;
+        std::cout<< hessian4 <<std::endl;
+        std::cout<<std::endl;
+        std::cout<<hessian5<<std::endl;
+        std::cout<<hessian6<<std::endl;
 
-        VectorXf third_derivative_spatial_test(4);
-        third_derivative_spatial_test << d.third.T[0][0][0], d.third.T[0][0][1], d.third.T[0][1][1], d.third.T[1][1][1];
-        third_derivative_spatial_test /= 8.0;
-        VectorXf third_derivative_time_test(3);
-        third_derivative_time_test << d.third.T[0][0][2], d.third.T[0][1][2], d.third.T[1][1][2];
-        third_derivative_time_test /= 8.0;
+        // VectorXf third_derivative_spatial_test(4);
+        // third_derivative_spatial_test << d.third.T[0][0][0], d.third.T[0][0][1], d.third.T[0][1][1], d.third.T[1][1][1];
+        // third_derivative_spatial_test /= 8.0;
+        // VectorXf third_derivative_time_test(3);
+        // third_derivative_time_test << d.third.T[0][0][2], d.third.T[0][1][2], d.third.T[1][1][2];
+        // third_derivative_time_test /= 8.0;
 
-        std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
-        std::cout<<third_derivative_spatial2.transpose()<< "\n";
-        std::cout<< third_derivative_spatial_test.transpose()<< "\n\n";
+        // std::cout<< "third derivative spatial:\n" << third_derivative_spatial.transpose()<< "\n";
+        // std::cout<<third_derivative_spatial2.transpose()<< "\n";
+        // std::cout<< third_derivative_spatial_test.transpose()<< "\n\n";
 
-        std::cout<< "third derivative time:\n" << third_derivative_time.transpose()<< "\n";
-        std::cout<<third_derivative_time2.transpose()<< "\n";
-        std::cout<< third_derivative_time_test.transpose()<< "\n\n";
+        // std::cout<< "third derivative time:\n" << third_derivative_time.transpose()<< "\n";
+        // std::cout<<third_derivative_time2.transpose()<< "\n";
+        // std::cout<< third_derivative_time_test.transpose()<< "\n\n";
 
 
         // VectorXf p_test(3);

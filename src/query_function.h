@@ -24,7 +24,8 @@ namespace query_function
         switch (function_type)
         {
         case -1:
-            inr_model->query(p, out, deriv);
+            // inr_model->query(p, out, deriv);
+            std::cerr<<"INR model querying not implemented in this function"<<std::endl;
             break;
         case 0:
             mfa_extend::recover_mfa(b, p, out, deriv);

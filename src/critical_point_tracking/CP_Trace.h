@@ -15,8 +15,24 @@ struct CP_Trace
 
 namespace CP_Trace_fuc
 {
+
+    void save_edge_type(const std::string& filename, std::vector<int>& edge_type)
+    {
+        std::ofstream outFile(filename);
+        if (!outFile.is_open()) {
+            std::cerr << "Error: Could not open file " << filename << " for writing." << std::endl;
+            return;
+        }
+
+       for (const auto& value : edge_type) {
+            outFile << value << "\n";  // Each value on a new line
+        }
+        outFile.close();
+        std::cout << "Edge values saved to " << filename << std::endl;
+    }
+
     template<typename T>
-    void convert_to_obj(const std::string& filename, std::vector<CP_Trace<T>>& traces, std::vector<VectorX<T>>& degenerate_points)
+    void convert_to_obj(const std::string& filename, std::vector<CP_Trace<T>>& traces, std::vector<VectorX<T>>& degenerate_points, std::vector<int>* critical_point_types=nullptr, std::string edge_type_filename="")
     {
         std::ofstream outFile(filename);
         if (!outFile.is_open()) {
@@ -42,6 +58,7 @@ namespace CP_Trace_fuc
             
         }
 
+        std::vector<int> edge_type;
 
         int obj_index=1+degenerate_points.size();
         for (auto i=traces.begin();i<traces.end();++i)
@@ -54,17 +71,32 @@ namespace CP_Trace_fuc
             if(i->connect_info[0]>-1)
             {
                 outFile <<  "l " << i->connect_info[0]+1 << " " << obj_index << "\n";
+                if(critical_point_types!=nullptr)
+                {
+                    edge_type.emplace_back((*critical_point_types)[obj_index-1]);
+                }
             }
             // std::cout<<"write start "<<obj_index<< std::endl;
             for(auto j=1;j<i->traces.size();++j)
             {
                 // std::cout<<"write trace "<<obj_index<< std::endl;
                 outFile <<  "l " << obj_index << " " << obj_index+1 << "\n";
+
+                if(critical_point_types!=nullptr)
+                {
+                    edge_type.emplace_back((*critical_point_types)[obj_index-1]);
+                }
+
                 obj_index++;
             }
             if(i->connect_info[1]>-1)
             {
                 outFile <<  "l " << obj_index << " " << i->connect_info[1]+1 << "\n";
+
+                if(critical_point_types!=nullptr)
+                {
+                    edge_type.emplace_back((*critical_point_types)[obj_index-1]);
+                }
             }
 
             obj_index++;
@@ -72,6 +104,10 @@ namespace CP_Trace_fuc
         }
         outFile.close();
 
+        if(critical_point_types!=nullptr)
+        {
+            save_edge_type(edge_type_filename, edge_type);
+        }
 
     }
 

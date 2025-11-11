@@ -6,6 +6,7 @@
 #include <iostream>
 #include <cmath>
 #include <string>
+#include <variant>
 
 #include <diy/master.hpp>
 // #include <diy/reduce-operations.hpp>
@@ -97,6 +98,7 @@ int main(int argc, char** argv)
 
     int is_mfa_result = 1; // 1 means the input data is from mfa, 0 means the input data is from other source
 
+    int is_input_float = 0; // 1 means the input data is float, 0 means the input data is double
     // get command line arguments
     opts::Options ops;
     //ops >> opts::Option('d', "deriv",   deriv,   " which derivative to take (1 = 1st, 2 = 2nd, ...)");
@@ -113,7 +115,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('d', "reduce_duplication",      reduce_duplication,     " 0 is not reducing duplication, 1 is reducing duplication");
     ops >> opts::Option('p', "vector_vector",    input_vector_vector,       " if the input data need to be transferred to vector<vector<>>");
     ops >> opts::Option('j', "is_mfa_result",   is_mfa_result,   " 1 means the input data is from mfa, 0 means the input data is from other source");
-
+    ops >> opts::Option('t', "is_input_float",   is_input_float,   " 1 means the input data is float, 0 means the input data is double");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -143,22 +145,35 @@ int main(int argc, char** argv)
     
     // initialize DIY
     
-    std::vector<Eigen::MatrixXf> root_;
-
     std::ifstream file(infile.c_str());
     if (!file) {
         std::cerr << "File does not exist: "<< std::endl;
         return 0;
     }
 
-
-    utility::loadMatrixVector(infile.c_str(),root_);
-
+    
     std::vector<Eigen::MatrixXd> root;
-    for(auto mat:root_)
+
+    if(is_input_float==1)
     {
-        root.push_back(mat.cast<double>());
+        std::vector<Eigen::MatrixXf> root_;
+        utility::loadMatrixVector<float>(infile.c_str(),root_);
+        for(auto mat:root_)
+        {
+            root.push_back(mat.cast<double>());
+        }
     }
+    else{
+        std::vector<Eigen::MatrixXd> root_;
+        utility::loadMatrixVector(infile.c_str(),root_);
+        for(auto mat:root_)
+        {
+            root.push_back(mat.cast<double>());
+        }
+
+    }
+
+
 
     std::vector<Eigen::MatrixXd> duplicate_num;
     if(!duplicate_file.empty())
@@ -256,6 +271,7 @@ int main(int argc, char** argv)
         start_place=root[0].data()[0]+1;
     }
     std::cout<<"initial root size "<<root[0].rows()<<" "<<root[0].cols()<<std::endl;
+
 
     for(int i=0;i<root.size();++i)
     {

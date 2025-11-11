@@ -62,6 +62,7 @@ public:
 
     bool isLoaded() const { return loaded; }
 
+
 static VectorX<T> domain_min_(const string& func_name)
     {
         VectorX<T> result(3);
@@ -179,187 +180,192 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
     // hessian and \partial_xt, \partial_yt
     void query_hessian_t(const VectorX<T>& point,
-                VectorX<T>& grad_t,                     // size 3: [fx, fy]
+                VectorX<T>& grad_t,                     //[fxt, fyt]
                 Eigen::MatrixX<T>& Hessian)
     {
-            VectorX<T> p = convert_point_to_domain_reverse_order(point);
-            input_.detach_();                 // drop previous graph
+            // ------------------------------------------------------------------
+        // 1) Build stencil points in domain coordinates
+        //     center: (x, y, t)
+        //     x± : (x ± hx, y, t)
+        //     y± : (x, y ± hy, t)
+        //     t± : (x, y, t ± ht)
+        // ------------------------------------------------------------------
+        std::vector<VectorX<T>> points_domain;
+        points_domain.reserve(5);
 
-            if (input_.is_cpu()) {
-                // CPU path: write directly via pointer (no accessor overhead)
-                float* buf = input_.data_ptr<float>();   // contiguous [1,3]
-                buf[0] = static_cast<float>(p(0));
-                buf[1] = static_cast<float>(p(1));
-                buf[2] = static_cast<float>(p(2));
-            } else {
-                // CUDA path: never use accessor or data_ptr to write from host.
-                float* h = input_host_.data_ptr<float>();
-                h[0] = static_cast<float>(p(0));
-                h[1] = static_cast<float>(p(1));
-                h[2] = static_cast<float>(p(2));
-                input_.copy_(input_host_, /*non_blocking=*/false);
-            }
+        // center
+        points_domain.push_back(point);          // idx 0
+
+        // x+ , x-
+        VectorX<T> p_xp = point;
+        VectorX<T> p_xm = point;
+        p_xp(0) += hx;
+        p_xm(0) -= hx;
+        points_domain.push_back(p_xp);                  // idx 1
+        points_domain.push_back(p_xm);                  // idx 2
+
+        // y+ , y-
+        VectorX<T> p_yp = point;
+        VectorX<T> p_ym = point;
+        p_yp(1) += hy;
+        p_ym(1) -= hy;
+        points_domain.push_back(p_yp);                  // idx 3
+        points_domain.push_back(p_ym);                  // idx 4
 
 
-            input_.requires_grad_(true);      // we need autograd
-            torch::Tensor f = module.forward({input_}).toTensor().reshape({}); // scalar
-            torch::Tensor g_full = torch::autograd::grad(
-                /*outputs=*/{f},
-                /*inputs=*/{input_},
-                /*grad_outputs=*/{},
-                /*retain_graph=*/true,
-                /*create_graph=*/true
-            )[0];  // shape [1,3]
+        // ------------------------------------------------------------------
+        // 2) Evaluate gradients at all stencil points (domain coords)
+        //     grads[i] = [fx, fy, ft] in physical domain
+        // ------------------------------------------------------------------
+        std::vector<VectorX<T>> grads;
+        eval_grad_batch_in_domain(points_domain, grads);
 
+        const VectorX<T>& g_c  = grads[0]; // center
+        const VectorX<T>& g_xp = grads[1];
+        const VectorX<T>& g_xm = grads[2];
+        const VectorX<T>& g_yp = grads[3];
+        const VectorX<T>& g_ym = grads[4];
 
-        // Extract grad components
-        auto fy = g_full.index({0, 1});
-        auto fx = g_full.index({0, 2});
-
-        // // Grad (fx, fy)
-        // grad_out.resize(2);
-        // grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<float>());
-        // grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<float>());
-        // grad_out = grad_out.cwiseQuotient(domain_range.head(2))*2.0;
-
-        // ---- Second order: rows of Hessian are grads of fx and fy wrt FULL input ----
-        // We exclude any t-columns for the Hessian output (xy-block only).
-        torch::Tensor Hx_full = torch::autograd::grad(
-            /*outputs=*/{fx},
-            /*inputs=*/{input_},
-            /*grad_outputs=*/{},
-            /*retain_graph=*/true,
-            /*create_graph=*/false
-        )[0];  // [1,3] = [fxx, fxy, fxt]
-
-        torch::Tensor Hy_full = torch::autograd::grad(
-            /*outputs=*/{fy},
-            /*inputs=*/{input_},
-            /*grad_outputs=*/{},
-            /*retain_graph=*/true,
-            /*create_graph=*/false
-        )[0];  // [1,3] = [fyx, fyy, fyt]
-
+        // ------------------------------------------------------------------
+        // 3) Numeric Hessian in xy-plane from gradient field [fx, fy]
+        //
+        // Hxx = d/dx (fx) ≈ [ fx(x+hx) - fx(x-hx) ] / (2hx)
+        // Hyy = d/dy (fy) ≈ [ fy(y+hy) - fy(y-hy) ] / (2hy)
+        //
+        // Hxy = Hyx ≈ 0.5 * ( d/dy fx + d/dx fy )
+        //             = 0.5 * ( [ fx(y+hy) - fx(y-hy) ] / (2hy)
+        //                      + [ fy(x+hx) - fy(x-hx) ] / (2hx) )
+        // ------------------------------------------------------------------
         Hessian.resize(2,2);
+        // Hxx
+        T Hxx = (g_xp(0) - g_xm(0)) * inv2hx;  // fx difference along x
 
-        Hessian(0,0)= static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<float>()); //fxx
-        Hessian(0,1)= static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<float>()); //fxy
-        Hessian(1,0)= Hessian(0,1); //fyx
-        Hessian(1,1)= static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<float>()); //fyy
-        convert_hessian_to_domain(Hessian);
+        // Hyy
+        T Hyy = (g_yp(1) - g_ym(1)) * inv2hy;  // fy difference along y
 
+        // Hxy from d/dy fx
+        T Hxy_from_y = (g_yp(0) - g_ym(0)) * inv2hy;
 
+        // Hyx from d/dx fy
+        T Hyx_from_x = (g_xp(1) - g_xm(1)) * inv2hx;
+
+        T Hxy = static_cast<T>(0.5) * (Hxy_from_y + Hyx_from_x);
+
+        Hessian(0,0) = Hxx;
+        Hessian(0,1) = Hxy;
+        Hessian(1,0) = Hxy;
+        Hessian(1,1) = Hyy;
+
+        // ------------------------------------------------------------------
+        // 4) Time derivatives of spatial gradients: f_xt, f_yt
+        //
+       // f_xt = d/dx (f_t) ≈ [ f_t(x+hx) - f_t(x-hx) ] / (2hx)
+        // f_yt = d/dy (f_t) ≈ [ f_t(y+hy) - f_t(y-hy) ] / (2hy)
+        // ------------------------------------------------------------------
         grad_t.resize(2);
-        grad_t(0) = static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<float>()); //fxt
-        grad_t(0) = 4.0 * grad_t(0)/(domain_range(0)*domain_range(2));
-        grad_t(1) = static_cast<T>(Hy_full.index({0,0}).detach().to(torch::kCPU).item<float>()); //fyt
-        grad_t(1) = 4.0 * grad_t(1)/(domain_range(1)*domain_range(2));
+        grad_t(0) = (g_xp(2) - g_xm(2)) * inv2hx;  // f_xt
+        grad_t(1) = (g_yp(2) - g_ym(2)) * inv2hy;  // f_yt
+    }
 
+
+    void query_grad_exclude_last(const VectorX<T>& point,
+                VectorX<T>& grad_out)
+    {
+        std::vector<VectorX<T>> pts;
+        pts.push_back(point);
+        std::vector<VectorX<T>> grads;
+        eval_grad_batch_in_domain(pts, grads);
+        grad_out = grads[0].head(point.size()-1);
     }
 
     void query_dim_reduced_grad_hessian(const VectorX<T>& point,
                 VectorX<T>& grad_out,                     // size 3: [fx, fy]
                 Eigen::MatrixX<T>& Hessian, int removed_dim)
     {
-        VectorX<T> p = convert_point_to_domain_reverse_order(point);
-        input_.detach_();                 // drop previous graph
+        std::array<int, 2> kept_dims;
+        int k = 0;
+        for (int d = 0; d < point.size(); ++d)
+            if (d != removed_dim) kept_dims[k++] = d;
+        
+        T hs[3]={hx,hy,ht};
+        T inv2h[3]={inv2hx,inv2hy,inv2ht};
+        
+        std::vector<VectorX<T>> pts;
+        pts.reserve(5);
+        pts.push_back(point); // center
 
-        if (input_.is_cpu()) {
-            // CPU path: write directly via pointer (no accessor overhead)
-            float* buf = input_.data_ptr<float>();   // contiguous [1,3]
-            buf[0] = static_cast<float>(p(0));
-            buf[1] = static_cast<float>(p(1));
-            buf[2] = static_cast<float>(p(2));
-        } else {
-            // CUDA path: never use accessor or data_ptr to write from host.
-            float* h = input_host_.data_ptr<float>();
-            h[0] = static_cast<float>(p(0));
-            h[1] = static_cast<float>(p(1));
-            h[2] = static_cast<float>(p(2));
-            input_.copy_(input_host_, /*non_blocking=*/false);
-        }
+        VectorX<T> p_plus = point, p_minus = point;
+        // along first kept dim
+        p_plus(kept_dims[0]) += hs[kept_dims[0]];
+        p_minus(kept_dims[0]) -= hs[kept_dims[0]];
+        pts.push_back(p_plus);
+        pts.push_back(p_minus);
+
+        // along second kept dim
+        p_plus = point;
+        p_minus = point;
+        p_plus(kept_dims[1]) += hs[kept_dims[1]];
+        p_minus(kept_dims[1]) -= hs[kept_dims[1]];
+        pts.push_back(p_plus);
+        pts.push_back(p_minus);
 
 
-        input_.requires_grad_(true);      // we need autograd
-        torch::Tensor f = module.forward({input_}).toTensor().reshape({}); // scalar
-        torch::Tensor g_full = torch::autograd::grad(
-            /*outputs=*/{f},
-            /*inputs=*/{input_},
-            /*grad_outputs=*/{},
-            /*retain_graph=*/true,
-            /*create_graph=*/true
-        )[0];  // shape [1,3]
+        // -----------------------------------------------
+        // Evaluate gradients at all stencil points
+        // -----------------------------------------------
+        std::vector<VectorX<T>> grads;
+        eval_grad_batch_in_domain(pts, grads);
+        // grads[i] = [fx, fy, ft] in domain coords
 
-        // Extract grad components
-        // auto ft = g_full.index({0, 0});
-        auto fy = g_full.index({0, 1});
-        auto fx = g_full.index({0, 2});
-
-        // Grad (fx, fy)
+        const VectorX<T>& g_center = grads[0];
         grad_out.resize(2);
-        grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<float>());
-        grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<float>());
+        grad_out(0) = g_center(0);
+        grad_out(1) = g_center(1);
 
 
-        grad_out = grad_out.cwiseQuotient(domain_range.head(2))*2.0;
+  
+         // -----------------------------------------------
+        // 4) Numeric Hessian in the reduced plane
+        // -----------------------------------------------
+        Hessian.resize(2, 2);
+        Hessian.setZero();
 
-        // ---- Second order: rows of Hessian are grads of fx and fy wrt FULL input ----
-        // We exclude any t-columns for the Hessian output (xy-block only).
-        torch::Tensor Hx_full = torch::autograd::grad(
-            /*outputs=*/{fx},
-            /*inputs=*/{input_},
-            /*grad_outputs=*/{},
-            /*retain_graph=*/true,
-            /*create_graph=*/false
-        )[0];  // [1,3] = [fxx, fxy, fxt]
+        // std::cout<<"kept_dims: "<<kept_dims[0]<<" , "<<kept_dims[1]<<std::endl;
+        // std::cout<<pts[0].transpose()<<std::endl;
+        // std::cout<<pts[1].transpose()<<std::endl;
+        // std::cout<<pts[2].transpose()<<std::endl;
+        // std::cout<<pts[3].transpose()<<std::endl;
+        // std::cout<<pts[4].transpose()<<std::endl;
 
-        torch::Tensor Hy_full = torch::autograd::grad(
-            /*outputs=*/{fy},
-            /*inputs=*/{input_},
-            /*grad_outputs=*/{},
-            /*retain_graph=*/true,
-            /*create_graph=*/false
-        )[0];  // [1,3] = [fyx, fyy, fyt]
+        // central finite differences on [fx, fy]
+        // Keep only x,y partials (kept_dims order may vary)
+        const VectorX<T>& g_p1 = grads[1]; // +d1
+        const VectorX<T>& g_m1 = grads[2]; // -d1
+        const VectorX<T>& g_p2 = grads[3]; // +d2
+        const VectorX<T>& g_m2 = grads[4]; // -d2
 
-        Hessian.resize(2,2);
-        if(removed_dim==2) //remove t
-        {
 
-            Hessian(0,0)= static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<float>()); //fxx
-            Hessian(0,1)= static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<float>()); //fxy
-            Hessian(1,0)= Hessian(0,1); //fyx
-            Hessian(1,1)= static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<float>()); //fyy
-            convert_hessian_to_domain(Hessian);
+        // std::cout<<"g_center: "<<g_center.transpose()<<std::endl;
+        // std::cout<<"g_p1: "<<g_p1.transpose()<<std::endl;
+        // std::cout<<"g_m1: "<<g_m1.transpose()<<std::endl;
+        // std::cout<<"g_p2: "<<g_p2.transpose()<<std::endl;
+        // std::cout<<"g_m2: "<<g_m2.transpose()<<std::endl;
 
-        }
-        else if(removed_dim==1) //remove y
-        {
-            Hessian(0,0)= static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<float>()); //fxx
-            Hessian(0,0)= 4.0*Hessian(0,0)/(domain_range(0)*domain_range(0));
 
-            Hessian(0,1)= static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<float>()); //fxt
-            Hessian(0,1)= 4.0*Hessian(0,1)/(domain_range(0)*domain_range(2));
+        //fx(+kept_dims[0])-fx(-kept_dims[0])
+        // d(fx,fy)/d first kept dim
+        VectorX<T> dfd1 = (g_p1.head(2) - g_m1.head(2)) * inv2h[kept_dims[0]];
+        // d(fx,fy)/d second kept dim
+        VectorX<T> dfd2 = (g_p2.head(2) - g_m2.head(2)) * inv2h[kept_dims[1]];
 
-            Hessian(1,0)= static_cast<T>(Hy_full.index({0,2}).detach().to(torch::kCPU).item<float>()); //fyx
-            Hessian(1,0)= 4.0*Hessian(1,0)/(domain_range(1)*domain_range(0));
+        // Diagonal terms: ∂fx/∂x, ∂fy/∂y
+        Hessian(0, 0) = dfd1(0);
+        Hessian(1, 1) = dfd2(1);
 
-            Hessian(1,1)= static_cast<T>(Hy_full.index({0,0}).detach().to(torch::kCPU).item<float>()); //fyt
-            Hessian(1,1)= 4.0*Hessian(1,1)/(domain_range(1)*domain_range(2));
-        }
-        else if(removed_dim==0) //remove x
-        {
-            Hessian(0,0)= static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<float>()); //fxy
-            Hessian(0,0)= 4.0*Hessian(0,0)/(domain_range(0)*domain_range(1));
-
-            Hessian(0,1)= static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<float>()); //fxt
-            Hessian(0,1)= 4.0*Hessian(0,1)/(domain_range(0)*domain_range(2));
-
-            Hessian(1,0)= static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<float>()); //fyy
-            Hessian(1,0)= 4.0*Hessian(1,0)/(domain_range(1)*domain_range(1));
-
-            Hessian(1,1)= static_cast<T>(Hy_full.index({0,0}).detach().to(torch::kCPU).item<float>()); //fyt
-            Hessian(1,1)= 4.0*Hessian(1,1)/(domain_range(1)*domain_range(2));
-        }
+        // Off-diagonal ∂fx/∂y ≈ ∂fy/∂x = 0.5*(dfd2(0)+dfd1(1))
+        Hessian(0, 1) = dfd2(0);
+        Hessian(1, 0) = dfd1(1);
+        
 
     }
 
@@ -456,53 +462,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         input_batch.set_requires_grad(false);
     }
-    // Second-order: Hessian in *domain* coordinates via batched FD on gradient
-    void compute_hessian_numeric_in_domain(
-        const VectorX<T>& point_domain,
-        Eigen::MatrixX<T>& H_out          // 3x3, H(i,j) = ∂²f/∂u_i∂u_j, u=(x,y,t)
-    ) {
-        constexpr int D = 3;
-        H_out.resize(D, D);
-        H_out.setZero();
-
-        // We need 2D points: for each dimension j, point +/- h_j e_j
-        std::vector<VectorX<T>> points_domain;
-        points_domain.reserve(2 * D);
-
-        std::array<T, D> h_step;
-
-        for (int j = 0; j < D; ++j) {
-            T range_j = domain_range(j);
-            T h = delta_h * range_j;
-            h_step[j] = h;
-
-            VectorX<T> p_plus  = point_domain;
-            VectorX<T> p_minus = point_domain;
-            p_plus(j)  += h;
-            p_minus(j) -= h;
-            points_domain.push_back(p_plus);   // index 2*j
-            points_domain.push_back(p_minus);  // index 2*j+1
-        }
-
-        // Compute all gradients at once
-        std::vector<VectorX<T>> grads_domain;
-        eval_grad_batch_in_domain(points_domain, grads_domain); // size = 2D
-
-        // Fill Hessian columns
-        for (int j = 0; j < D; ++j) {
-            const VectorX<T>& grad_plus  = grads_domain[2 * j + 0];
-            const VectorX<T>& grad_minus = grads_domain[2 * j + 1];
-
-            H_out.col(j) = (grad_plus - grad_minus) / (static_cast<T>(2) * h_step[j]);
-        }
-
-        // Symmetrize for numerical robustness
-        H_out = static_cast<T>(0.5) * (H_out + H_out.transpose());
-
-        // Optional: if you want f_tt = 0 to match previous behavior:
-        // H_out(2, 2) = static_cast<T>(0);
-    }
-
+   
     void query_up_to_third_derivative(
         const VectorX<T>& point_domain,   // (x,y,t) in physical domain
         VectorX<T>& grad_out,             // [fx, fy, ft]
@@ -741,54 +701,80 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         out.resize(1);
         if (!loaded) throw std::runtime_error("INR model not loaded");
 
-        // Convert input (float or float) -> float32 tensor
-        input_.detach_();                 // drop previous graph
+        int order = 0;
+        if (derivs.size() > 0)
+                order = derivs.sum();
 
+        if (order > 3) {
+            throw std::runtime_error("query(): derivative order > 3 is not supported");
+        }
 
-        VectorX<T> p = convert_point_to_domain_reverse_order(point);
-        torch::Tensor input = torch::from_blob(
-            (void*)p.data(),
-            {1, p.size()},
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
-        ).clone();
-        input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
+    // For convenience, extract (nx, ny, nt); assume missing entries are 0.
+        int nx = (derivs.size() > 0) ? derivs(0) : 0;
+        int ny = (derivs.size() > 1) ? derivs(1) : 0;
+        int nt = (derivs.size() > 2) ? derivs(2) : 0;
 
+        if (order == 0) {
+            input_.detach_();
 
-        if(derivs.size()==0 || derivs.sum()==0)
-        {
-           // Forward pass
-            torch::Tensor output = module.forward({input}).toTensor().reshape({}); // [1,1]
+            VectorX<T> p = convert_point_to_domain_reverse_order(point);
+            torch::Tensor input = torch::from_blob(
+                (void*)p.data(),
+                {1, p.size()},
+                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+            ).clone();
+            input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
+
+            torch::Tensor output = module.forward({input}).toTensor().reshape({});
             out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<float>());
             return;
         }
 
-        input.set_requires_grad(true);
-        // Forward pass
-        torch::Tensor output = module.forward({input}).toTensor().reshape({}); // [1,1]
 
+        if (order == 1) {
+            input_.detach_();
 
+            VectorX<T> p = convert_point_to_domain_reverse_order(point);
+            torch::Tensor input = torch::from_blob(
+                (void*)p.data(),
+                {1, p.size()},
+                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+            ).clone();
+            input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
 
-        if(derivs.sum()==1)
-        {
-            int coord = (derivs(0)==1) ? 2 : (derivs(1)==1 ? 1 : 0);
-            int coord_in_domain = 2 - coord; // because of reverse order
+            input.set_requires_grad(true);
+            torch::Tensor output = module.forward({input}).toTensor().reshape({});
+
+            // Which coordinate? (x,y,t) in domain corresponds to (2,1,0) in model
+            int coord_model;
+            if (nx == 1 && ny == 0 && nt == 0) {
+                coord_model = 2; // x
+            } else if (nx == 0 && ny == 1 && nt == 0) {
+                coord_model = 1; // y
+            } else if (nx == 0 && ny == 0 && nt == 1) {
+                coord_model = 0; // t
+            } else {
+                throw std::runtime_error("query(): unsupported first-order multiindex");
+            }
+
+            int coord_domain = 2 - coord_model; // reverse order mapping
+
             auto g_list = torch::autograd::grad(
-            /*outputs=*/{output},
-            /*inputs=*/{input},
-            /*grad_outputs=*/{},
-            /*retain_graph=*/false,
-            /*create_graph=*/false,
-            /*allow_unused=*/true
+                /*outputs=*/{output},
+                /*inputs=*/{input},
+                /*grad_outputs=*/{},
+                /*retain_graph=*/false,
+                /*create_graph=*/false,
+                /*allow_unused=*/true
             );
 
-            torch::Tensor g_full = g_list[0];  // may be undefined if unused
+            torch::Tensor g_full = g_list[0];
             float val = 0.0f;
             if (g_full.defined()) {
-                // g_full is [1,3]
-                val = g_full.index({0, coord}).detach().to(torch::kCPU).item<float>();
-                val = val / domain_range(coord_in_domain)*2.0;
+                val = g_full.index({0, coord_model}).detach().to(torch::kCPU).item<float>();
+                // scale from [-1,1] to domain
+                val = val / domain_range(coord_domain) * 2.0f;
             } else {
-                // input truly not used in graph => derivative is 0
                 val = 0.0f;
             }
 
@@ -796,65 +782,367 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             return;
         }
 
+        // =========================================================
+    // 2nd order: numeric from gradients on *minimal* stencil
+    //            using eval_grad_batch_in_domain()
+    // =========================================================
+    if (order == 2) {
+        // We support: f_xx, f_yy, f_xy, f_xt, f_yt
+        T val = static_cast<T>(0);
+        bool ok = false;
 
-            // Helper to map (nx,ny,nt) -> which coord (0,1,2) is still “active” at each step
-        auto pick_coord = [](int nx, int ny, int nt) {
-            if (nx > 0) return 2;
-            if (ny > 0) return 1;
-            return 0;
-        };
+        // ---- f_xx: ∂/∂x (fx) ----
+        if (nx == 2 && ny == 0 && nt == 0) {
+            std::vector<VectorX<T>> pts(2);
+            pts[0]=point;
+            pts[1]=point;
+            pts[0](0) += hx;   // x + hx
+            pts[1](0) -= hx;   // x - hx
 
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads); // [fx, fy, ft]
 
-        if(derivs.sum()==2)
-        {
-            int nx = derivs(0), ny = derivs(1), nt = derivs(2);
-            int c1 = pick_coord(nx, ny, nt);
+            const VectorX<T>& g_xp = grads[0];
+            const VectorX<T>& g_xm = grads[1];
 
-            // full gradient of f wrt input
-            auto g_full = torch::autograd::grad({output}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/true)[0]; // [1,3]
-            auto g1 = g_full.index({0, c1});  // scalar: ∂f/∂x or ∂f/∂y or ∂f/∂t
-            // consume that count
-            if      (c1==2) --nx;
-            else if (c1==1) --ny;
-            else            --nt;
+            val = (g_xp(0) - g_xm(0)) * inv2hx; // ∂/∂x (fx)
+            ok  = true;
+        }
+        // ---- f_yy: ∂/∂y (fy) ----
+        else if (nx == 0 && ny == 2 && nt == 0) {
+            std::vector<VectorX<T>> pts(2);
+            pts[0]=point;
+            pts[1]=point;
+            pts[0](1) += hy;   // y + hy
+            pts[1](1) -= hy;   // y - hy
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
 
-            // Second derivative: grad of that scalar wrt full input, then index the remaining coord
-            auto g2_full = torch::autograd::grad({g1}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
-            int c2 = pick_coord(nx, ny, nt);
-            auto g2 = g2_full.index({0, c2});
-            out(0) = g2.detach().to(torch::kCPU).item<float>();
-            return;
+            const VectorX<T>& g_yp = grads[0];
+            const VectorX<T>& g_ym = grads[1];
+
+            val = (g_yp(1) - g_ym(1)) * inv2hy; // ∂/∂y (fy)
+            ok  = true;
+        }
+        // ---- f_xy: mixed, symmetric central difference ----
+        else if (nx == 1 && ny == 1 && nt == 0) {
+            // Use 4 points:
+            //   (x, y±hy) for d/dy fx
+            //   (x±hx, y) for d/dx fy
+            std::vector<VectorX<T>> pts;
+            pts.reserve(4);
+
+            VectorX<T> p_yp = point; p_yp(1) += hy;
+            VectorX<T> p_ym = point; p_ym(1) -= hy;
+            VectorX<T> p_xp = point; p_xp(0) += hx;
+            VectorX<T> p_xm = point; p_xm(0) -= hx;
+
+            pts.push_back(p_yp); // 0
+            pts.push_back(p_ym); // 1
+            pts.push_back(p_xp); // 2
+            pts.push_back(p_xm); // 3
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            const VectorX<T>& g_yp = grads[0];
+            const VectorX<T>& g_ym = grads[1];
+            const VectorX<T>& g_xp = grads[2];
+            const VectorX<T>& g_xm = grads[3];
+
+            T Hxy_from_y = (g_yp(0) - g_ym(0)) * inv2hy; // d/dy (fx)
+            T Hyx_from_x = (g_xp(1) - g_xm(1)) * inv2hx; // d/dx (fy)
+
+            val = static_cast<T>(0.5) * (Hxy_from_y + Hyx_from_x);
+            ok  = true;
+        }
+        // ---- f_xt: ∂/∂x (f_t) ----
+        else if (nx == 1 && ny == 0 && nt == 1) {
+            std::vector<VectorX<T>> pts(2);
+            pts[0]=point;
+            pts[1]=point;
+            pts[0](0) += hx;
+            pts[1](0) -= hx;
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            const VectorX<T>& g_xp = grads[0];
+            const VectorX<T>& g_xm = grads[1];
+
+            val = (g_xp(2) - g_xm(2)) * inv2hx; // d/dx (f_t)
+            ok  = true;
+        }
+        // ---- f_yt: ∂/∂y (f_t) ----
+        else if (nx == 0 && ny == 1 && nt == 1) {
+            std::vector<VectorX<T>> pts(2);
+            pts[0]=point;
+            pts[1]=point;
+            pts[0](1) += hy;
+            pts[1](1) -= hy;
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            const VectorX<T>& g_yp = grads[0];
+            const VectorX<T>& g_ym = grads[1];
+
+            val = (g_yp(2) - g_ym(2)) * inv2hy; // d/dy (f_t)
+            ok  = true;
         }
 
-        if(derivs.sum()==3)
-        {
-            int nx=derivs(0), ny=derivs(1), nt=derivs(2);
-            // Helper lambda to take grad of a scalar tensor 's' w.r.t. a single coordinate
-            int c1 = pick_coord(nx, ny, nt);
-            auto g1_full = torch::autograd::grad({output}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/true)[0]; // [1,3]
-            auto d1 = g1_full.index({0, c1}); // scalar
-            if      (c1==2) --nx;
-            else if (c1==1) --ny;
-            else            --nt;
+        if (!ok)
+            throw std::runtime_error("query(): unsupported second-order multiindex for numeric approximation");
 
-            // 2nd derivative
-            int c2 = pick_coord(nx, ny, nt);
-            auto g2_full = torch::autograd::grad({d1}, {input}, {}, /*retain_graph=*/true, /*create_graph=*/true)[0]; // [1,3]
-            auto d2 = g2_full.index({0, c2}); // scalar
-            if      (c2==2) --nx;
-            else if (c2==1) --ny;
-            else            --nt;
+        out(0) = val;
+        return;
+    }
 
-            // 3rd derivative
-            int c3 = pick_coord(nx, ny, nt);
-            auto g3_full = torch::autograd::grad({d2}, {input}, {}, /*retain_graph=*/false, /*create_graph=*/false)[0]; // [1,3]
-            auto d3 = g3_full.index({0, c3}); // scalar
+    // =========================================================
+    // 3rd order: numeric via eval_grad_batch_in_domain()
+    //            (per-derivative, but still using a stencil of grads)
+    // =========================================================
+    if (order == 3) {
+        // We support: f_xxx, f_xxy, f_xyy, f_yyy, f_xxt, f_xyt, f_yyt
+        T val = static_cast<T>(0);
+        bool ok = false;
 
-            out(0) = d3.detach().to(torch::kCPU).item<float>();
-            return;
+        using Offset = std::array<int,3>;
+        auto make_points_from_offsets =
+            [&](const std::vector<Offset>& offs,
+                std::vector<VectorX<T>>&   pts_out) {
+                pts_out.clear();
+                pts_out.reserve(offs.size());
+                for (const auto& o : offs) {
+                    VectorX<T> p = point;
+                    p(0) += static_cast<T>(o[0]) * hx;
+                    p(1) += static_cast<T>(o[1]) * hy;
+                    p(2) += static_cast<T>(o[2]) * ht;
+                    pts_out.push_back(p);
+                }
+            };
+
+        // ---------------- f_xxx ----------------
+        if (nx == 3 && ny == 0 && nt == 0) {
+            // Use 1D 3rd-derivative stencil on fx along x:
+            // f_xxx ≈ ( -0.5 fx(x-2h) + fx(x-h) - fx(x+h) + 0.5 fx(x+2h) ) / h^3
+            std::vector<Offset> offs = {
+                Offset{-2, 0, 0},
+                Offset{-1, 0, 0},
+                Offset{ 1, 0, 0},
+                Offset{ 2, 0, 0}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            T fx_m2 = grads[0](0);
+            T fx_m1 = grads[1](0);
+            T fx_p1 = grads[2](0);
+            T fx_p2 = grads[3](0);
+
+            T h3 = hx * hx * hx;
+            val = (static_cast<T>(-0.5) * fx_m2
+                 + fx_m1
+                 - fx_p1
+                 + static_cast<T>(0.5) * fx_p2) / h3;
+            ok = true;
+        }
+        // ---------------- f_xxy ----------------
+        else if (nx == 2 && ny == 1 && nt == 0) {
+            // f_xxy = ∂/∂y (f_xx)
+            // f_xx(y) ≈ [ fx(x+hx,y) - fx(x-hx,y) ] / (2hx)
+            // so:
+            // f_xxy ≈ ( f_xx(y+hy) - f_xx(y-hy) ) / (2hy)
+            //
+            // Need fx at:
+            //  (x±hx, y+hy), (x±hx, y-hy)
+            std::vector<Offset> offs = {
+                Offset{1, 1, 0},
+                Offset{-1, 1, 0},
+                Offset{1, -1, 0},
+                Offset{-1, -1, 0}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            // Hxx(y+hy)
+            T fx_xp_yp = grads[0](0); // (1,1)
+            T fx_xm_yp = grads[1](0); // (-1,1)
+            T Hxx_yp   = (fx_xp_yp - fx_xm_yp) * inv2hx;
+
+            // Hxx(y-hy)
+            T fx_xp_ym = grads[2](0); // (1,-1)
+            T fx_xm_ym = grads[3](0); // (-1,-1)
+            T Hxx_ym   = (fx_xp_ym - fx_xm_ym) * inv2hx;
+
+            val = (Hxx_yp - Hxx_ym) * inv2hy; // d/dy (f_xx)
+            ok  = true;
+        }
+        // ---------------- f_xyy ----------------
+        else if (nx == 1 && ny == 2 && nt == 0) {
+            // f_xyy = ∂/∂y (f_xy)
+            // Use f_xy ≈ d/dy (fx) at y±hy and then central diff in y.
+            //
+            // f_xy(y) ≈ [ fx(x, y+hy) - fx(x, y-hy) ] / (2hy)
+            //
+            // Need fx at:
+            //   (x, y+2hy), (x, y), (x, y-2hy)
+            std::vector<Offset> offs = {
+                Offset{0, 2, 0},
+                Offset{0,  0, 0},
+                Offset{0, -2, 0}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            T fx_p2 = grads[0](0); // (0,2)
+            T fx_0  = grads[1](0); // (0,0)
+            T fx_m2 = grads[2](0); // (0,-2)
+
+            // central second derivative in y of fx:
+            // f_xyy ≈ (fx(y+2h) - 2 fx(y) + fx(y-2h)) / (4 h^2)
+            // (this is a 2h step variant; error O(h^2))
+            T four_h2 = static_cast<T>(4) * hy * hy;
+            val = (fx_p2 - static_cast<T>(2) * fx_0 + fx_m2) / four_h2;
+            ok  = true;
+        }
+        // ---------------- f_yyy ----------------
+        else if (nx == 0 && ny == 3 && nt == 0) {
+            // 1D 3rd-derivative stencil on fy along y:
+            // f_yyy ≈ ( -0.5 fy(y-2h) + fy(y-h) - fy(y+h) + 0.5 fy(y+2h) ) / h^3
+            std::vector<Offset> offs = {
+                Offset{0, -2, 0},
+                Offset{0, -1, 0},
+                Offset{0, 1, 0},
+                Offset{0, 2, 0}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            T fy_m2 = grads[0](1);
+            T fy_m1 = grads[1](1);
+            T fy_p1 = grads[2](1);
+            T fy_p2 = grads[3](1);
+
+            T h3 = hy * hy * hy;
+            val = (static_cast<T>(-0.5) * fy_m2
+                 + fy_m1
+                 - fy_p1
+                 + static_cast<T>(0.5) * fy_p2) / h3;
+            ok = true;
+        }
+        // ---------------- f_xxt ----------------
+        else if (nx == 2 && ny == 0 && nt == 1) {
+            // f_xxt = ∂/∂t (f_xx)
+            // f_xx(t) ≈ [ fx(x+hx) - fx(x-hx) ] / (2hx) at t±ht
+            //
+            // Need fx at:
+            //  (x±hx, t+ht), (x±hx, t-ht)
+            std::vector<Offset> offs = {
+                Offset{1, 0, 1},
+                Offset{-1, 0, 1},
+                Offset{1, 0, -1},
+                Offset{-1, 0, -1}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            T fx_xp_tp = grads[0](0);
+            T fx_xm_tp = grads[1](0);
+            T fx_xp_tm = grads[2](0);
+            T fx_xm_tm = grads[3](0);
+
+            T Hxx_tp = (fx_xp_tp - fx_xm_tp) * inv2hx;
+            T Hxx_tm = (fx_xp_tm - fx_xm_tm) * inv2hx;
+
+            val = (Hxx_tp - Hxx_tm) * inv2ht; // d/dt (f_xx)
+            ok  = true;
+        }
+        // ---------------- f_xyt ----------------
+        else if (nx == 1 && ny == 1 && nt == 1) {
+            // f_xyt = ∂/∂t (f_xy)
+            // Use f_xy ≈ d/dy (fx) at t±ht and central diff in t.
+            //
+            // Need fx at:
+            //   (x, y±hy, t+ht), (x, y±hy, t-ht)
+            std::vector<Offset> offs = {
+                Offset{0, 1, 1},
+                Offset{0, -1, 1},
+                Offset{0, 1, -1},
+                Offset{0, -1, -1}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            T fx_yp_tp = grads[0](0);
+            T fx_ym_tp = grads[1](0);
+            T fx_yp_tm = grads[2](0);
+            T fx_ym_tm = grads[3](0);
+
+            T fxy_tp = (fx_yp_tp - fx_ym_tp) * inv2hy;
+            T fxy_tm = (fx_yp_tm - fx_ym_tm) * inv2hy;
+
+            val = (fxy_tp - fxy_tm) * inv2ht; // d/dt (f_xy)
+            ok  = true;
+        }
+        // ---------------- f_yyt ----------------
+        else if (nx == 0 && ny == 2 && nt == 1) {
+            // f_yyt = ∂/∂t (f_yy)
+            // f_yy(t) ≈ [ fy(y+hy) - fy(y-hy) ] / (2hy) at t±ht
+            //
+            // Need fy at:
+            //   (x, y±hy, t+ht), (x, y±hy, t-ht)
+            std::vector<Offset> offs = {
+                Offset{0, 1, 1},
+                Offset{0, -1, 1},
+                Offset{0, 1, -1},
+                Offset{0, -1, -1}
+            };
+            std::vector<VectorX<T>> pts;
+            make_points_from_offsets(offs, pts);
+
+            std::vector<VectorX<T>> grads;
+            eval_grad_batch_in_domain(pts, grads);
+
+            T fy_yp_tp = grads[0](1);
+            T fy_ym_tp = grads[1](1);
+            T fy_yp_tm = grads[2](1);
+            T fy_ym_tm = grads[3](1);
+
+            T Hyy_tp = (fy_yp_tp - fy_ym_tp) * inv2hy;
+            T Hyy_tm = (fy_yp_tm - fy_ym_tm) * inv2hy;
+
+            val = (Hyy_tp - Hyy_tm) * inv2ht; // d/dt (f_yy)
+            ok  = true;
         }
 
-        
+        if (!ok)
+            throw std::runtime_error("query(): unsupported third-order multiindex for numeric approximation");
+
+        out(0) = val;
+        return;
+    }
+
+    // Should never reach here
+    throw std::runtime_error("query(): unreachable state");
     }
 
 
