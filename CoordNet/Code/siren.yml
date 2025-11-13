@@ -2,6 +2,8 @@ name: siren
 channels:
   - conda-forge
   - defaults
+  - pytorch
+  - nvidia
 dependencies:
   - _libgcc_mutex=0.1=main
   - _openmp_mutex=5.1=1_gnu
@@ -339,10 +341,10 @@ dependencies:
       - threadpoolctl==3.6.0
       - tifffile==2025.5.10
       - tinycss2==1.4.0
-      - tinycudann==2.0
+      # - tinycudann==2.0
       - tomli==2.2.1
-      - torch==2.8.0+cu126
-      - torchvision==0.23.0+cu126
+      # - torch==2.8.0+cu126
+      # - torchvision==0.23.0+cu126
       - tornado==6.5.2
       - tqdm==4.67.1
       - traitlets==5.14.3

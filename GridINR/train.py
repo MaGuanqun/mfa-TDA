@@ -104,17 +104,17 @@ def train_step_vanilla(opt, iteration, batch, dataset, model, optimizer, schedul
     
     # Second-derivative regularization in xy-plane (only for 3D inputs)
     lam = float(opt.get('second_deriv_weight', 0.0))
-    reg_loss = torch.tensor(0.0, device=opt['device'])
+    # reg_loss = torch.tensor(0.0, device=opt['device'])
 
-    if lam > 0.0 and int(opt.get('n_dims', 3)) == 3:
-        reg_loss = second_derivative_xy_penalty(
-            model,
-            x,
-            base_output=model_output,
-            h=float(opt.get('second_deriv_h', 1e-2))
-        )
+    # if lam > 0.0 and int(opt.get('n_dims', 3)) == 3:
+    #     reg_loss = second_derivative_xy_penalty(
+    #         model,
+    #         x,
+    #         base_output=model_output,
+    #         h=float(opt.get('second_deriv_h', 1e-2))
+    #     )
 
-    total_loss = data_loss + lam * reg_loss
+    total_loss = data_loss #+ lam * reg_loss
     total_loss.backward()
     optimizer.step()
     scheduler.step()
@@ -123,7 +123,7 @@ def train_step_vanilla(opt, iteration, batch, dataset, model, optimizer, schedul
         print(
             f"Iteration {iteration} "
             f"data_loss: {data_loss.item():0.07f} "
-            f"reg_loss: {reg_loss.item():0.07f} "
+            # f"reg_loss: {reg_loss.item():0.07f} "
             f"total_loss: {total_loss.item():0.07f}"
         )
     else:
