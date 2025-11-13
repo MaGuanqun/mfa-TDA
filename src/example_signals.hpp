@@ -8,9 +8,9 @@
 
 // Define list of example keywords
 set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian_pair1","gaussian_pair2","ackley","schwefel","gaussian_mixture","rotating_gaussian",
-"quartic_potential","quartic_potential_2"};
+"quartic_potential","quartic_potential_2","rotating_quartic_multiwell"};
 set<string> datasets_4d = {"tornado4d"};
-set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado"};
+set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado", "vortex_street_3d"};
 set<string> datasets_2d = {"cesm","vortex_street","boussinesq","hurricane_isabel","s3d"};
 set<string> datasets_unstructured = {"edelta", "climate", "nuclear", "nasa"};
 
@@ -642,6 +642,7 @@ void evaluate_function(string fun, const VectorX<T>& domain_pt, VectorX<T>& outp
     else if (fun == "rotating_gaussian") return rotating_gaussian(domain_pt, output_pt);
     else if (fun == "quartic_potential") return closed_form_function::quartic_potential(domain_pt, output_pt);    
     else if (fun == "quartic_potential_2") return closed_form_function::quartic_potential_2(domain_pt, output_pt);
+    else if (fun == "rotating_quartic_multiwell") return closed_form_function::rotating_quartic_multiwell(domain_pt, output_pt);
     else
     {
         cerr << "Invalid function name in evaluate_function. Aborting." << endl;

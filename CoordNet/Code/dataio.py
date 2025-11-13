@@ -132,6 +132,10 @@ class ScalarDataSet():
 			self.dim = [100,80]
 			self.total_samples = 50
 			self.data_path = '../Data/vortex_street.bin'
+		elif self.dataset == 'vortex_street_3d':
+			self.dim = [640,80]
+			self.total_samples = 1501
+			self.data_path = '../Data/vortex_street_3d.bin'
    
 			
 		if not os.path.exists(args.result_path+args.dataset):
@@ -234,7 +238,7 @@ class ScalarDataSet():
 			self.data = np.asarray(data_list)
 			return
 
-		if self.dataset in ['vortex_street'] and self.application == 'super-spatial-temporal':
+		if self.dataset in ['vortex_street','vortex_street_3d'] and self.application == 'super-spatial-temporal':
 			# Load entire dataset from single binary file
 			data_all = np.fromfile(self.data_path, dtype='<f8')
 			data_all = data_all.astype(np.float32)

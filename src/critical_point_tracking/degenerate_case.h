@@ -455,7 +455,7 @@ public:
 
                 // if(i%10==0)
                 // {
-                    std::cout<<"degenerate case processing block "<<i<<std::endl;
+                    // std::cout<<"degenerate case processing block "<<i<<std::endl;
                 // }
             }
 

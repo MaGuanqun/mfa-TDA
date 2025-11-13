@@ -1391,6 +1391,8 @@ struct Block : public BlockBase<T, U>
 
         vector<P> val(tot_ndom_pts);
 
+        std::cout<<"Reading file: "<<a->infile<<std::endl;
+
         FILE *fd = fopen(a->infile.c_str(), "r");
         assert(fd);
 
@@ -1416,15 +1418,42 @@ struct Block : public BlockBase<T, U>
 
         // set domain values (just equal to i, j; ie, dx, dy = 1, 1)
         int n = 0;
-        for (size_t k = 0; k < (size_t)(ndom_pts(2)); k++)
-            for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++)
-                for (size_t i = 0; i < (size_t)(ndom_pts(0)); i++)
-                {
-                    input->domain(n, 0) = i;
-                    input->domain(n, 1) = j;
-                    input->domain(n, 2) = k;
-                    n++;
-                }
+        if(a->set_domain_range)
+        {
+            VectorX<T> d(this->dom_dim);               // step in domain points in each dimension
+            VectorX<T> p0(this->dom_dim);              // starting point in each dimension                     // number of ghost points in current dimension
+            for (int i = 0; i < this->dom_dim; i++)
+            {
+                d(i) = (this->core_maxs(i) - this->core_mins(i)) / (ndom_pts(i) - 1);
+                p0(i) = this->core_mins(i);
+            }
+            mfa::VolIterator vol_it(ndom_pts);
+            // current index of domain point in each dim, initialized to 0s
+            // flattened loop over all the points in a domain
+            while (!vol_it.done())
+            {
+                int j = (int)vol_it.cur_iter();
+                // compute geometry coordinates of domain point
+                for (auto i = 0; i < this->dom_dim; i++)
+                    input->domain(j, i) = p0(i) + vol_it.idx_dim(i) * d(i);
+
+                vol_it.incr_iter();
+            }
+        }
+        else
+        {
+
+            for (size_t i = 0; i < (size_t)(ndom_pts(2)); i++)
+                for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++)
+                    for( size_t k = 0; k < (size_t)(ndom_pts(0)); k++)
+                    {
+                        input->domain(n, 0) = k;
+                        input->domain(n, 1) = j;
+                        input->domain(n, 2) = i;
+                        n++;
+                    }
+        }
+
 
         // extents
         bounds_mins(0) = 0.0;

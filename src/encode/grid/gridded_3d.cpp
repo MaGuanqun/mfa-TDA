@@ -56,6 +56,7 @@ int main(int argc, char** argv)
     real_t      e_threshold     = 1e-1;     // error threshold for adaptive encoding
     int         rounds          = 0;        // max number of rounds for adaptive encoding
     bool        help            = false;    // show help
+    string      outfile         = "approx.mfa";       // input file name
 
     opts::Options ops;
     ops >> opts::Option('d', "pt_dim",      pt_dim,     " dimension of points");
@@ -71,7 +72,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('z', "rounds",      rounds,     " max number of rounds for adaptive encoding");
     ops >> opts::Option('z', "verbose",     verbose,    " output verbosity (0/1)");
     ops >> opts::Option('h', "help",        help,       " show help");
-
+    ops >> opts::Option('o', "outfile",      outfile,     " output mfa file name"); 
     if (!ops.parse(argc, argv) || help)
     {
         if (world.rank() == 0)
@@ -129,7 +130,8 @@ int main(int argc, char** argv)
     {
         master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
         { 
-            b->read_3d_vector_data(cp, mfa_info, d_args);
+            
+            b->read_3d_scalar_data<double>(cp, mfa_info, d_args);
         });
     }
     else
@@ -170,5 +172,5 @@ int main(int argc, char** argv)
     fprintf(stderr, "-------------------------------------\n\n");
 
     // save the results in diy format
-    diy::io::write_blocks("approx.mfa", world, master);
+    diy::io::write_blocks(outfile, world, master);
 }

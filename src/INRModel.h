@@ -74,6 +74,10 @@ static VectorX<T> domain_min_(const string& func_name)
         {
             result << 0,0,0;
         }
+        else if (func_name=="vortex_street_3d")
+        {
+            result << -0.5,-0.5,0.0;
+        }
         
         return result;
     } 
@@ -89,6 +93,10 @@ static VectorX<T> domain_max_(const string& func_name)
         {
             result << 99,79,49;
         }
+        else if (func_name=="vortex_street_3d")
+        {
+            result << 7.5,0.5,15.0;
+        }
         return result;
     } 
 
@@ -98,6 +106,10 @@ static VectorX<T> function_range_(const string& func_name)
         if(func_name=="quartic_potential_2")
         {
             result <<  -2.0, 2.0;
+        }
+        else if (func_name=="vortex_street_3d")
+        {
+            result <<  0, 1.8358269;
         }
         return result;
     }
@@ -112,6 +124,10 @@ static VectorXi block_num_(const string& func_name) //number of blocks that spli
         else if (func_name=="vortex_street")
         {
             result << 10,8,5;
+        }
+        else if (func_name=="vortex_street_3d")
+        {
+            result << 32,4,60;
         }
 
         return result;
@@ -128,6 +144,10 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         else if (func_name=="vortex_street")
         {
             result << 5,5,5;
+        }
+        else if (func_name=="vortex_street_3d")
+        {
+            result << 4,4,4;
         }
         return result;
     }

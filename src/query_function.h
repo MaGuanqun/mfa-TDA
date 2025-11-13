@@ -36,6 +36,9 @@ namespace query_function
         case 2:
             closed_form_function::quartic_potential_2(p, out, deriv);
             break;
+        case 3:
+            closed_form_function::rotating_quartic_multiwell(p, out, deriv);
+            break;
         default:
             std::cerr<<"invalid function type"<<std::endl;
             exit(0);

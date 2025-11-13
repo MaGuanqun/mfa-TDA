@@ -246,6 +246,11 @@ void find_all_unique_root(std::vector<Eigen::VectorX<T>>& root,
 std::vector<Eigen::VectorX<T>>& unique_root, T epsilon = SAME_ROOT_EPSILON)
 {
 
+    if(root.empty())
+    {
+        unique_root.clear();
+        return;
+    }
     unique_root.reserve(root.size());
     unique_root.clear();
     std::unordered_set<Eigen::VectorX<T>, VectorHash<T>, VectorEqual<T>> points_step_1;

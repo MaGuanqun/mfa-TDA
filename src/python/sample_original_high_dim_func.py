@@ -48,6 +48,17 @@ def quartic_potential_2(point):
     x, y, z = point
     return 0.25 * (x ** 4 + y ** 4) + 0.5 * (1 - z) * x ** 2 + 0.5 * np.cos(z) * y ** 2
 
+def rotating_quartic_multiwell(point):
+    """
+    f(x,y,t) = 1/4 * [ (x cos t + y sin t)^2 - 1 ]^2
+             + 1/4 * [ (-x sin t + y cos t)^2 - 1 ]^2
+    """
+    x,y,t= point
+    c = np.cos(t)
+    s = np.sin(t)
+    u =  x * c + y * s
+    v = -x * s + y * c
+    return 0.25 * ((u**2 - 1)**2 + (v**2 - 1)**2)
 
 
 parser = argparse.ArgumentParser(description='sample functions.')
@@ -60,7 +71,7 @@ parser.add_argument('-o', '--output_name', type=str, default='file_name.vtk', he
 args = parser.parse_args()
 
 
-if args.function_name in ['quartic_potential_2', 'rotating_gaussian']:
+if args.function_name in ['quartic_potential_2', 'rotating_gaussian', 'rotating_quartic_multiwell']:
     min=[-2,-2,0]
     max = [2,2,4]
 
@@ -80,6 +91,8 @@ if args.function_name == 'rotating_gaussian':
     values = np.array([rotating_gaussian(p) for p in points])  # shape (N,)
 elif args.function_name == 'quartic_potential_2':
     values = np.array([quartic_potential_2(p) for p in points])
+elif args.function_name == 'rotating_quartic_multiwell':
+    values = np.array([rotating_quartic_multiwell(p) for p in points])
 
 # Reshape back to grid shape
 values = values.reshape((nx, ny, nz))

@@ -44,6 +44,7 @@
 #include "tracking_utility.h"
 #include "trace_deduplication.h"
 #include "connect_trajectory_degenerate_point.h"
+#include "critical_point_utility.h"
 
 // #include "trace.h"
 
@@ -115,6 +116,7 @@ int main(int argc, char** argv)
     real_t point_itr_threshold = 0.5;
 
     double  spatial_step_size = 1.0;
+    string edge_type_file = "";
 
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
@@ -133,6 +135,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('s', "singular_point_file", singular_point_file, " singular point file name");
 
     ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
+
+    ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -188,6 +192,9 @@ int main(int argc, char** argv)
     std::vector<double> step_size;
 
     VectorXd core_mins;
+    int function_type=0;
+
+    auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
 
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
     {
@@ -239,7 +246,7 @@ int main(int argc, char** argv)
 
         std::cout<<"valid span num "<<selected_span[0].size()<<std::endl;
             
-        auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
+
 
 
         VectorXi point_num_in_block = b->mfa->var(0).p +2 * VectorXi::Ones(b->mfa->var(0).p.size()); //n
@@ -270,7 +277,7 @@ int main(int argc, char** argv)
 
 
         traces.resize(root_unique.size());
-        int function_type=0;
+
 
 
         Boundary_critical_point_tracking boundary_critical_point_tracking(b->core_mins, b->core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], function_type, correction_max_itr,b);
@@ -289,10 +296,7 @@ int main(int argc, char** argv)
 
         degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
 
-
-    });
-
-    int trace_size=0;
+int trace_size=0;
     for(auto& trace:traces)
     {
         if((!trace.duplicated) && trace.traces.size()>1)
@@ -320,6 +324,19 @@ int main(int argc, char** argv)
     }
     std::cout<<"traces after deduplication "<<trace_size<<std::endl;
 
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points);
+    auto cpt_extract_end_time = std::chrono::high_resolution_clock::now();
+    std::vector<int> critical_point_types;
+    if(edge_type_file!="")
+        critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, b);
+
+    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
+
+    critical_point_utility::accuracy(traces, degenerate_points, function_type);
+
+    std::cout<<"time consuming "<<std::chrono::duration_cast<std::chrono::microseconds>(cpt_extract_end_time - cpt_extract_start_time).count()/1000<<std::endl;
+
+    });
+
+    
 
 }

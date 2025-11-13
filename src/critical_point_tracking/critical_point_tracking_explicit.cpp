@@ -104,7 +104,7 @@ int main(int argc, char** argv)
     string input_shrink_ratio = "0-1-0-1-0-1";
     real_t dxy_dt_gradient_epsilon = 1e-10;
 
-    string singular_point_file = "singular_point.dat";
+    string singular_point_file = "";
 
     int max_itr=50;
 
@@ -164,7 +164,8 @@ int main(int argc, char** argv)
 
 
     std::vector<VectorX<double>> degenerate_points;
-    Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
+    if(singular_point_file!="")
+        Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
 
 
     std::vector<CP_Trace<double>> traces;
@@ -229,8 +230,11 @@ int main(int argc, char** argv)
         }
         max_dis_stop_square*=25.0;
 
-        Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type);
-        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
+        if(!degenerate_points.empty()){
+            Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type);
+            
+            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
+        }
 
 
 
@@ -250,7 +254,11 @@ int main(int argc, char** argv)
 
     std::cout<<"trace_after splitting "<<traces.size()<<std::endl;
 
-    connect_trajectory_degenerate_point::connect_trajectory(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
+    if(!degenerate_points.empty())
+    {
+        connect_trajectory_degenerate_point::connect_trajectory(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
+
+    }
 
     trace_size=0;
     for(auto& trace:traces)

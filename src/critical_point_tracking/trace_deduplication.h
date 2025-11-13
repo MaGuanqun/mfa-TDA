@@ -450,11 +450,15 @@ void deduplicate_traces(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
 {
     
     //sort degenerate points by time in splitting()
-    splitting(traces, degenerate_points, spatial_step_size);
 
+    if(!degenerate_points.empty())
+    {
+        splitting(traces, degenerate_points, spatial_step_size);
+    }
+    
     std::vector<std::vector<size_t>> temp_index;
     
-    temp_index.resize(degenerate_points[0].size());
+    temp_index.resize(domain_min.size());
 
     std::unordered_set<Eigen::VectorX<T>, Hash<T>, Equal<T>> points_step_1; 
 

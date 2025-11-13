@@ -205,7 +205,12 @@ using namespace std;
         {
             dom_bounds.min = {-2.0, -2.0, 0.0};
             dom_bounds.max = { 2.0, 2.0, 4.0};
-        }     
+        }
+        else if(input=="rotating_quartic_multiwell")
+        {
+            dom_bounds.min = {-2.0, -2.0, 0.0};
+            dom_bounds.max = { 2.0, 2.0, 4.0};
+        }
         else
         {
             std::cout<<"input "<<input<<std::endl;
@@ -409,7 +414,7 @@ using namespace std;
             }
         }
 
-        if(input == "quartic_potential" || input == "quartic_potential_2")
+        if(input == "quartic_potential" || input == "quartic_potential_2" || input == "rotating_quartic_multiwell")
         {
             d_args.min.resize(dom_dim);
             d_args.max.resize(dom_dim);
@@ -655,6 +660,24 @@ using namespace std;
             d_args.set_domain_range=true;
         }
 
+        
+        if (input == "vortex_street_3d")
+        {
+            d_args.full_dom_pts = {640, 80, 1501};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {83, 13, 190};
+            }
+
+            d_args.min.resize(3);
+            d_args.max.resize(3);
+            d_args.min[0] = -0.5;    d_args.max[0] = 7.5;
+            d_args.min[1] = -0.5;    d_args.max[1] = 0.5;
+            d_args.min[2] = 0;    d_args.max[2] = 15;
+            d_args.set_domain_range=true;
+        }
 
         if(input=="boussinesq")
          {
