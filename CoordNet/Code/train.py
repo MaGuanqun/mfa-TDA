@@ -74,7 +74,7 @@ def trainNet(model,args,dataset):
         train_loader = dataset.GetTrainingData()
         x = time.time()
 
-            print('======='+str(itera)+'========')
+        print('======='+str(itera)+'========')
         loss_mse = 0
         loss_grad = 0
         
