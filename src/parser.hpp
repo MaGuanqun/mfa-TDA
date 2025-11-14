@@ -564,6 +564,24 @@ struct MFAParser
         }
 
 
+        if (input == "vortex_street_3d")
+        {
+            d_args.full_dom_pts = {640, 80, 300};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {83, 13, 40};
+            }
+
+            d_args.min.resize(2);
+            d_args.max.resize(2);
+            d_args.min[0] = -0.5;    d_args.max[0] = 7.5;
+            d_args.min[1] = -0.5;    d_args.max[1] =0.5;
+            d_args.min[2] = 12.0;    d_args.max[2] =15.0;
+            d_args.set_domain_range=true;
+        }
+
         if(input=="boussinesq")
          {
             d_args.full_dom_pts = {150, 450};

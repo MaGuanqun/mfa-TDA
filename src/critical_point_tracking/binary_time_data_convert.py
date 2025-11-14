@@ -22,8 +22,13 @@ def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
     
     dx= distance[0]/(dims[0]-1) if dims[0] > 1 else 1.0
     dy= distance[1]/(dims[1]-1) if dims[1] > 1 else 1.0
-    z_value = distance[2]/(dims[2]-1) if dims[2] > 1 else 1.0
+    z_value = distance[2]/(dims[2]-1) if dims[1] > 1 else 1.0
     # Create vtkImageData
+    # image_data = vtk.vtkImageData()
+    # image_data.SetDimensions((dims[0], dims[1], 1))
+    # image_data.SetSpacing((dx, dy, 1.0))
+    # image_data.SetOrigin(min)
+    
     image_data = vtk.vtkImageData()
     image_data.SetDimensions((dims[0], dims[1], 1))
     image_data.SetSpacing((dx, dy, 1.0))
@@ -35,11 +40,11 @@ def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
         flat = slice_2d.T.ravel(order='F')  # transpose to (x, y) then flatten
 
         vtk_arr = numpy_to_vtk(flat, deep=True, array_type=vtk.VTK_DOUBLE)
-        vtk_arr.SetName(f"{z:03d}")  # "000", "001", ...
+        vtk_arr.SetName(f"{z:04d}")  # "000", "001", ...
         image_data.GetPointData().AddArray(vtk_arr)
         
         z_array = vtk.vtkDoubleArray()
-        z_array.SetName(f"{z:03d}")
+        z_array.SetName(f"{z:04d}")
         z_array.SetNumberOfComponents(1)
         # z_array.InsertNextValue(3.0)
         z_array.InsertNextValue(min[2]+z_value*z)
@@ -86,5 +91,15 @@ elif function == 'vortex_street':
     dim = np.array([100, 80, 50])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([99, 79, 49])
+elif function =='vortex_street_3d':
+    dim = np.array([640, 80, 300])
+    min = np.array([0.0, 0.0, 1200.0])
+    max = np.array([639.0, 79.0, 1500.0])
+    # min = np.array([-0.5, -0.5, 0.0])
+    # max = np.array([0.5, 7.5, 15])
+elif function =='hurricane_isabel':
+    dim = np.array([500, 500, 100])
+    min = np.array([0.0, 0.0, 0.0])
+    max = np.array([499.0, 499.0, 99.0])
     
 convert_binary_file_to_vti(input_file, output_file,dim,min,max,args)

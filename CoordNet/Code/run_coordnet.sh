@@ -5,7 +5,7 @@ conda activate siren
 
 
 
-function_name=vortex_street_3d #quartic_potential_2, vortex_street,vortex_street_3d
+function_name=vortex_street_3d #quartic_potential_2, vortex_street,vortex_street_3d,hurricane_isabel
 
 
 omega=30.0
@@ -29,14 +29,16 @@ vti_file="../Result/$function_name/$application-$init_feature-$num_res.vti"
 vti_critical_point="../Result/$function_name/vti_critical_points.csv"
 
 
-python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.1
+# python data_preprocessing.py
+
+python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000
 
 python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
 
-# python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}" -o "${vti_file}" -f "${function_name}" 
+# python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}" -o "${vti_file}" -f "${function_name}"
 # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}" -o "${vti_critical_point}"
 
 # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_data}" -o "${raw_vti_file}" -f "${function_name}"

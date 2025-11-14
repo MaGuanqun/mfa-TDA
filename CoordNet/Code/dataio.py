@@ -134,7 +134,7 @@ class ScalarDataSet():
 			self.data_path = '../Data/vortex_street.bin'
 		elif self.dataset == 'vortex_street_3d':
 			self.dim = [640,80]
-			self.total_samples = 1501
+			self.total_samples = 300
 			self.data_path = '../Data/vortex_street_3d.bin'
 		elif self.dataset == 'hurricane_isabel':
 			self.dim = [500,500]
@@ -280,52 +280,130 @@ class ScalarDataSet():
 					self.coords_indices.append(index)
 		self.coords_indices = np.asarray(self.coords_indices)
 
+	# def GetTrainingData(self):
+	# 	indices = []
+	# 	if self.application == 'spatial':
+	# 		samples = (self.dim[0]*self.dim[1]*self.dim[2])//(self.scale*self.scale*self.scale)
+	# 	elif self.application == 'super-spatial':
+	# 		samples = (self.dim[0]*self.dim[1]*self.dim[2])
+	# 	elif self.application == 'super-spatial-temporal':
+	# 			# 2D spatial samples per time step
+	# 			samples = (self.dim[0] * self.dim[1])
+	# 	else:
+	# 		samples = self.dim[0]*self.dim[1]*self.dim[2]
+		
+
+	# 	if self.application == 'extrapolation':
+	# 		for i in range(0,self.training_samples):
+	# 			index = np.random.choice(np.arange(i*samples,(i+1)*samples), self.factor*self.batch_size, replace=False)
+	# 			indices += list(index)
+	# 	elif self.application in ['temporal','super-spatial', 'super-spatial-temporal']:
+	# 		for i in range(0,len(self.samples)):
+	# 			start = i * samples
+	# 			end = (i + 1) * samples
+	# 			population = end - start
+	# 			k = self.factor * self.batch_size
+	# 			if k >= population:
+	# 				# take all samples instead of failing
+	# 				index = np.arange(start, end)
+	# 			else:
+	# 				index = np.random.choice(np.arange(start, end), k, replace=False)
+	# 			indices += list(index)
+
+
+	# 	if self.application in ['temporal','completion','super-spatial','extrapolation','super-spatial-temporal']:
+	# 		training_data_input = torch.FloatTensor(self.coords[indices])
+	# 		training_data_output = torch.FloatTensor(self.data[indices])
+	# 	elif self.application == 'spatial':
+	# 		if self.factor*self.batch_size >= samples:
+	# 			training_data_input = torch.FloatTensor(self.coords)
+	# 			training_data_output = torch.FloatTensor(self.data)
+	# 		else:
+	# 			for i in range(0,len(self.samples)):
+	# 				index = np.random.randint(low=i*samples,high=(i+1)*samples,size=self.factor*self.batch_size)
+	# 				indices += list(index)
+	# 			training_data_input = torch.FloatTensor(self.coords[indices])
+	# 			training_data_output = torch.FloatTensor(self.data[indices])
+	# 	data = torch.utils.data.TensorDataset(training_data_input,training_data_output)
+	# 	train_loader = DataLoader(dataset=data, batch_size=self.batch_size, shuffle=True)
+	# 	return train_loader
 
 	def GetTrainingData(self):
 		indices = []
 		if self.application == 'spatial':
-			samples = (self.dim[0]*self.dim[1]*self.dim[2])//(self.scale*self.scale*self.scale)
+			samples = (self.dim[0] * self.dim[1] * self.dim[2]) // (self.scale * self.scale * self.scale)
 		elif self.application == 'super-spatial':
-			samples = (self.dim[0]*self.dim[1]*self.dim[2])
+			samples = (self.dim[0] * self.dim[1] * self.dim[2])
 		elif self.application == 'super-spatial-temporal':
-				# 2D spatial samples per time step
-				samples = (self.dim[0] * self.dim[1])
+			# 2D spatial samples per time step
+			samples = (self.dim[0] * self.dim[1])
 		else:
-			samples = self.dim[0]*self.dim[1]*self.dim[2]
-		
+			samples = self.dim[0] * self.dim[1] * self.dim[2]
 
-		if self.application == 'extrapolation':
-			for i in range(0,self.training_samples):
-				index = np.random.choice(np.arange(i*samples,(i+1)*samples), self.factor*self.batch_size, replace=False)
+		# --- per-application sampling strategy ---
+
+		if self.application == 'super-spatial-temporal':
+			# Keep roughly the same sampling density per time step,
+			# regardless of total T.
+			samples_per_t = samples                  # = H * W
+			k = min(self.factor * self.batch_size, samples_per_t)
+
+			for i in range(len(self.samples)):
+				start = i * samples_per_t
+				end = (i + 1) * samples_per_t
+				if k >= samples_per_t:
+					idx = np.arange(start, end)
+				else:
+					idx = np.random.choice(np.arange(start, end), k, replace=False)
+				indices += list(idx)
+
+		elif self.application == 'extrapolation':
+			for i in range(0, self.training_samples):
+				index = np.random.choice(
+					np.arange(i * samples, (i + 1) * samples),
+					self.factor * self.batch_size,
+					replace=False
+				)
 				indices += list(index)
-		elif self.application in ['temporal','super-spatial', 'super-spatial-temporal']:
-			for i in range(0,len(self.samples)):
+
+		elif self.application in ['temporal', 'super-spatial']:
+			for i in range(0, len(self.samples)):
 				start = i * samples
 				end = (i + 1) * samples
 				population = end - start
 				k = self.factor * self.batch_size
 				if k >= population:
-					# take all samples instead of failing
 					index = np.arange(start, end)
 				else:
 					index = np.random.choice(np.arange(start, end), k, replace=False)
 				indices += list(index)
 
+		elif self.application == 'spatial':
+			if self.factor * self.batch_size >= samples:
+				training_data_input = torch.FloatTensor(self.coords)
+				training_data_output = torch.FloatTensor(self.data)
+				data = torch.utils.data.TensorDataset(training_data_input, training_data_output)
+				train_loader = DataLoader(dataset=data, batch_size=self.batch_size, shuffle=True)
+				return train_loader
+			else:
+				for i in range(0, len(self.samples)):
+					index = np.random.randint(
+						low=i * samples,
+						high=(i + 1) * samples,
+						size=self.factor * self.batch_size
+					)
+					indices += list(index)
 
-		if self.application in ['temporal','completion','super-spatial','extrapolation','super-spatial-temporal']:
+		# -------- build TensorDataset & DataLoader --------
+		if self.application in ['temporal', 'completion', 'super-spatial',
+								'extrapolation', 'super-spatial-temporal']:
 			training_data_input = torch.FloatTensor(self.coords[indices])
 			training_data_output = torch.FloatTensor(self.data[indices])
 		elif self.application == 'spatial':
-			if self.factor*self.batch_size >= samples:
-				training_data_input = torch.FloatTensor(self.coords)
-				training_data_output = torch.FloatTensor(self.data)
-			else:
-				for i in range(0,len(self.samples)):
-					index = np.random.randint(low=i*samples,high=(i+1)*samples,size=self.factor*self.batch_size)
-					indices += list(index)
-				training_data_input = torch.FloatTensor(self.coords[indices])
-				training_data_output = torch.FloatTensor(self.data[indices])
-		data = torch.utils.data.TensorDataset(training_data_input,training_data_output)
+			training_data_input = torch.FloatTensor(self.coords[indices])
+			training_data_output = torch.FloatTensor(self.data[indices])
+
+		data = torch.utils.data.TensorDataset(training_data_input, training_data_output)
 		train_loader = DataLoader(dataset=data, batch_size=self.batch_size, shuffle=True)
 		return train_loader
 
