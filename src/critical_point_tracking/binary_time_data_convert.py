@@ -92,8 +92,8 @@ elif function == 'vortex_street':
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([99, 79, 49])
 elif function =='vortex_street_3d':
-    dim = np.array([640, 80, 300])
-    min = np.array([0.0, 0.0, 1200.0])
+    dim = np.array([640, 80, 150])
+    min = np.array([0.0, 0.0, 1350.0])
     max = np.array([639.0, 79.0, 1500.0])
     # min = np.array([-0.5, -0.5, 0.0])
     # max = np.array([0.5, 7.5, 15])

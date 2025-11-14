@@ -20,7 +20,7 @@ def sample_size(function_name='expotential'):
     elif function_name == 'vortex_street':
         return (50, 80, 100)
     elif function_name == 'vortex_street_3d':
-        return (640, 80, 300)
+        return (640, 80, 150)
     elif function_name == 'hurricane_isabel':
         return (500, 500, 100)
     else:

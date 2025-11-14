@@ -99,7 +99,7 @@ def trainNet(model,args,dataset):
         loss.write('\n')
 
         # if itera % args.checkpoint == 0 or itera == 1:
-        if itera == args.num_epochs:
+        if itera == args.num_epochs or (itera > 0.75*args.num_epochs and itera % args.checkpoint == 0):
             if args.application in ['spatial', 'super-spatial']:
                 ckpt = args.model_path + args.dataset + '/' + \
                     f'{args.application}-{args.scale}-{args.init}-{args.factor}-{itera}.pth'
@@ -109,7 +109,7 @@ def trainNet(model,args,dataset):
             else:
                 # includes 'super-spatial-temporal'
                 ckpt = args.model_path + args.dataset + '/' + \
-                    f'{args.application}-{args.init}-{args.num_res}.pth'
+                    f'{args.application}-{args.init}-{itera}.pth'
             torch.save(model.state_dict(), ckpt)
     loss.write("Time = "+str(t))
     loss.write('\n')

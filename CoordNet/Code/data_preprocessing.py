@@ -46,8 +46,8 @@ from scipy.ndimage import convolve
 file_path = '../Data/cylinder2d.nc'
 nc_data = Dataset(file_path, mode='r')
 
-u0 = nc_data.variables['u'][1201:1501, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][1201:1501, :, :].filled(-2.0)
+u0 = nc_data.variables['u'][1351:1501, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+v0 = nc_data.variables['v'][1351:1501, :, :].filled(-2.0)
 
 # print(u0.shape)
 

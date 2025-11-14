@@ -134,7 +134,7 @@ class ScalarDataSet():
 			self.data_path = '../Data/vortex_street.bin'
 		elif self.dataset == 'vortex_street_3d':
 			self.dim = [640,80]
-			self.total_samples = 300
+			self.total_samples = 150
 			self.data_path = '../Data/vortex_street_3d.bin'
 		elif self.dataset == 'hurricane_isabel':
 			self.dim = [500,500]
