@@ -19,6 +19,10 @@ def sample_size(function_name='expotential'):
         return (100, 100, 100)
     elif function_name == 'vortex_street':
         return (100, 80, 50)
+    elif function_name == 'vortex_street_3d':
+        return (640, 80, 1501)
+    elif function_name == 'hurricane_isabel':
+        return (500, 500, 100)
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
 

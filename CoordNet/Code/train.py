@@ -74,71 +74,28 @@ def trainNet(model,args,dataset):
         train_loader = dataset.GetTrainingData()
         x = time.time()
 
-        print('=======' + str(itera) + '========')
-        loss_mse = 0.0
-        loss_grad = 0.0   # still here if you use it elsewhere
-        lap_weight = getattr(args, "lap_weight", 0.0)
-        lap_eps    = getattr(args, "lap_eps", 1e-2)
-
-        total_loss_ = 0.0
-        lap_loss_   = 0.0
-
-        for batch_idx, (coord, v) in enumerate(train_loader):
+            print('======='+str(itera)+'========')
+        loss_mse = 0
+        loss_grad = 0
+        
+        for batch_idx, (coord,v) in enumerate(train_loader):
             t1 = time.time()
             if args.cuda:
                 coord = coord.cuda()
                 v = v.cuda()
-
             optimizer.zero_grad()
-
-            # ----- Data loss -----
-            v_center = model(coord)  # f(x)
-            mse = criterion(v_center.view(-1), v.view(-1))
-
-            # ----- Finite-difference Laplacian penalty -----
-            if lap_weight > 0.0:
-                B, D = coord.shape
-
-                # Build [x, x+eps e1, x-eps e1, x+eps e2, x-eps e2, ...]
-                coord_list = [coord]
-                for d in range(D):
-                    e = torch.zeros_like(coord)
-                    e[:, d] = lap_eps
-                    coord_list.append(coord + e)
-                    coord_list.append(coord - e)
-
-                all_coords = torch.cat(coord_list, dim=0)      # [(2D+1)*B, D]
-                all_vals = model(all_coords).view(-1)          # [(2D+1)*B]
-
-                v_center_flat = all_vals[0:B]                  # f(x)
-                offset = B
-                lap = torch.zeros(B, device=coord.device)
-
-                for d in range(D):
-                    vp = all_vals[offset:offset + B]           # f(x + eps e_d)
-                    vm = all_vals[offset + B:offset + 2 * B]   # f(x - eps e_d)
-                    offset += 2 * B
-
-                    lap_d = (vp + vm - 2.0 * v_center_flat) / (lap_eps ** 2)
-                    lap += lap_d
-
-                lap_loss = (lap ** 2).mean()
-                total_loss = mse + lap_weight * lap_loss
-                lap_loss_ += lap_loss.item()
-            else:
-                total_loss = mse
-
-            total_loss.backward()
+            v_pred = model(coord)
+            mse = criterion(v_pred.view(-1),v.view(-1))
+            mse.backward()
+            loss_mse += mse.mean().item()
             optimizer.step()
-
-            loss_mse += mse.item()
-            total_loss_ += total_loss.item()
+            #print(time.time()-t1)
         
         y = time.time()
         t += y-x
         print(y-x)
-        print("Epochs "+str(itera)+": mse loss = "+str(loss_mse) + ', lap_loss = ' + str(lap_loss_) + ', total_loss = ' + str(total_loss_))
-        loss.write("Epochs "+str(itera)+": mse loss = "+str(loss_mse) + ', lap_loss = ' + str(lap_loss_) + ', total_loss = ' + str(total_loss_))
+        print("Epochs "+str(itera)+": loss = "+str(loss_mse))
+        loss.write("Epochs "+str(itera)+": loss = "+str(loss_mse))
         loss.write('\n')
 
         # if itera % args.checkpoint == 0 or itera == 1:
@@ -159,7 +116,7 @@ def trainNet(model,args,dataset):
     loss.close()
     
      # ==== Save full TorchScript model in float64 ====
-    print("Converting model to float64 TorchScript .pt ...")
+    # print("Converting model to float64 TorchScript .pt ...")
 
     # Move to CPU (so you can load in LibTorch without GPU dependency)
     model = model.cpu()#.to(torch.float64)

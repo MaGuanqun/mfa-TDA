@@ -108,6 +108,9 @@ def main():
     Data.ReadData()
     print("Data Loaded!")
     Model.cuda()
+
+    print(">>> Model device:", next(Model.parameters()).device, flush=True)
+
     trainNet(Model,opt,Data)
 
   elif opt.train == 'inf':
