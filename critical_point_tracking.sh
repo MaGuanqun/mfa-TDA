@@ -8,6 +8,7 @@ write_vtk="./build/src/convert/write_vtk"
 tracking="./build/src/critical_point_tracking/critical_point_tracking"
 tracking_explicit="./build/src/critical_point_tracking/critical_point_tracking_explicit"
 
+count_betti_num="./src/contour/count_betti_num.py"
 
 derivative_control_point="./build/src/critical_point/derivative_control_point"
 
@@ -54,6 +55,8 @@ degenerate_point_original="./build/src/${save_folder}/${data_type}_degenerate_or
 smoothed_degenerate_point="./build/src/${save_folder}/${data_type}_degenerate_smoothed.dat"
 
 tracking_result="./build/src/${save_folder}/${data_type}.obj"
+tracking_result_w_type="./build/src/${save_folder}/${data_type}.vtp"
+
 smoothed_tracking_result="./build/src/${save_folder}/${data_type}_smoothed.obj"
 
 ori_tracking_result="./build/src/${save_folder}/ori_${data_type}.obj"
@@ -69,8 +72,8 @@ smoothed_ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cp
 
 
 #the reshold should be really small to raw explicit function
-root_finding_epsilon="1e-12"
-J_threshold="1e-12"
+root_finding_epsilon="1e-4"
+J_threshold="1e-3"
 
 point_itr_threshold="4.0"
 
@@ -88,13 +91,13 @@ raw_data_file="./CoordNet/Data/${data_type}.bin"
 # if [ "${data_type}" = "rotating_gaussian" ]; then
 # "${analytical}" -d 4 -m 3 -q 3 -s 0.0 -i "${data_type}" -f "${mfa_file}"
 # else 
-# "${gridded_3d}" -d 4 -f "${raw_data_file}" -i "${data_type}" -q 3 -z 0 -o "${mfa_file}"
+# "${gridded_3d}" -d 4 -f "${raw_data_file}" -i "${data_type}" -q 3 -z 0 -o "${mfa_file}" -s 0
 # fi
 
 
 if [ "${data_type}" = "vortex_street_3d" ]; then
-    step_size="8"
-    t_sample_ratio="8"
+    step_size="32"
+    t_sample_ratio="32"
 fi
 
 upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
@@ -103,17 +106,25 @@ upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
 
 
-# gdb --args "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 #-s "${block}"
+
 
 # "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -i "${mfa_file}" -d 0 -t 0
+# "${convert_root_to_vtk}" -f "${degenerate_point}" -o "${degenerate_point}.csv" -j 0 -t 0
+
 
 
 # # gdb --args 
-# "${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}"
+"${tracking}" -f "${mfa_file}" -b "${tracking_result}" -z "${t_sample_ratio}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}" -p "${point_itr_threshold}" -e "${edge_type_file}"
 
 
+source ~/enter/etc/profile.d/conda.sh
+conda activate mfa
+
+python ./src/python/merge_obj_edge_type.py -i "${tracking_result}" -j "${edge_type_file}" -o "${tracking_result_w_type}"
+
+
+python "${count_betti_num}" "${tracking_result}"
 
 
 source ~/enter/etc/profile.d/conda.sh
@@ -130,8 +141,8 @@ conda activate mfa_env
 # python ./src/critical_point_tracking/binary_time_data_convert.py -i "${ori_raw_data}" -o "${mfa_file}_raw.vti" -f "${data_type}"
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}_raw.vti" -o "${ttk_critical_point_file}_raw.csv"
 
+# "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 #-s "${block}"
 # python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
-
 
 # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}.csv"
 

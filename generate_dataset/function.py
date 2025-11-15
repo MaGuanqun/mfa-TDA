@@ -23,6 +23,8 @@ def sample_size(function_name='expotential'):
         return (640, 80, 150)
     elif function_name == 'hurricane_isabel':
         return (500, 500, 100)
+    elif function_name == 'boussinesq_3d':
+        return (150,450,300)
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
 

@@ -159,6 +159,8 @@ int main(int argc, char** argv)
 
     VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
+    double d_max_square_= Span_size.head(Span_size.size()-1).squaredNorm();
+
     std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
     step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
 
@@ -219,21 +221,16 @@ int main(int argc, char** argv)
 
         traces.resize(root_unique.size());
 
-        Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], function_type, correction_max_itr);
+        Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], d_max_square_,function_type, correction_max_itr);
 
         boundary_critical_point_tracking.find_trace(root_unique, traces);
 
-        double max_dis_stop_square = 0.0;
-        for(int  i=0;i<step_size.size()-1;++i)
-        {
-            max_dis_stop_square+=step_size[i]*step_size[i];
-        }
-        max_dis_stop_square*=25.0;
+
 
         if(!degenerate_points.empty()){
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type);
             
-            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
+            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
         }
 
 

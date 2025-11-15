@@ -97,7 +97,7 @@ int main(int argc, char** argv)
     
     double grad_threshold = 1e-5;
 
-    int correction_max_itr = 30;
+    int correction_max_itr = 60;
 
 
 
@@ -111,7 +111,7 @@ int main(int argc, char** argv)
 
     string singular_point_file = "singular_point.dat";
 
-    int max_itr=40;
+    int max_itr=60;
 
     real_t point_itr_threshold = 0.5;
 
@@ -208,13 +208,25 @@ int main(int argc, char** argv)
 
         VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
+        // double d_max_square_= Span_size.head(Span_size.size()-1).squaredNorm();
+
+
+
+
         step_size.resize(span_num.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
 
        
         step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
    
 
+        double d_max_square_= spatial_step_size*spatial_step_size/16* step_size[0]* step_size[0];   
+
         same_root_epsilon = step_size; // same_root_epsilon
+
+        // for(int i=0;i<step_size.size();++i)
+        // {
+        //     same_root_epsilon[i] *=0.1;
+        // }
 
         std::cout<<Span_size.transpose()<<std::endl;
         std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
@@ -260,7 +272,7 @@ int main(int argc, char** argv)
         std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
 
         std::vector<VectorX<double>> root_unique;
-        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
+        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,same_root_epsilon[0],same_root_epsilon.back());
 
 
         std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
@@ -270,31 +282,41 @@ int main(int argc, char** argv)
 
         string test_file=cp_tracing_file+"_test.obj";
 
-        tracking_utility::convert_to_obj(test_file,root_unique);
+        // tracking_utility::convert_to_obj(test_file,root_unique);
 
 
-
+        // root_unique.resize(1);
 
 
         traces.resize(root_unique.size());
 
 
+        // double accuracy_value=0;
+        // int num_points=0;
+        // for(int i=0;i<root_unique.size();++i)
+        // {
+        //     accuracy_value += critical_point_utility::compute_accuracy_single_point(root_unique[i], function_type, b);
+        // }   
+        // num_points += degenerate_points.size();
 
-        Boundary_critical_point_tracking boundary_critical_point_tracking(b->core_mins, b->core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], function_type, correction_max_itr,b);
+        // std::cout<<"root accuracy "<<accuracy_value/ (double)num_points<<std::endl;
+
+
+        
+
+        Boundary_critical_point_tracking boundary_critical_point_tracking(b->core_mins, b->core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0],d_max_square_, function_type, correction_max_itr,b);
 
         boundary_critical_point_tracking.find_trace(root_unique, traces);
 
-        double max_dis_stop_square = 0.0;
-        for(int  i=0;i<step_size.size()-1;++i)
-        {
-            max_dis_stop_square+=step_size[i]*step_size[i];
-        }
-        max_dis_stop_square*=25.0;
 
+
+        critical_point_utility::accuracy(traces, degenerate_points, function_type,b);
 
         Degenerate_case_tracing degenerate_case_tracing(b->core_mins, b->core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, 0, b);
 
-        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, max_dis_stop_square);
+        std::cout<< "d_max_square_ "<<d_max_square_<<std::endl;
+        // find_boundary_roots.point_num_in_block=point_num_in_block*2;
+        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
 
 int trace_size=0;
     for(auto& trace:traces)
@@ -331,7 +353,7 @@ int trace_size=0;
 
     CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
 
-    critical_point_utility::accuracy(traces, degenerate_points, function_type);
+    critical_point_utility::accuracy(traces, degenerate_points, function_type,b);
 
     std::cout<<"time consuming "<<std::chrono::duration_cast<std::chrono::microseconds>(cpt_extract_end_time - cpt_extract_start_time).count()/1000<<std::endl;
 

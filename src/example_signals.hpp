@@ -10,7 +10,7 @@
 set<string> analytical_signals = {"sine", "cosine", "sinc", "psinc1", "psinc2", "psinc3", "psinc4", "ml", "f16", "f17", "f18","sinc_sum","sinc_sum_2","rastrigin","gaussian_pair1","gaussian_pair2","ackley","schwefel","gaussian_mixture","rotating_gaussian",
 "quartic_potential","quartic_potential_2","rotating_quartic_multiwell"};
 set<string> datasets_4d = {"tornado4d"};
-set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado", "vortex_street_3d"};
+set<string> datasets_3d = {"s3d", "nek", "rti", "miranda", "tornado", "vortex_street_3d","boussinesq_3d"};
 set<string> datasets_2d = {"cesm","vortex_street","boussinesq","hurricane_isabel","s3d"};
 set<string> datasets_unstructured = {"edelta", "climate", "nuclear", "nasa"};
 

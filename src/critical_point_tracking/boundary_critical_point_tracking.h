@@ -33,20 +33,30 @@ private:
     T time_step;
     T spatial_step_size;
     INRModel<T>* inr_model=nullptr;
+    T correct_max_square;
     
     
     bool tracing_single_cpt(VectorX<T>& initial, std::vector<VectorX<T>>& result,
-    T d_max_square)
+    T d_max_square, std::array<int,2>& connect_info)
     {
         result.clear();
 
         std::vector<VectorX<T>> temp_result;
         particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,true,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b,inr_model);
-        // if(temp_result.size()>1)
-        // {
+        if(temp_result.size()>1)
+        {
         //     result.pop_back();
             result.insert(result.end(),temp_result.begin(),temp_result.end());
-        // }
+            connect_info[0]= -2;
+        }
+        else
+        {
+            temp_result.clear();
+            particle_tracing::tracing_one_direction(time_step,spatial_step_size,initial,temp_result,false,gradient_epsilon,correction_max_itr,d_max_square, core_mins, core_maxs, core_mins, core_maxs,function_type,b,inr_model);
+            std::reverse(temp_result.begin(),temp_result.end());
+            result.insert(result.end(),temp_result.begin(),temp_result.end());
+            connect_info[1]= -2;
+        }
 
         return true;
     }
@@ -82,7 +92,7 @@ private:
 
 
 public:
-    Boundary_critical_point_tracking(const VectorX<T> domain_min, const VectorX<T> domain_max, T gradient_epsi, T time_step_, T spatial_step_size_, int func_type=0, int correction_max_it=50, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): core_mins(domain_min), core_maxs(domain_max),  b(block), function_type(func_type),correction_max_itr(correction_max_it), gradient_epsilon(gradient_epsi), time_step(time_step_), spatial_step_size(spatial_step_size_), inr_model(inr_model_) {}
+    Boundary_critical_point_tracking(const VectorX<T> domain_min, const VectorX<T> domain_max, T gradient_epsi, T time_step_, T spatial_step_size_, T d_max_square_, int func_type=0, int correction_max_it=50, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): core_mins(domain_min), core_maxs(domain_max),  b(block), function_type(func_type),correction_max_itr(correction_max_it), gradient_epsilon(gradient_epsi), time_step(time_step_), spatial_step_size(spatial_step_size_), inr_model(inr_model_), correct_max_square(d_max_square_) {}
 
     ~Boundary_critical_point_tracking(){}
 
@@ -101,7 +111,7 @@ public:
 
         // int distance_stop_itr = 1;
         // T span_size= domain_range.cwiseQuotient(span_num.cast<T>()).head(span_num.size()-1).squaredNorm();
-        T d_max_square = 25*spatial_step_size*spatial_step_size;
+        // T d_max_square =  *spatial_step_size*spa?tial_step_size;
 
         tbb::affinity_partitioner ap;
   
@@ -122,8 +132,8 @@ public:
 
                 // std::cout<<"tracing point "<<i<<" "<<initial[i].transpose()<<std::endl;
 
-                tracing_single_cpt(initial[i],traces[i].traces,d_max_square); 
-                traces[i].connect_info[0]=-2;        
+                tracing_single_cpt(initial[i],traces[i].traces,correct_max_square,traces[i].connect_info); 
+                // traces[i].connect_info[0]=-2;        
             }
         },ap);
 

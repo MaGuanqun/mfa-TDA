@@ -174,13 +174,19 @@ namespace RK4
         MatrixX<T> dev_f;
         VectorX<T> f;
 
+        if(!utility::In_Domain(input_point,core_mins,core_maxs))
+        {
+            return false;
+        }
         compute_f_dev_f(input_point, f, dev_f, function_type, b,inr_model);
+
+        // std::cout<<"===="<< f.squaredNorm()<<" "<<root_finding_epsilon*root_finding_epsilon<<std::endl;
 
         // tracking_derivatives::compute_gradient(input_point, f,function_type,b);
 
         if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon)
         {
-            return false;
+            return true;
         }
 
         VectorX<T> p = input_point;
@@ -210,6 +216,7 @@ namespace RK4
 
             if((input_point-p).squaredNorm()>d_max_square)
             {
+                // std::cout<<"go too far "<<d_max_square<<std::endl;
                 return false;
             }
 
@@ -220,11 +227,14 @@ namespace RK4
  
             if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){             
                 input_point = p;
+
+                // std::cout<<"successfully correction itr num "<<f.squaredNorm()<<std::endl;
                 return true;
             }
             
             itr_num++;
         }
+
 
         return false;
 
@@ -329,22 +339,20 @@ namespace RK4
                 {
                 if(RK4_normalized_step(p,result,sptial_step_size,upper_search,core_mins,core_maxs,function_type,b,inr_model))
                 {
-                        correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
-                        return true;
+                    return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
                 }
                 }
                 else
                 {
-                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
-                    return true;
+                    return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
+
                 }
             }
             else
             {
                 if(RK4_normalized_step(p,result,sptial_step_size,upper_search,core_mins,core_maxs,function_type,b,inr_model))
                 {
-                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
-                    return true;
+                    return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
                 }
             }
         }
@@ -357,22 +365,19 @@ namespace RK4
                 {
                     if(RK4(p,result,time_step,upper_search,core_mins,core_maxs,function_type,b,inr_model))
                     {
-                            correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
-                            return true;
+                            return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
                     }
                 }
                 else
                 {
-                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
-                    return true;
+                    return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
                 }
             }
             else
             {
-                if(RK4(p,result,time_step,upper_search,core_mins,core_maxs,function_type,b,inr_model))
+                if(RK4(p,result,time_step,upper_search,core_mins,core_maxs,function_type,b,inr_model));
                 {
-                    correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
-                    return true;
+                    return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
                 }
             }
 
@@ -414,7 +419,8 @@ namespace RK4
 
         if(RK4_choose_direction(p,result,time_step,sptial_step_size,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time,core_mins,core_maxs,function_type,b,inr_model))
         {
-            return true;
+            // if((p-result).head(p.size()-1).squaredNorm()<d_max_square)
+                return true;
         }
 
         return false;

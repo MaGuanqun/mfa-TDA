@@ -211,6 +211,17 @@ using namespace std;
             dom_bounds.min = {-2.0, -2.0, 0.0};
             dom_bounds.max = { 2.0, 2.0, 4.0};
         }
+        else if(input=="vortex_street_3d")
+        {
+            dom_bounds.min = {-0.5, -0.5, 13.5};
+            dom_bounds.max = { 7.5,  0.5, 15.0};
+        }
+        else if (input=="boussinesq_3d")
+        {
+            dom_bounds.min = {-0.5, -0.5, 0.0};
+            dom_bounds.max = { 0.5,  2.5, 3.0};
+        }
+        
         else
         {
             std::cout<<"input "<<input<<std::endl;
@@ -307,6 +318,8 @@ using namespace std;
                         mfa::MFAInfo& mfa_info, DomainArgs& d_args)
     {
         int weighted = 0;
+
+        std::cout<<"run setup_args with input "<<input<<std::endl;
 
         // If only one value for vars_nctrl was parsed, assume it applies to all dims
         if (vars_nctrl.size() == 1 & dom_dim > 1)
@@ -677,6 +690,30 @@ using namespace std;
             d_args.min[1] = -0.5;    d_args.max[1] = 0.5;
             d_args.min[2] = 13.5;    d_args.max[2] = 15.0;
             d_args.set_domain_range=true;
+
+            std::cout<<"3d vortex street example"<<std::endl;
+            std::cout<<"ndom pts "<<mfa::print_vec(d_args.ndom_pts)<<std::endl;
+        }
+
+        if (input == "boussinesq_3d")
+        {
+            d_args.full_dom_pts = {150, 450, 300};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {15, 45, 30};
+            }
+
+            d_args.min.resize(3);
+            d_args.max.resize(3);
+            d_args.min[0] = -0.5;    d_args.max[0] = 0.5;
+            d_args.min[1] = -0.5;    d_args.max[1] = 2.5;
+            d_args.min[2] = 0.0;    d_args.max[2] = 3.0;
+            d_args.set_domain_range=true;
+
+            std::cout<<"3d vortex street example"<<std::endl;
+            std::cout<<"ndom pts "<<mfa::print_vec(d_args.ndom_pts)<<std::endl;
         }
 
         if(input=="boussinesq")

@@ -103,6 +103,9 @@ namespace critical_point_utility
             accuracy_value += compute_accuracy_single_point(degenerate_points[i], function_type, b, inr_model);
         }   
         num_points += degenerate_points.size();
+
+        std::cout<<"degenerat_accuracy "<<accuracy_value/ (T)num_points<<std::endl;
+
         //conmpute_gradient
         for(int i=0;i<traces.size();++i)
         {

@@ -57,7 +57,7 @@ int main(int argc, char** argv)
     int         rounds          = 0;        // max number of rounds for adaptive encoding
     bool        help            = false;    // show help
     string      outfile         = "approx.mfa";       // input file name
-
+    int         save_datasets   = 1;        // write output MFA and data files (bool 0/1)
     opts::Options ops;
     ops >> opts::Option('d', "pt_dim",      pt_dim,     " dimension of points");
     ops >> opts::Option('l', "scalar",      scalar,     " flag for scalar or vector-valued science variables");
@@ -73,6 +73,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('z', "verbose",     verbose,    " output verbosity (0/1)");
     ops >> opts::Option('h', "help",        help,       " show help");
     ops >> opts::Option('o', "outfile",      outfile,     " output mfa file name"); 
+    ops >> opts::Option('s', "save_datasets",save_datasets," save input, approx, errs datasets to .mfa file (0/1)");
+
     if (!ops.parse(argc, argv) || help)
     {
         if (world.rank() == 0)
@@ -125,13 +127,16 @@ int main(int argc, char** argv)
                 input, infile, 0, structured, 0, 0, 0, 0,
                 0, 0, adaptive, verbose, mfa_info , d_args);
 
+    std::cout<<"domain max" <<d_args.max[0]<<std::endl;
+
+
     // Create data set for modeling. Input keywords are defined in example_signals.hpp
     if (datasets_3d.count(input) == 1)
     {
         master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
         { 
             
-            b->read_3d_scalar_data<double>(cp, mfa_info, d_args);
+            b->read_3d_scalar_data<float>(cp, mfa_info, d_args);
         });
     }
     else
@@ -145,6 +150,12 @@ int main(int argc, char** argv)
     double encode_time = MPI_Wtime();
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
     { 
+        // Set block flag for saving data sets
+        if (save_datasets)
+            b->save_datasets = 1;
+        else
+            b->save_datasets = 0;
+
         if (!adaptive)
             b->fixed_encode_block(cp, mfa_info);
         else

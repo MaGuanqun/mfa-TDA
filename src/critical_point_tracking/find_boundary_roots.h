@@ -29,7 +29,6 @@ private:
     T root_finding_epsilon;
     int max_itr;
     T point_itr_threshold;
-    const VectorXi point_num_in_block;
     const VectorXi set_block_num;
     std::vector<T> same_root_epsilon;
     INRModel<T>* inr_model=nullptr;
@@ -114,8 +113,8 @@ private:
 
             if(itr_num>0){
                 if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon
-                && std::abs(p[p.size()-1]-pre_point[pre_point.size()-1])<point_update_epsilon.back()
-                && (p.head(p.size()-1)-pre_point.head(pre_point.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
+                // && std::abs(p[p.size()-1]-pre_point[pre_point.size()-1])<point_update_epsilon.back()
+                // && (p.head(p.size()-1)-pre_point.head(pre_point.size()-1)).squaredNorm()<point_update_epsilon[0]*point_update_epsilon[0]
                 ){           
                     result = p;
                     return true;
@@ -132,7 +131,10 @@ private:
 
 
 public:
-    Find_boundary_roots(T root_finding_epsi, const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, const VectorXi set_block_n,std::vector<T> same_root_epsi, int func_type=0, int max_it=50, T point_itr_thres=0.5, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): root_finding_epsilon(root_finding_epsi), core_mins(domain_min), core_maxs(domain_max), point_num_in_block(point_num_in_b), b(block), function_type(func_type),max_itr(max_it), point_itr_threshold(point_itr_thres), set_block_num(set_block_n), same_root_epsilon(same_root_epsi),inr_model(inr_model_) {}
+
+    VectorXi point_num_in_block;
+
+    Find_boundary_roots(T root_finding_epsi, const VectorX<T> domain_min, const VectorX<T> domain_max, VectorXi point_num_in_b, const VectorXi set_block_n,std::vector<T> same_root_epsi, int func_type=0, int max_it=50, T point_itr_thres=0.5, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): root_finding_epsilon(root_finding_epsi), core_mins(domain_min), core_maxs(domain_max), point_num_in_block(point_num_in_b), b(block), function_type(func_type),max_itr(max_it), point_itr_threshold(point_itr_thres), set_block_num(set_block_n), same_root_epsilon(same_root_epsi),inr_model(inr_model_) {}
     
     ~Find_boundary_roots() {}
 
@@ -222,7 +224,7 @@ public:
                     fixed_value.emplace_back(core_mins[i]);
                     fixed_dim.emplace_back(i);
                 }
-                if(i!=(core_mins.size()-1) && (span_index[i]==(set_block_num[i]-1)))
+                if(span_index[i]==(set_block_num[i]-1))
                 {
                     fixed_value.emplace_back(core_maxs[i]);
                     fixed_dim.emplace_back(i);

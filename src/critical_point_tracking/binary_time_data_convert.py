@@ -1,9 +1,51 @@
+
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 import numpy as np
 import argparse
 
 
+
+def persistence_simplification(image_data, array_name, threshold=0.5):
+
+    # create a new 'Tetrahedralize'
+    producer = TrivialProducer()
+    producer.GetClientSideObject().SetOutput(image_data)
+    # tetrahedralize1 = Tetrahedralize(registrationName='Tetrahedralize1', Input=producer)
+    
+    # tetrahedralize1.UpdatePipeline()
+    
+    # np_arr = vtk_to_numpy(image_data.GetPointData().GetArray(array_name))
+    # print("1",np_arr,array_name)
+
+    # create a new 'TTK TopologicalSimplificationByPersistence'
+    tTKTopologicalSimplificationByPersistence1 = TTKTopologicalSimplificationByPersistence(registrationName='TTKTopologicalSimplificationByPersistence1', Input=producer)
+    tTKTopologicalSimplificationByPersistence1.InputArray = ['POINTS', array_name]
+
+    # Properties modified on tTKTopologicalSimplificationByPersistence1
+    tTKTopologicalSimplificationByPersistence1.PersistenceThreshold = threshold
+    tTKTopologicalSimplificationByPersistence1.ThresholdIsAbsolute = 0
+    
+    tTKTopologicalSimplificationByPersistence1.UpdatePipeline()
+    # create a new 'Clean to Grid'
+    
+    simplified_vtk = Fetch(tTKTopologicalSimplificationByPersistence1)
+    
+    arr = simplified_vtk.GetPointData().GetArray(array_name)
+    if arr is None:
+        raise RuntimeError(
+            f"Simplified array '{array_name}' not found in TTK output"
+        )
+        
+    # np_arr = vtk_to_numpy(arr)
+    # print("2",np_arr,array_name)
+
+    # Deep copy into a standalone vtkDataArray so we can attach to image_data
+    out_array = arr.NewInstance()
+    out_array.DeepCopy(arr)
+    out_array.SetName(array_name)
+    
+    return out_array
 
 
 def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
@@ -12,6 +54,7 @@ def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
     data = np.fromfile(input_bin, dtype=dtype)
     if data.size != dims[0] * dims[1] * dims[2]:
         print(data.size)
+        print(dims[0] * dims[1] * dims[2])
         raise ValueError("Data size does not match the provided dimensions.")
 
 
@@ -42,6 +85,15 @@ def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
         vtk_arr = numpy_to_vtk(flat, deep=True, array_type=vtk.VTK_DOUBLE)
         vtk_arr.SetName(f"{z:04d}")  # "000", "001", ...
         image_data.GetPointData().AddArray(vtk_arr)
+        
+        # simplified=persistence_simplification(image_data, f"{z:04d}", threshold=0.1)
+        # image_data.GetPointData().RemoveArray(f"{z:04d}")
+        # image_data.GetPointData().AddArray(simplified)
+        
+        # np_arr = vtk_to_numpy(image_data.GetPointData().GetArray(f"{z:04d}"))
+        # print(np_arr)
+        
+        # print("=====",f"{z:04d}")
         
         z_array = vtk.vtkDoubleArray()
         z_array.SetName(f"{z:04d}")
@@ -101,5 +153,17 @@ elif function =='hurricane_isabel':
     dim = np.array([500, 500, 100])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([499.0, 499.0, 99.0])
+elif function =='olr':
+    dim = np.array([144, 73, 300])
+    min = np.array([0.0, 0.0, 0.0])
+    max = np.array([143.0, 72.0, 299.0])
+elif function =='sst':
+    dim = np.array([360, 180, 300])
+    min = np.array([0.0, 0.0, 0.0])
+    max = np.array([359.0, 179.0, 299.0])
+elif function =='boussinesq_3d':
+    dim = np.array([150, 450, 300])
+    min = np.array([-0.5, -0.5, 0.0])
+    max = np.array([0.5, 2.5, 3.0])
     
 convert_binary_file_to_vti(input_file, output_file,dim,min,max,args)

@@ -1334,6 +1334,8 @@ struct Block : public BlockBase<T, U>
         }
         else
         {
+            std::cout<<"Setting domain extents from args min/max"<<std::endl;
+            std::cout << "args.min: "<<args.min[0]<<" "<<args.min[1]<<std::endl;
             for (int i = 0; i < dom_dim; i++)
             {
                 bounds_mins(i)  = args.min[i];
@@ -1418,14 +1420,19 @@ struct Block : public BlockBase<T, U>
 
         // set domain values (just equal to i, j; ie, dx, dy = 1, 1)
         int n = 0;
+
+        std::cout<<"set_domain_range "<<a->set_domain_range<<std::endl;
+
+        std::cout<<this->core_maxs.transpose()<<std::endl;
+
         if(a->set_domain_range)
         {
             VectorX<T> d(this->dom_dim);               // step in domain points in each dimension
             VectorX<T> p0(this->dom_dim);              // starting point in each dimension                     // number of ghost points in current dimension
             for (int i = 0; i < this->dom_dim; i++)
             {
-                d(i) = (this->core_maxs(i) - this->core_mins(i)) / (ndom_pts(i) - 1);
-                p0(i) = this->core_mins(i);
+                d(i) = (a->max[i] - a->min[i]) / (ndom_pts(i) - 1);
+                p0(i) = a->min[i];
             }
             mfa::VolIterator vol_it(ndom_pts);
             // current index of domain point in each dim, initialized to 0s
@@ -1455,21 +1462,33 @@ struct Block : public BlockBase<T, U>
         }
 
 
-        // extents
-        bounds_mins(0) = 0.0;
-        bounds_mins(1) = 0.0;
-        bounds_mins(2) = 0.0;
-        bounds_maxs(0) = input->domain(tot_ndom_pts - 1, 0);
-        bounds_maxs(1) = input->domain(tot_ndom_pts - 1, 1);
-        bounds_maxs(2) = input->domain(tot_ndom_pts - 1, 2);
-        core_mins.resize(dom_dim);
-        core_maxs.resize(dom_dim);
-        for (int i = 0; i < dom_dim; i++)
+             // extents
+        if(!a->set_domain_range)
         {
-            core_mins(i) = bounds_mins(i);
-            core_maxs(i) = bounds_maxs(i);
+            bounds_mins(0) = 0.0;
+            bounds_mins(1) = 0.0;
+            bounds_maxs(0) = input->domain(tot_ndom_pts - 1, 0);
+            bounds_maxs(1) = input->domain(tot_ndom_pts - 1, 1);
+            core_mins.resize(dom_dim);
+            core_maxs.resize(dom_dim);
+            for (int i = 0; i < dom_dim; i++)
+            {
+                core_mins(i) = bounds_mins(i);
+                core_maxs(i) = bounds_maxs(i);
+            }
         }
-
+        else
+        {
+            std::cout<<"Setting domain extents from args min/max"<<std::endl;
+            std::cout << "args.min: "<<args.min[0]<<" "<<args.min[1]<<std::endl;
+            for (int i = 0; i < dom_dim; i++)
+            {
+                bounds_mins(i)  = args.min[i];
+                bounds_maxs(i)  = args.max[i];
+                core_mins(i)    = args.min[i];
+                core_maxs(i)    = args.max[i];
+            }
+        }
         input->set_domain_params();
 
         // initialize MFA models (geometry, vars, etc)

@@ -49,7 +49,7 @@ private:
         }
         else
         {
-            min = core_min;
+            min = core_min + 0.5* (degenerate_point - core_min);
         }
 
         if(degenerate_point+step_size < core_max)
@@ -58,7 +58,7 @@ private:
         }
         else
         {
-            max = core_max;
+            max = core_max- 0.5* (core_max - degenerate_point);
         }
     }
 
@@ -178,7 +178,7 @@ public:
     Degenerate_case_tracing(const VectorX<T> domain_min, const VectorX<T> domain_max, const VectorXi point_num_in_b, Find_boundary_roots<T>* find_boundary_roots_, T time_step_, T spatial_step_size_, T root_finding_grad_epsilon_, int correction_max_it, int func_type=0, Block<T>* block=nullptr, INRModel<T>* inr_model_=nullptr): core_mins(domain_min), core_maxs(domain_max), b(block), function_type(func_type), point_num_in_block(point_num_in_b),find_boundary_roots(find_boundary_roots_), time_step(time_step_), spatial_step(spatial_step_size_), root_finding_grad_epsilon(root_finding_grad_epsilon_),correction_max_itr(correction_max_it),inr_model(inr_model_)
     {
         ori_step_size.resize(domain_min.size(), spatial_step_size_);
-        ori_step_size.back() = time_step_; // the last dimension is time
+        ori_step_size.back() =time_step_; // the last dimension is time
     }
 
     static void read_degenerate_point(std::string& filename, std::vector<VectorX<T>>& singular_points)
@@ -212,7 +212,8 @@ public:
     void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T step_ratio,  T d_max_square)
     {
 
-        std::vector<VectorX<T>> raw_start_points;
+        std::vector<VectorX<T>> raw_start_points_up;
+        std::vector<VectorX<T>> raw_start_points_down;
         std::vector<int> upper_tracing; 
 
 
@@ -242,21 +243,40 @@ public:
                 if(start_point[start_point.size()-1]>degenerate_points[i][degenerate_points[i].size()-1])
                 {
                     // temp_upper_tracing.emplace_back(1);
-                    raw_start_points.emplace_back(start_point);
+                    raw_start_points_up.emplace_back(start_point);
 
                 }
-                // else
-                // {
-                //     temp_upper_tracing.emplace_back(0);
-                // }
+                else
+                {
+                    raw_start_points_down.emplace_back(start_point);
+                }
             }
-
-            // raw_start_points.insert(raw_start_points.end(), temp_start_points.begin(), temp_start_points.end());
-            // upper_tracing.insert(upper_tracing.end(), temp_upper_tracing.begin(), temp_upper_tracing.end());
         }
 
-        std::vector<VectorX<T>> start_points;
-        spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points, start_points,step_size[0],step_size.back());
+
+
+
+        std::vector<VectorX<T>> start_points_up;
+        spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_up, start_points_up,step_size[0],step_size.back());
+
+       
+        // string test_file="start points test up.obj";
+        // tracking_utility::convert_to_obj(test_file,start_points_up);
+
+        std::vector<VectorX<T>> start_points_down;
+        spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_down, start_points_down,step_size[0],step_size.back());
+
+
+        // string test_file2="start points test down.obj";
+        // tracking_utility::convert_to_obj(test_file2,start_points_down);
+
+
+
+
+
+        // string test_file=cp_tracing_file+"_test.obj";
+
+        // tracking_utility::convert_to_obj(test_file,root_unique);
 
         // VectorX<T> test_root(3);
         // test_root<< 1.8337,1.0408,2.91297;
@@ -270,21 +290,32 @@ public:
            
         // }
 
+        
+
 
         int size = trace.size();
         
-        trace.resize(size+start_points.size());
-        for(int i=0;i<start_points.size();++i)
+        trace.resize(size+start_points_up.size()+start_points_down.size());
+        for(int i=0;i<start_points_up.size();++i)
         {
             // if((start_points[i]-test_root).norm()>0.001)
             // {
             //     continue;
             // }
-            
+                // {
             // std::cout<<start_points[i].transpose()<<std::endl;
             // std::cout<<"upper tracing "<<upper_tracing[i]<<std::endl;
 
-            tracing_from_start_points(start_points[i], true, trace[i+size].traces, d_max_square);
+            tracing_from_start_points(start_points_up[i], true, trace[i+size].traces, d_max_square);
+
+        }
+
+        int new_size = size + start_points_up.size();
+
+        for(int i=0;i<start_points_down.size();++i)
+        {
+
+            tracing_from_start_points(start_points_down[i], false, trace[i+new_size].traces, d_max_square);
 
         }
 
