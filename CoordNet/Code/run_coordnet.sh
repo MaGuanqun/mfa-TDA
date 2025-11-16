@@ -5,21 +5,21 @@ conda activate siren
 
 
 
-function_name=boussinesq_3d #quartic_potential_2, vortex_street,vortex_street_3d,hurricane_isabel, olr, boussinesq_3d
+function_name=boussinesq_3d #vortex_street_3d, boussinesq_3d
 
 
 omega=30.0
 
-raw_data="../Data/$function_name.bin"
+raw_data="../Data/${function_name}_old.bin"
 raw_vti_file="../Result/$function_name/raw_file.vti"
 new_raw_vtk_file="../Result/$function_name/new_raw_file.vtk"
 new_raw_vti_file="../Result/$function_name/new_raw_file.vti"
-new_raw_data="../Data/$function_name.new.bin"
+new_raw_data="../Data/$function_name.bin"
 raw_critical_point="../Result/$function_name/raw_critical_points.csv"
 new_raw_critical_point="../Result/$function_name/new_raw_critical_points.csv"
 
 application='super-spatial-temporal'
-num_res=2
+num_res=5
 activate='sine' # sine, tanh
 init_feature=64
 
@@ -55,12 +55,18 @@ pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${
 # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_data}" -o "${raw_vti_file}" -f "${function_name}"
 # # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${new_raw_vti_file}" -o "${raw_critical_point}"
 # # conda deactivate
+
 # pvpython ../../src/critical_point_tracking/persistence_simplification.py -i "${raw_vti_file}" -o "${new_raw_vti_file}" -b "${new_raw_data}" -s 2.0 --median_radius 0
 
 
 # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${new_raw_data}" -o "${new_raw_vti_file}" -f "${function_name}"
 
 # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${new_raw_vti_file}" -o "${new_raw_critical_point}"
+
+
+# convert_obj_domain=../../src/critical_point_tracking/convert_obj_back_to_domain.py
+# python $convert_obj_domain --csv "${new_raw_critical_point}" --function "${function_name}"
+
 
 # tensorboard --logdir=logs/expotential/summaries/ --host=0.0.0.0
 # ip addr show eth0 | grep "inet\b" | awk '{print $2}' | cut -d/ -f1

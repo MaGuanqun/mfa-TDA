@@ -62,7 +62,7 @@ int main(int argc, char** argv)
     double shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
     // string input_sample_point_number = "100-100";
 
-    string degenerate_point_file = "degenerate_point.dat";
+    string degenerate_point_file = "degenerate_point";
     
     double J_threshold = 1e-5;
 
@@ -189,7 +189,26 @@ int main(int argc, char** argv)
             root_matrix[0].row(j) = root_unique[j].transpose();
         }
 
-        utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
+        string degenerate_file_name = degenerate_point_file + std::to_string(int(spatial_step_size)) + ".dat";
+
+        utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+
+
+        for (int i = spatial_step_size/2; i > 3; i /= 2)
+        {
+                root_unique.clear();
+                step_size[0] *=2;
+                step_size.back() *=2;
+                spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique, step_size[0], step_size.back());
+                root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+                for(int j=0;j<root_unique.size();j++)
+                {
+                    root_matrix[0].row(j) = root_unique[j].transpose();
+                }
+
+                degenerate_file_name = degenerate_point_file + std::to_string(i) + ".dat";
+                utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+        }
 
     });
 

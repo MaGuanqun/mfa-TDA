@@ -143,7 +143,7 @@ void splitting(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degener
     std::vector<TraceTimeRange<T>> time_ranges(traces.size());
     for(int i=0;i<traces.size();++i)
     {
-        if(traces[i].traces.size()<2)
+        if(traces[i].traces.empty())
         {
             time_ranges[i].start_time = std::numeric_limits<T>::max();
             time_ranges[i].end_time = std::numeric_limits<T>::lowest();
@@ -454,6 +454,8 @@ void deduplicate_traces(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
     if(!degenerate_points.empty())
     {
         splitting(traces, degenerate_points, spatial_step_size);
+
+        // std::cout<<"end splitting "<<std::endl;
     }
     
     std::vector<std::vector<size_t>> temp_index;
@@ -464,7 +466,7 @@ void deduplicate_traces(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
 
     for(int i=0; i<traces.size();++i)
     {
-        if(traces[i].traces.size()<2)
+        if(traces[i].traces.empty())
         {
             traces[i].duplicated=true; //skip empty traces
             continue;  

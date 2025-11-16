@@ -184,8 +184,8 @@ int main(int argc, char** argv)
 
         Tracking_degenerate_case<float> tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type, nullptr, &inr_model);
 
-        std::vector<VectorXi> record_span;
-        choose_span(record_span);
+        // std::vector<VectorXi> record_span;
+        // choose_span(record_span);
 
         tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
 
@@ -214,7 +214,25 @@ int main(int argc, char** argv)
             root_matrix[0].row(j) = root_unique[j].transpose();
         }
 
+        string degenerate_file_name = degenerate_point_file + std::to_string(int(spatial_step_size)) + ".dat";
+
         utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
+
+        for (int i = spatial_step_size/2; i > 1; i /= 2)
+        {
+                root_unique.clear();
+                step_size[0] *=2;
+                step_size.back() *=2;
+                spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique, step_size[0], step_size.back());
+                root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+                for(int j=0;j<root_unique.size();j++)
+                {
+                    root_matrix[0].row(j) = root_unique[j].transpose();
+                }
+
+                degenerate_file_name = degenerate_point_file + std::to_string(i) + ".dat";
+                utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+        }
 
 
 }

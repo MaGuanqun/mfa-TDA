@@ -163,7 +163,7 @@ elif function =='sst':
     max = np.array([359.0, 179.0, 299.0])
 elif function =='boussinesq_3d':
     dim = np.array([150, 450, 300])
-    min = np.array([-0.5, -0.5, 0.0])
-    max = np.array([0.5, 2.5, 3.0])
+    min = np.array([0.0, 0.0, 0.0])
+    max = np.array([149, 449, 299])
     
 convert_binary_file_to_vti(input_file, output_file,dim,min,max,args)

@@ -44,7 +44,7 @@
 #include "tracking_utility.h"
 #include "trace_deduplication.h"
 #include "connect_trajectory_degenerate_point.h"
-
+#include "critical_point_utility.h"
 // #include "trace.h"
 
 // #include "../morse_smale/find_isocontour.h"
@@ -111,7 +111,7 @@ int main(int argc, char** argv)
 
     float  spatial_step_size = 1.0;
         string input_model="";
-
+    string edge_type_file ="";
 
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
@@ -128,6 +128,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
 
     ops >> opts::Option('i', "input_model", input_model, " input INR model");
+
+    ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -162,11 +164,12 @@ int main(int argc, char** argv)
 
     VectorXf Span_size = local_domain_range.cwiseQuotient(span_num.cast<float>());
 
-    double d_max_square_= Span_size.head(Span_size.size()-1).squaredNorm();
+
     
     std::vector<float> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
     step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
 
+    float d_max_square_= spatial_step_size*spatial_step_size/16* step_size[0]* step_size[0]; 
 
     std::vector<VectorX<float>> degenerate_points;
     Degenerate_case_tracing<float>::read_degenerate_point(singular_point_file,degenerate_points);
@@ -205,7 +208,7 @@ int main(int argc, char** argv)
         std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
 
         std::vector<VectorX<float>> root_unique;
-        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,step_size[0],step_size.back());
+        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,same_root_epsilon[0],same_root_epsilon.back());
 
 
         std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
@@ -239,7 +242,7 @@ int main(int argc, char** argv)
     int trace_size=0;
     for(auto& trace:traces)
     {
-        if((!trace.duplicated) && trace.traces.size()>1)
+        if((!trace.duplicated) && trace.traces.size()>=1)
         {            
             trace_size++;
         }
@@ -257,7 +260,7 @@ int main(int argc, char** argv)
     trace_size=0;
     for(auto& trace:traces)
     {
-        if((!trace.duplicated) && trace.traces.size()>1)
+        if((!trace.duplicated) && trace.traces.size()>=1)
         {            
             trace_size++;
         }
@@ -274,7 +277,17 @@ int main(int argc, char** argv)
 
     std::cout<<"overall tracking time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(tracking_end_time - tracking_start_time).count()/1000<<std::endl;
 
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points);
+
+    std::vector<int> critical_point_types;
+    if(edge_type_file!="")
+        critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, static_cast<Block<float>*>(nullptr), &inr_model);
+
+    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
+
+    critical_point_utility::accuracy(traces, degenerate_points, function_type,static_cast<Block<float>*>(nullptr), &inr_model);
+
+
+    // CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points);
 
 
   

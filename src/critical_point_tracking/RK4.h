@@ -321,6 +321,15 @@ namespace RK4
             return false;
         }
 
+
+        // if((p-result).head(p.size()-1).squaredNorm() > 4.0 * step_size*step_size
+        // &&std::abs(result[result.size()-1]-p[p.size()-1]) > 2.0 * step_size
+        // )
+        // {
+        //     // std::cout<<"normalized step size error "<<(p-result).head(p.size()-1).squaredNorm()<<" "<< step_size*step_size<<std::endl;
+        //     return false;
+        // }
+
         return true;
 
     }

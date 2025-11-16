@@ -702,7 +702,7 @@ using namespace std;
 
             if (!adaptive)
             {
-                vars_nctrl = {15, 45, 30};
+                vars_nctrl = {10, 30, 20};
             }
 
             d_args.min.resize(3);

@@ -72,9 +72,9 @@ def compute_tracking(input, output):
     filtered_critical_points_type = critical_points_type[mask]
     with open(output, 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(["CriticalType", "PositionX", "PositionY", "PositionZ"])
+        csvwriter.writerow(["PositionX", "PositionY", "PositionZ"]) #"CriticalType", 
         for i in range(filtered_critical_points_pos.shape[0]):
-            csvwriter.writerow([int(filtered_critical_points_type[i]), 
+            csvwriter.writerow([ #int(filtered_critical_points_type[i]), 
                                 filtered_critical_points_pos[i, 0], 
                                 filtered_critical_points_pos[i, 1], 
                                 filtered_critical_points_pos[i, 2]])

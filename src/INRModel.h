@@ -76,7 +76,7 @@ static VectorX<T> domain_min_(const string& func_name)
         }
         else if (func_name=="vortex_street_3d")
         {
-            result << -0.5,-0.5,0.0;
+            result << -0.5,-0.5,13.5;
         }
         else if (func_name=="boussinesq_3d")
         {
@@ -135,11 +135,11 @@ static VectorXi block_num_(const string& func_name) //number of blocks that spli
         }
         else if (func_name=="vortex_street_3d")
         {
-            result << 32,4,7;
+            result << 80,10,15;
         }
         else if (func_name=="boussinesq_3d")
         {
-            result << 10,30,20;
+            result << 10,30,30;
         }
 
         return result;
@@ -159,11 +159,11 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         }
         else if (func_name=="vortex_street_3d")
         {
-            result << 5,5,5;
+            result << 4,4,4;
         }
         else if (func_name=="boussinesq_3d")
         {
-            result << 5,5,5;
+            result << 4,4,4;
         }
         return result;
     }

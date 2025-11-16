@@ -47,7 +47,7 @@ namespace CP_Trace_fuc
 
         for (auto i=traces.begin();i<traces.end();++i)
         {
-            if(i->traces.size()<2 || i->duplicated)
+            if(i->duplicated)
             {
                 continue;
             }
@@ -63,7 +63,7 @@ namespace CP_Trace_fuc
         int obj_index=1+degenerate_points.size();
         for (auto i=traces.begin();i<traces.end();++i)
         {
-            if(i->traces.size()<2|| i->duplicated)
+            if(i->duplicated)
             {
                 continue;
             }

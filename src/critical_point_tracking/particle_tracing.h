@@ -54,6 +54,12 @@ namespace particle_tracing{
                     break;
                 } 
             }
+
+            if(std::abs(p_new[p_new.size()-1]-p_old[p_old.size()-1])>2.0*time_step || (p_new.head(p_new.size()-1)-p_old.head(p_old.size()-1)).squaredNorm()>4.0*spatial_step_size*spatial_step_size)
+            {
+                // std::cout<<"time step too large "<<std::abs(p_new[p_new.size()-1]-p_old[p_old.size()-1])<<" "<<time_step<<std::endl;
+                break;
+            }
             
             result.emplace_back(p_new);
             p_old = p_new;

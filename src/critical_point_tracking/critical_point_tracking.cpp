@@ -310,18 +310,17 @@ int main(int argc, char** argv)
 
 
 
-        critical_point_utility::accuracy(traces, degenerate_points, function_type,b);
 
         Degenerate_case_tracing degenerate_case_tracing(b->core_mins, b->core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, 0, b);
 
         std::cout<< "d_max_square_ "<<d_max_square_<<std::endl;
-        // find_boundary_roots.point_num_in_block=point_num_in_block*2;
+
         degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
 
 int trace_size=0;
     for(auto& trace:traces)
     {
-        if((!trace.duplicated) && trace.traces.size()>1)
+        if((!trace.duplicated) && trace.traces.size()>=1)
         {            
             trace_size++;
         }
@@ -339,7 +338,7 @@ int trace_size=0;
     trace_size=0;
     for(auto& trace:traces)
     {
-        if((!trace.duplicated) && trace.traces.size()>1)
+        if((!trace.duplicated) && trace.traces.size()>=1)
         {            
             trace_size++;
         }
