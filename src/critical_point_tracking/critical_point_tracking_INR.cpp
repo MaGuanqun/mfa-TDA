@@ -64,6 +64,25 @@ namespace {
     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
 }
 
+
+void save_root(std::vector<VectorX<float>>& root_unique, string degenerate_point_file, int spatial_step_size)
+{
+    std::vector<MatrixXf> root_matrix(1);
+
+    root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+    for(int j=0;j<root_unique.size();j++)
+    {
+        root_matrix[0].row(j) = root_unique[j].transpose();
+    }
+
+    string degenerate_file_name = degenerate_point_file + std::to_string(spatial_step_size) + ".dat";
+
+    utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+
+    std::cout<<"save root with step size "<<degenerate_file_name<<std::endl;
+
+}
+
 int main(int argc, char** argv)
 {
 
@@ -113,6 +132,9 @@ int main(int argc, char** argv)
         string input_model="";
     string edge_type_file ="";
 
+    string boundary_start="";
+    int compute_boundary_start=1;
+
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -130,6 +152,9 @@ int main(int argc, char** argv)
     ops >> opts::Option('i', "input_model", input_model, " input INR model");
 
     ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
+
+    ops >> opts::Option('j', "boundary_start", boundary_start, " boundary_start_file");
+    ops >> opts::Option('c', "compute_boundary_start", compute_boundary_start, " compute_boundary_start");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -199,28 +224,45 @@ int main(int argc, char** argv)
 
 
         VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
-
-        Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<float>*>(nullptr),&inr_model);
-
-        find_boundary_roots.root_finding(selected_span, root);
-
-
-        std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
-
         std::vector<VectorX<float>> root_unique;
-        spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,same_root_epsilon[0],same_root_epsilon.back());
+        Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<float>*>(nullptr),&inr_model);
+        if(compute_boundary_start==1){
+            find_boundary_roots.root_finding(selected_span, root);
 
+            spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,same_root_epsilon[0],same_root_epsilon.back());
 
-        std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+            save_root(root_unique, boundary_start, spatial_step_size);
 
-        root.clear();
-        root.shrink_to_fit();
+            auto temp_step_size= step_size;
+            auto temp_spatial_ratio =spatial_step_size;
+            std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
+            std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+            for (int i = spatial_step_size/2; i > 1; i /= 2)
+            {
+                root_unique.clear();
+                temp_step_size[0] *=2;
+                temp_step_size.back() *=2;
+                spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,temp_step_size[0],temp_step_size.back());
+                save_root(root_unique, boundary_start, i);
+                std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+                
+            }
+            root.clear();
+            root.shrink_to_fit();
+        }
+        else
+        {
+            string name  =  boundary_start + std::to_string(int(spatial_step_size)) + ".dat";
+            Degenerate_case_tracing<float>::read_degenerate_point(name,root_unique);
+
+            std::cout<<"read root num from file "<<root_unique.size()<<std::endl;
+        }
 
         auto finding_end_time = std::chrono::high_resolution_clock::now();
 
-        string test_file=cp_tracing_file+"_test.obj";
+        // string test_file=cp_tracing_file+"_test.obj";
 
-        tracking_utility::convert_to_obj(test_file,root_unique);
+        // tracking_utility::convert_to_obj(test_file,root_unique);
 
         auto tracking_start_time = std::chrono::high_resolution_clock::now();
 

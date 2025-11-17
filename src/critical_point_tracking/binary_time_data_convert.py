@@ -153,9 +153,9 @@ elif function =='vortex_street_3d':
     # min = np.array([-0.5, -0.5, 0.0])
     # max = np.array([0.5, 7.5, 15])
 elif function =='boussinesq_3d':
-    dim = np.array([10,30,30])
+    dim = np.array([10,30,20])
     min = np.array([0.0, 0.0, 0.0])
-    max = np.array([149, 449, 299])
+    max = np.array([149, 449, 199])
 
 size = args.step_size*dim
     

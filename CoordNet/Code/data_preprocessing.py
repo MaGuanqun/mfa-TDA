@@ -11,10 +11,10 @@ file_path = '../Data/boussinesq.nc'
 nc_data = Dataset(file_path, mode='r')
 
 #(2001, 450, 150)
-# print(nc_data)
-# print(nc_data.variables['u'].shape)
-u0 = nc_data.variables['u'][1700:2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][1700:2000, :, :].filled(-2.0)
+print(nc_data.variables)
+print(nc_data.variables['u'].shape)
+u0 = nc_data.variables['u'][300:500, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+v0 = nc_data.variables['v'][300:500, :, :].filled(-2.0)
 
 # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
 # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
@@ -31,7 +31,7 @@ v0 = nc_data.variables['v'][1700:2000, :, :].filled(-2.0)
 velocity = np.sqrt(u0**2 + v0**2)
 
 print(velocity.shape)
-# velocity_t1501 = np.sqrt(u1**2 + v1**2)
+# # velocity_t1501 = np.sqrt(u1**2 + v1**2)
 
 max_value = np.max(velocity)
 min_value = np.min(velocity)
@@ -40,49 +40,50 @@ print("min",min_value)
 # # print(velocity_t1500.shape)
 
 velocity.astype('float32').tofile(save_name)
+
 # velocity_t1501.astype('float32').tofile('velocity_t2001.bin')
 
-# nc_data.close()
-
-
-
-
-
-# Replace 'your_file.nc' with the path to your NetCDF file
-save_name = '../Data/vortex_street_3d_old.bin' #1351:1501
-file_path = '../Data/cylinder2d.nc'
-
-nc_data = Dataset(file_path, mode='r')
-
-print(nc_data.variables)
-
-u0 = nc_data.variables['u'][1351:1501, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][1351:1501, :, :].filled(-2.0)
-
-print(u0.shape)
-
-# u0 = nc_data.variables['u'][1451:1501, :, 51:151].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-# v0 = nc_data.variables['v'][1451:1501, :, 51:151].filled(-2.0)
-
-
-velocity = np.sqrt(u0**2 + v0**2)
-# Normalize the velocity
-velocity_max = np.max(velocity)
-velocity_min = np.min(velocity)
-# velocity_normalized = 2*(velocity - velocity_min) / (velocity_max - velocity_min)-1.0
-
-# Rearranging the dimensions to ensure last dim changes faster
-# velocity = np.transpose(velocity, (2, 1, 0))  # Change the order of dimensions
-# velocity_max = np.max(velocity_normalized)
-# velocity_min = np.min(velocity_normalized)
-print("max",velocity_max)
-print("min",velocity_min)
-print(velocity.shape)
-
-velocity.astype('float32').tofile(save_name)
-print("size",velocity.size)
-
 nc_data.close()
+
+
+
+
+
+# # Replace 'your_file.nc' with the path to your NetCDF file
+# save_name = '../Data/vortex_street_3d_old.bin' #1351:1501
+# file_path = '../Data/cylinder2d.nc'
+
+# nc_data = Dataset(file_path, mode='r')
+
+# print(nc_data.variables)
+
+# u0 = nc_data.variables['u'][1351:1501, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# v0 = nc_data.variables['v'][1351:1501, :, :].filled(-2.0)
+
+# print(u0.shape)
+
+# # u0 = nc_data.variables['u'][1451:1501, :, 51:151].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# # v0 = nc_data.variables['v'][1451:1501, :, 51:151].filled(-2.0)
+
+
+# velocity = np.sqrt(u0**2 + v0**2)
+# # Normalize the velocity
+# velocity_max = np.max(velocity)
+# velocity_min = np.min(velocity)
+# # velocity_normalized = 2*(velocity - velocity_min) / (velocity_max - velocity_min)-1.0
+
+# # Rearranging the dimensions to ensure last dim changes faster
+# # velocity = np.transpose(velocity, (2, 1, 0))  # Change the order of dimensions
+# # velocity_max = np.max(velocity_normalized)
+# # velocity_min = np.min(velocity_normalized)
+# print("max",velocity_max)
+# print("min",velocity_min)
+# print(velocity.shape)
+
+# velocity.astype('float32').tofile(save_name)
+# print("size",velocity.size)
+
+# nc_data.close()
 
 # def fill_nans_local_mean_3d(arr, max_iter=50, kernel_size=3):
 #     """

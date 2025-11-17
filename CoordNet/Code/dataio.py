@@ -142,7 +142,7 @@ class ScalarDataSet():
 			self.data_path = '../Data/hurricane_isabel.bin'
 		elif self.dataset == 'boussinesq_3d':
 			self.dim = [150,450]
-			self.total_samples = 300
+			self.total_samples = 200
 			self.data_path = '../Data/boussinesq_3d.bin'
    
 			
@@ -415,7 +415,7 @@ class ScalarDataSet():
 		if self.dataset == "vortex_street_3d":
 			return np.array([80,10,15])
 		elif self.dataset == "boussinesq_3d":
-			return np.array([10,30,30])
+			return np.array([10,30,20])
 		else:
 			raise NotImplementedError(f"Function {self.dataset} not implemented.")
 

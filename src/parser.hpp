@@ -585,19 +585,19 @@ struct MFAParser
 
         if (input == "boussinesq_3d")
         {
-            d_args.full_dom_pts = {150, 450, 300};
+            d_args.full_dom_pts = {150, 450, 200};
             d_args.ndom_pts = d_args.full_dom_pts;
 
             if (!adaptive)
             {
-                vars_nctrl = {10, 30, 20};
+                vars_nctrl = {10, 30, 13};
             }
 
             d_args.min.resize(3);
             d_args.max.resize(3);
             d_args.min[0] = -0.5;    d_args.max[0] = 0.5;
             d_args.min[1] = -0.5;    d_args.max[1] = 2.5;
-            d_args.min[2] = 0.0;    d_args.max[2] = 3.0;
+            d_args.min[2] = 0.0;    d_args.max[2] = 2.0;
             d_args.set_domain_range=true;
 
         }

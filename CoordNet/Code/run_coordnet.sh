@@ -5,12 +5,12 @@ conda activate siren
 
 
 
-function_name=vortex_street_3d #vortex_street_3d, boussinesq_3d
+function_name=boussinesq_3d #vortex_street_3d, boussinesq_3d
 
 
 omega=30.0
 
-raw_data="../Data/${function_name}_old.bin"
+raw_data="../Data/${function_name}.bin"
 raw_vti_file="../Result/$function_name/raw_file.vti"
 new_raw_vtk_file="../Result/$function_name/new_raw_file.vtk"
 new_raw_vti_file="../Result/$function_name/new_raw_file.vti"
@@ -34,16 +34,16 @@ vti_file="../Result/$function_name/$application-$init_feature-$num_res.vti"
 vti_critical_point="../Result/$function_name/vti_critical_points.csv"
 
 
-# python data_preprocessing.py
+python data_preprocessing.py
 
 # python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000
 
 # python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000
 
-for step_size in 2 4 8 16 32
-do
-    python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
-done
+# for step_size in 2 4 8 16 32
+# do
+#     python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
+# done
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
@@ -60,8 +60,8 @@ conda activate mfa_env
 
 
 
-# python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_data}" -o "${raw_vti_file}" -f "${function_name}"
-# # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${new_raw_vti_file}" -o "${raw_critical_point}"
+python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_data}" -o "${raw_vti_file}" -f "${function_name}"
+pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${raw_vti_file}" -o "${raw_critical_point}"
 # # conda deactivate
 
 # pvpython ../../src/critical_point_tracking/persistence_simplification.py -i "${raw_vti_file}" -o "${new_raw_vti_file}" -b "${new_raw_data}" -s 2.0 --median_radius 0

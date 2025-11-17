@@ -216,7 +216,7 @@ int main(int argc, char** argv)
 
         string degenerate_file_name = degenerate_point_file + std::to_string(int(spatial_step_size)) + ".dat";
 
-        utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
+        utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
 
         for (int i = spatial_step_size/2; i > 1; i /= 2)
         {
