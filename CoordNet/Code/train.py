@@ -441,7 +441,7 @@ def inf(dataset,args):
         print("coords shape:", coords.shape)
         shape = dataset.span_num()
         shape = args.up_sample_ratio * shape
-        T = shape[3]
+        T = shape[2]
         H, W = shape[0], shape[1]
 
 

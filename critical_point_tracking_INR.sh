@@ -82,11 +82,11 @@ fi
 
 # gdb --args 
 
-"${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
+# "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${t_sample_ratio}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
 
 
 # # # 
-# "${convert_root_to_vtk}" -f "${degenerate_point_INR}" -o "${degenerate_point_INR}.csv" -j 0 -t 1 
+
 
 # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}.obj" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}.csv"
 
@@ -105,6 +105,7 @@ fi
 
 for step_size in "2" "4" "8" "16" "32"
 do
+    # "${convert_root_to_vtk}" -f "${degenerate_point_INR}${step_size}.dat" -o "${degenerate_point_INR}_${step_size}.csv" -j 0 -t 1 
 #     echo "smoothing with step size: ${step_size}"
 #     t_sample_ratio="${step_size}"
     "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${t_sample_ratio}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv"
@@ -112,7 +113,7 @@ do
     conda activate mfa
 #     python $convert_obj_domain --obj "${tracking_result}_${step_size}.obj" --function "${data_type}"
 #     python ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}_rescale.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
-    python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
+    # python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
 done
 
 
