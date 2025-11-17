@@ -14,8 +14,7 @@ mkdir -p logs
 export PYTHONUNBUFFERED=1
 
 # source ~/.bashrc
-source ~/enter/etc/profile.d/conda.sh
-conda activate siren
+
 
 application='super-spatial-temporal'
 num_res=5
@@ -26,7 +25,7 @@ num_epoch=300
 omega=30.0
 
 
-function_name=vortex_street_3d #quartic_potential_2, vortex_street,vortex_street_3d, hurricane_isabel, boussinesq_3d
+function_name=boussinesq_3d #quartic_potential_2, vortex_street,vortex_street_3d, hurricane_isabel, boussinesq_3d
 
 raw_data="../Data/$function_name.bin"
 raw_vti_file="../Result/$function_name/raw_file.vti"
@@ -37,19 +36,41 @@ out_root=logs/$function_name
 checkpoint=$out_root/checkpoints/model_final.pth
 
 
-func_raw_data="../Result/$function_name/$application-$init_feature-$num_res.dat"
-vti_file="../Result/$function_name/$application-$init_feature-$num_res.vti"
-vti_critical_point="../Result/$function_name/vti_critical_points.csv"
+func_raw_data="../Result/$function_name/$application-$init_feature-$num_res"
+vti_file="../Result/$function_name/$application-$init_feature-$num_res"
+vti_critical_point="../Result/$function_name/vti_critical_points"
+
+convert_obj_domain=../../src/critical_point_tracking/convert_obj_back_to_domain.py
+
 
 
 # python data_preprocessing.py
 # 
-# python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000 #--resume_epoch 270
+python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000 #--resume_epoch 270
 
+# source ~/.bashrc
+
+source ~/enter/etc/profile.d/conda.sh
+conda activate siren
 for step_size in 2 4 8 16 32
 do
     python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
 done
+
+source /home/u1435513-gma/enter/etc/profile.d/conda.sh
+conda activate mfa
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
+
+for step_size in 2 4 8 16 32
+do
+    python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}-${step_size}.dat" -o "${vti_file}-${step_size}.vti" -f "${function_name}" --step_size $step_size
+    pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}-${step_size}.vti" -o "${vti_critical_point}-${step_size}.csv" -s 1
+    python $convert_obj_domain --csv "${vti_critical_point}-${step_size}.csv" --function "${function_name}" --back_to_ori 1
+done
+
+
+
+
 # python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000
 
 # source ~/enter/etc/profile.d/conda.sh

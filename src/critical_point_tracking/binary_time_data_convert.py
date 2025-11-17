@@ -123,6 +123,7 @@ parser.add_argument('-i', '--input_name', type=str, default='file_name.dat', hel
 parser.add_argument('-o','--output_name', type=str, default='ttk.csv', help='output csv name')
 parser.add_argument('-f', '--function', type=str, default='rotating_gaussian', help='function')
 parser.add_argument('--float_type', type=str, default='float32', help='float32 or float64')
+parser.add_argument('--step_size', type=int, default=1, help='step size between frames')
 
 args = parser.parse_args()
 
@@ -130,6 +131,8 @@ args = parser.parse_args()
 input_file=args.input_name
 output_file=args.output_name
 function=args.function
+
+
 
 if function == 'rotating_gaussian':
     min = np.array([-2.0, -2.0, 0.0])
@@ -144,26 +147,16 @@ elif function == 'vortex_street':
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([99, 79, 49])
 elif function =='vortex_street_3d':
-    dim = np.array([640, 80, 150])
+    dim = np.array([80,10,15])
     min = np.array([0.0, 0.0, 1350.0])
     max = np.array([639.0, 79.0, 1500.0])
     # min = np.array([-0.5, -0.5, 0.0])
     # max = np.array([0.5, 7.5, 15])
-elif function =='hurricane_isabel':
-    dim = np.array([500, 500, 100])
-    min = np.array([0.0, 0.0, 0.0])
-    max = np.array([499.0, 499.0, 99.0])
-elif function =='olr':
-    dim = np.array([144, 73, 300])
-    min = np.array([0.0, 0.0, 0.0])
-    max = np.array([143.0, 72.0, 299.0])
-elif function =='sst':
-    dim = np.array([360, 180, 300])
-    min = np.array([0.0, 0.0, 0.0])
-    max = np.array([359.0, 179.0, 299.0])
 elif function =='boussinesq_3d':
-    dim = np.array([150, 450, 300])
+    dim = np.array([10,30,30])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([149, 449, 299])
+
+size = args.step_size*dim
     
-convert_binary_file_to_vti(input_file, output_file,dim,min,max,args)
+convert_binary_file_to_vti(input_file, output_file,size,min,max,args)

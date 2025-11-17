@@ -12,8 +12,11 @@ import os
 
 
 
-
-LoadPlugin("/home/guanqunma/ParaView-5.11.2-MPI-Linux-Python3.9-x86_64/lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so", remote=False, ns=globals()) 
+def plugin_log(is_server):
+    if(is_server==0):
+        LoadPlugin("/home/guanqunma/ParaView-5.11.2-MPI-Linux-Python3.9-x86_64/lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so", remote=False, ns=globals()) 
+    else:
+        LoadPlugin("/home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so",remote=False,ns=globals())
 
 
 def compute_tracking(input, output):
@@ -88,14 +91,14 @@ parser = argparse.ArgumentParser(description='TTK-critical points.')
 
 parser.add_argument('-i', '--input_name', type=str, default='file_name.vti', help='input file to compute critical points tracking')
 parser.add_argument('-o', '--output_name', type=str, default='file_name.vtp', help='output file to compute critical points tracking')
+parser.add_argument('-s', '--server', type=int, default=0, help='0 for local pc, 1 for remote server')
 
 
 args = parser.parse_args()
-
+plugin_log(is_server=args.server)
 
 input_file=args.input_name
 output_file=args.output_name
-
 
 
 compute_tracking(input_file,output_file)
