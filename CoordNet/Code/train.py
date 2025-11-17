@@ -43,7 +43,7 @@ def laplacian_loss(v_pred, coord):
     # Penalize large Laplacian -> encourages smoothness
     return (lap ** 2).mean()
 
-def trainNet(model,args,dataset):
+def trainNet(model,args,dataset,start_epoch=1):
         # ----- logging file naming follows original conventions -----
     if args.application in ['spatial', 'super-spatial']:
         loss_path = args.model_path + args.dataset + '/' + \
@@ -56,7 +56,8 @@ def trainNet(model,args,dataset):
         loss_path = args.model_path + args.dataset + '/' + \
             f'loss-{args.application}-{args.init}-{args.num_res}.txt'
 
-    loss = open(loss_path, 'w')
+    mode = 'a' if start_epoch > 1 else 'w'
+    loss = open(loss_path, mode)
     
     # if args.application == 'spatial' or args.application == 'super-spatial':
     #     loss = open(args.model_path+args.dataset+'/'+'loss-'+args.application+'-'+str(args.scale)+'-'+str(args.init)+'-'+str(args.factor)+'.txt','w')
@@ -69,7 +70,7 @@ def trainNet(model,args,dataset):
     criterion = nn.MSELoss()
 
     t = 0
-    for itera in range(1, args.num_epochs + 1):
+    for itera in range(start_epoch, args.num_epochs + 1):
         torch.cuda.empty_cache()
         train_loader = dataset.GetTrainingData()
         x = time.time()
@@ -109,7 +110,7 @@ def trainNet(model,args,dataset):
             else:
                 # includes 'super-spatial-temporal'
                 ckpt = args.model_path + args.dataset + '/' + \
-                    f'{args.application}-{args.init}-{itera}.pth'
+                    f'{args.application}-{args.init}-{args.num_res}-{itera}.pth'
             torch.save(model.state_dict(), ckpt)
     loss.write("Time = "+str(t))
     loss.write('\n')
@@ -255,6 +256,8 @@ def inf(dataset,args):
     if args.application == 'viewsynthesis':
         model = torch.load(args.model_path+args.dataset+'/'+args.application+'-'+str(args.res)+'-'+str(args.angle)+'-'+str(args.num_epochs)+'.pth')
     model.cuda()
+
+    print(args.application)
 
     if args.application in ['spatial','temporal']:
         idx = 0
@@ -418,19 +421,32 @@ def inf(dataset,args):
 
     # (E) NEW: super-spatial-temporal (3D coords (t,y,x))
     elif args.application == 'super-spatial-temporal':
+
+        print("Starting inference for super-spatial-temporal...")
         # Build model if not built above (should be already built)
         # Load checkpoint using the same naming as training "else" branch
         model.load_state_dict(torch.load(
-            args.model_path + args.dataset + '/' +
-            f'{args.application}-{args.init}-{args.num_res}.pth'
+            args.model_path + args.dataset + '/' + \
+                    f'{args.application}-{args.init}-{args.num_res}-{args.num_epochs}.pth'
         ))
         model.eval()
 
+        print("Model loaded.")
+
         out_dtype=np.float32        
         # Coords: [T*H*W, 3] with (t,y,x) in [-1,1], provided by ScalarDataSet.GetTestingData()
-        coords = dataset.GetTestingData()
-        T = dataset.total_samples
-        H, W = dataset.dim
+        coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio)
+
+        print("Coords obtained.")
+        print("coords shape:", coords.shape)
+        shape = dataset.span_num()
+        shape = args.up_sample_ratio * shape
+        T = shape[3]
+        H, W = shape[0], shape[1]
+
+
+
+        print(f"Coords shape: {coords.shape}")
 
         loader = DataLoader(dataset=torch.FloatTensor(coords), batch_size=args.batch_size, shuffle=False)
         preds = []
@@ -443,6 +459,9 @@ def inf(dataset,args):
         # Existing context: preds is length T*H*W in blocks of H*W per t,
         # where within each block values are in Fortran 'F' order (y-fastest).
 
+        print(preds.shape)
+        print(T,H,W)
+
         # Rebuild a [T, H, W] volume where A[t] is the HxW slice at time t.
         A = np.empty((T, H, W), dtype=out_dtype)
         per_t = H * W
@@ -452,7 +471,7 @@ def inf(dataset,args):
 
         # Now ravel in C-order so x (last axis) is fastest, then y, then t (slowest).
         onefile_path = os.path.join('../Result', args.dataset,
-                                    f'{args.application}-{args.init}-{args.num_res}.dat')
+                                    f'{args.application}-{args.init}-{args.num_res}-{args.up_sample_ratio}.dat')
         A.ravel(order='C').tofile(onefile_path)  # float64
         print(f"Saved single 3D file with x-fastest layout to: {onefile_path}")
 

@@ -55,10 +55,15 @@ p.add_argument('--lap_weight', type=float, default=0.0,
                     help='Weight for Laplacian curvature penalty')
 p.add_argument('--lap_eps', type=float, default=1e-2,
                     help='Finite-difference step for Laplacian')
+p.add_argument('--resume_epoch', type=int, default=0,
+               help='If > 0, resume training from this epoch checkpoint')
+p.add_argument('--up_sample_ratio', type=int, default=2,
+               help='same points based on the ratio')
 
 opt = p.parse_args()
 
 print("epochs: ", opt.num_epochs)
+
 
 opt.cuda = not opt.no_cuda and torch.cuda.is_available()
 
@@ -107,11 +112,38 @@ def main():
     print("start loading data ...")
     Data.ReadData()
     print("Data Loaded!")
+
+
+# ===== NEW: resume from intermediate checkpoint =====
+    if opt.resume_epoch > 0:
+        if opt.application in ['spatial', 'super-spatial']:
+            ckpt = os.path.join(
+                opt.model_path, opt.dataset,
+                f"{opt.application}-{opt.scale}-{opt.init}-{opt.factor}-{opt.resume_epoch}.pth"
+            )
+        elif opt.application == 'temporal':
+            ckpt = os.path.join(
+                opt.model_path, opt.dataset,
+                f"{opt.application}-{opt.interval}-{opt.init}-{opt.factor}-{opt.active}-{opt.resume_epoch}.pth"
+            )
+        else:
+            # super-spatial-temporal and any others using the "else" branch in trainNet
+            ckpt = os.path.join(
+                opt.model_path, opt.dataset,
+                f"{opt.application}-{opt.init}-{opt.num_res}-{opt.resume_epoch}.pth"
+            )
+
+        print(f"[resume] Loading checkpoint: {ckpt}")
+        state = torch.load(ckpt, map_location='cuda' if opt.cuda else 'cpu')
+        Model.load_state_dict(state)
+        start_epoch = opt.resume_epoch + 1
+        print(f"[resume] Will continue training from epoch {start_epoch}")
+
     Model.cuda()
 
     print(">>> Model device:", next(Model.parameters()).device, flush=True)
 
-    trainNet(Model,opt,Data)
+    trainNet(Model,opt,Data, start_epoch=opt.resume_epoch +1)
 
   elif opt.train == 'inf':
     if opt.application in ['spatial','temporal','super-spatial','extrapolation','super-spatial-temporal']:
@@ -120,6 +152,7 @@ def main():
       Data = ViewSynthesis(opt)
     elif opt.application == 'AO':
        Data = AODataSet(opt)
+    print("start sampling here ...")
     inf(Data,opt)
 
 if __name__== "__main__":

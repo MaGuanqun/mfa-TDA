@@ -411,9 +411,22 @@ class ScalarDataSet():
 		train_loader = DataLoader(dataset=data, batch_size=self.batch_size, shuffle=True)
 		return train_loader
 
-	def GetTestingData(self):
+	def span_num(self):
+		if self.dataset == "vortex_street_3d":
+			return np.array([80,10,15])
+		elif self.dataset == "boussinesq_3d":
+			return np.array([10,30,30])
+		else:
+			raise NotImplementedError(f"Function {self.dataset} not implemented.")
+
+	def GetTestingData(self, up_sample_ratio=2):
 		if self.application == 'super-spatial-temporal':
-			return get_mgrid([self.total_samples,self.dim[0],self.dim[1]],dim=3)
+			print("Generating testing coords for super-spatial-temporal...")
+			print(self.dataset)
+			sample_size= self.span_num()
+			sample_size = up_sample_ratio*sample_size
+			print(sample_size)
+			return get_mgrid([sample_size[2],sample_size[0],sample_size[1]],dim=3)
 		return get_mgrid([self.total_samples,self.dim[0],self.dim[1],self.dim[2]],dim=4)
 		
 

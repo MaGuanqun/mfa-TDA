@@ -1,6 +1,7 @@
 import torch
 
 
+
 def range(function_name='expotential'):
     if function_name == 'expotential':
         return [-1.55, 1.55, -0.8, 2.3]
