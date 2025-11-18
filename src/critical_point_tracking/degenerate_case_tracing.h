@@ -257,14 +257,19 @@ public:
 
 
         std::vector<VectorX<T>> start_points_up;
-        spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_up, start_points_up,step_size[0],step_size.back());
-
-       
+        if(!raw_start_points_up.empty())
+        {
+             spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_up, start_points_up,step_size[0],step_size.back());
+        }
+          
         // string test_file="start points test up.obj";
         // tracking_utility::convert_to_obj(test_file,start_points_up);
 
         std::vector<VectorX<T>> start_points_down;
-        spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_down, start_points_down,step_size[0],step_size.back());
+        if(!raw_start_points_down.empty())
+        {
+            spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_down, start_points_down,step_size[0],step_size.back());
+        }
 
 
         // string test_file2="start points test down.obj";
