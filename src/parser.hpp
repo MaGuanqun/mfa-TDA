@@ -582,6 +582,26 @@ struct MFAParser
             d_args.set_domain_range=true;
         }
 
+        if (input == "fluid")
+        {
+            d_args.full_dom_pts = {512, 512, 100};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {32, 32, 8};
+            }
+
+            d_args.min.resize(3);
+            d_args.max.resize(3);
+            d_args.min[0] = 0.0;    d_args.max[0] = 1.0;
+            d_args.min[1] = 0.0;    d_args.max[1] = 1.0;
+            d_args.min[2] = 0.0;    d_args.max[2] = 1.0;
+            d_args.set_domain_range=true;
+
+            std::cout<<"3d vortex street example"<<std::endl;
+            std::cout<<"ndom pts "<<mfa::print_vec(d_args.ndom_pts)<<std::endl;
+        }
 
         if (input == "boussinesq_3d")
         {

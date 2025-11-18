@@ -82,6 +82,10 @@ static VectorX<T> domain_min_(const string& func_name)
         {
             result << -0.5,-0.5,0.0;
         }
+        else if (func_name=="fluid")
+        {
+            result << 0,0,0;
+        }
         
         return result;
     } 
@@ -104,6 +108,10 @@ static VectorX<T> domain_max_(const string& func_name)
         else if (func_name=="boussinesq_3d")
         {
             result << 0.5,2.5,2.0;
+        }
+        else if (func_name=="fluid")
+        {
+            result << 1.0,1.0,1.0;
         }
         return result;
     } 
@@ -141,6 +149,10 @@ static VectorXi block_num_(const string& func_name) //number of blocks that spli
         {
             result << 10,30,20;
         }
+        else if (func_name=="fluid")
+        {
+            result << 10,10,10;
+        }
 
         return result;
     }
@@ -162,6 +174,10 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             result << 4,4,4;
         }
         else if (func_name=="boussinesq_3d")
+        {
+            result << 4,4,4;
+        }
+        else if (func_name=="fluid")
         {
             result << 4,4,4;
         }
