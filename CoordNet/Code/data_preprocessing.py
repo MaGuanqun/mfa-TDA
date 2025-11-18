@@ -6,16 +6,89 @@ from scipy.ndimage import convolve
 # import meshio
 # 
 
-save_name = '../Data/boussinesq_3d.bin'
-file_path = '../Data/boussinesq.nc'
+
+
+# import numpy as np
+# import re
+
+# def read_amira_lattice(filename, component=0):
+#     with open(filename, 'rb') as f:
+#         content = f.read()
+
+#     marker = b"# Data section follows"
+#     idx = content.find(marker)
+#     if idx < 0:
+#         raise ValueError("No data section found")
+
+#     header = content[:idx].decode("ascii", errors="ignore")
+#     data_start = idx + len(marker)
+
+#     # Skip newline(s)
+#     while content[data_start] in (10, 13):
+#         data_start += 1
+
+#     raw = content[data_start:]
+
+#     # Extract dimensions
+#     m = re.search(r"define\s+Lattice\s+(\d+)\s+(\d+)\s+(\d+)", header)
+#     nx, ny, nz = map(int, m.groups())
+
+#     # Detect dtype
+#     if "float" in header:
+#         dtype = np.float32
+#     elif "double" in header:
+#         dtype = np.float64
+#     else:
+#         raise ValueError("Unsupported datatype")
+
+#     # Detect float[k]
+#     comp_match = re.search(r"float\[(\d+)\]", header)
+#     n_comp = int(comp_match.group(1)) if comp_match else 1
+
+#     total_vals = nx * ny * nz * n_comp
+
+#     arr = np.frombuffer(raw, dtype=dtype, count=total_vals)
+#     arr = arr.reshape((nz, ny, nx, n_comp))
+
+#     return arr[..., component], header, (nx, ny, nz), n_comp
+
+
+# # -------------------------------------------------------------
+# # MAIN CODE: compute magnitude, keep z=1..100, save to binary
+# # -------------------------------------------------------------
+# filename = "../Data/0000.am"
+# output_bin = "../Data/fluid.bin"
+
+# print("Reading U...")
+# U, header, (nx, ny, nz), n_comp = read_amira_lattice(filename, component=0)
+
+# print("Reading V...")
+# V, _, _, _ = read_amira_lattice(filename, component=1)
+
+# # Compute magnitude
+# print("Computing magnitude...")
+# mag = np.sqrt(U**2 + V**2).astype(np.float32)
+
+# # -------------------------------------------------------------
+# # KEEP ONLY Z = 1..100 (Python index 0..99)
+# # -------------------------------------------------------------
+# mag_slice = mag[100:200, :, :]   # shape = (100, 512, 512)
+
+# print("Saving z=1..100 to binary file...")
+# mag_slice.tofile(output_bin)
+
+
+save_name = '../Data/cylinder.bin'
+file_path = '../Data/pipedcylinder2d.nc'
 nc_data = Dataset(file_path, mode='r')
 
 #(2001, 450, 150)
 print(nc_data.variables)
 print(nc_data.variables['u'].shape)
-u0 = nc_data.variables['u'][300:500, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][300:500, :, :].filled(-2.0)
-
+# u0 = nc_data.variables['u'][1200:1300, 78:, 154:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# v0 = nc_data.variables['v'][1200:1300, 78:, 154:].filled(-2.0)
+u0 = nc_data.variables['u'][1400:1500, 78:, 154:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+v0 = nc_data.variables['v'][1400:1500, 78:, 154:].filled(-2.0)
 # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
 # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
 
@@ -44,6 +117,47 @@ velocity.astype('float32').tofile(save_name)
 # velocity_t1501.astype('float32').tofile('velocity_t2001.bin')
 
 nc_data.close()
+
+
+
+# save_name = '../Data/boussinesq_3d.bin'
+# file_path = '../Data/boussinesq.nc'
+# nc_data = Dataset(file_path, mode='r')
+
+# #(2001, 450, 150)
+# print(nc_data.variables)
+# print(nc_data.variables['u'].shape)
+# u0 = nc_data.variables['u'][300:500, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# v0 = nc_data.variables['v'][300:500, :, :].filled(-2.0)
+
+# # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
+
+
+
+# # max_value = np.max(u1)
+# # min_value = np.min(u1)
+
+# # print(max_value)
+# # print(min_value)
+
+
+# velocity = np.sqrt(u0**2 + v0**2)
+
+# print(velocity.shape)
+# # # velocity_t1501 = np.sqrt(u1**2 + v1**2)
+
+# max_value = np.max(velocity)
+# min_value = np.min(velocity)
+# print("max",max_value)
+# print("min",min_value)
+# # # print(velocity_t1500.shape)
+
+# velocity.astype('float32').tofile(save_name)
+
+# # velocity_t1501.astype('float32').tofile('velocity_t2001.bin')
+
+# nc_data.close()
 
 
 

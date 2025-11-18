@@ -23,10 +23,10 @@ convert_obj_domain=./src/critical_point_tracking/convert_obj_back_to_domain.py
 
 step_size="32"
 t_sample_ratio="32"
-root_finding_epsilon="1e-3"
+root_finding_epsilon="1e-2"
 J_threshold="1e-2"
 
-for data_type in "vortex_street_3d" "boussinesq_3d"
+for data_type in "vortex_street_3d" #"boussinesq_3d"
 do
     echo "Processing data type: ${data_type}"
     # data_type="boussinesq_3d" #boussinesq_3d
@@ -85,18 +85,20 @@ do
     step_size="32"
 
 
-    "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
+    # "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
 
 
-    "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
+    # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
 
 
-    for step_size in "2" "4" "8" "16"
+    for step_size in "2" "4" "8" "16" "32"
     do
         # "${convert_root_to_vtk}" -f "${degenerate_point_INR}${step_size}.dat" -o "${degenerate_point_INR}_${step_size}.csv" -j 0 -t 1 
+        "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 1 
+
     #     echo "smoothing with step size: ${step_size}"
     #     t_sample_ratio="${step_size}"
-        "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+        # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
         # source ~/enter/etc/profile.d/conda.sh
         # conda activate mfa
     #     python $convert_obj_domain --obj "${tracking_result}_${step_size}.obj" --function "${data_type}"

@@ -160,6 +160,10 @@ elif function =='fluid':
     dim = np.array([10,10,10])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([1.0, 1.0, 1.0])
+elif function =='cylinder':
+    dim = np.array([40,10,10])
+    min = np.array([1.5, 0.5, 0.0])
+    max = np.array([5.5,1.5,1])
 
 size = args.step_size*dim
     

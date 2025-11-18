@@ -5,7 +5,7 @@ conda activate siren
 
 
 
-function_name=boussinesq_3d #vortex_street_3d, boussinesq_3d
+function_name=cylinder #vortex_street_3d, boussinesq_3d
 
 
 omega=30.0
@@ -34,7 +34,7 @@ vti_file="../Result/$function_name/$application-$init_feature-$num_res.vti"
 vti_critical_point="../Result/$function_name/vti_critical_points.csv"
 
 
-python data_preprocessing.py
+# python data_preprocessing.py
 
 # python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000
 
