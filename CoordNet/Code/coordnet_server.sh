@@ -25,7 +25,7 @@ num_epoch=300
 omega=30.0
 
 
-function_name=boussinesq_3d #quartic_potential_2, vortex_street,vortex_street_3d, hurricane_isabel, boussinesq_3d
+function_name=fluid #vortex_street_3d, boussinesq_3d, fluid
 
 raw_data="../Data/$function_name.bin"
 raw_vti_file="../Result/$function_name/raw_file.vti"
@@ -48,20 +48,20 @@ convert_obj_domain=../../src/critical_point_tracking/convert_obj_back_to_domain.
 # 
 python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000 #--resume_epoch 270
 
-# source ~/.bashrc
+# # source ~/.bashrc
 
-source ~/enter/etc/profile.d/conda.sh
-conda activate siren
+# # source ~/enter/etc/profile.d/conda.sh
+# # conda activate siren
 for step_size in 2 4 8 16 32
 do
     python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
 done
 
-source /home/u1435513-gma/enter/etc/profile.d/conda.sh
-conda activate mfa
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
+# source /home/u1435513-gma/enter/etc/profile.d/conda.sh
+# conda activate mfa
+# export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
 
-for step_size in 2 4 8 16 32
+for step_size in 8 16
 do
     python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}-${step_size}.dat" -o "${vti_file}-${step_size}.vti" -f "${function_name}" --step_size $step_size
     pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}-${step_size}.vti" -o "${vti_critical_point}-${step_size}.csv" -s 1
@@ -76,11 +76,15 @@ done
 # source ~/enter/etc/profile.d/conda.sh
 # conda activate mfa_env
 
+
+# source /home/u1435513-gma/enter/etc/profile.d/conda.sh
+# conda activate mfa
+# export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
 # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}" -o "${vti_file}" -f "${function_name}" 
 # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}" -o "${vti_critical_point}"
 
 # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_data}" -o "${raw_vti_file}" -f "${function_name}"
-# pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${raw_vti_file}" -o "${raw_critical_point}"
+# pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${raw_vti_file}" -o "${raw_critical_point}" -s 1
 
 
 # tensorboard --logdir=logs/expotential/summaries/ --host=0.0.0.0

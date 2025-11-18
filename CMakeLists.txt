@@ -110,11 +110,11 @@ include_directories         (${MFA_PATH}/include
 
 # ---- Prefer Spack libs at runtime (avoid system TBB) ----
 # Requires env script to export TORCH_PATH and TBB_PATH (see below).
-list(APPEND CMAKE_BUILD_RPATH
-  $ENV{TORCH_PATH}/lib
-  $ENV{TBB_PATH}/lib
-  /usr/local/cuda-12.6/lib64
-)
+# list(APPEND CMAKE_BUILD_RPATH
+#  $ENV{TORCH_PATH}/lib
+#  $ENV{TBB_PATH}/lib
+#  /usr/local/cuda-12.6/lib64
+#)
 
 set(CMAKE_INSTALL_RPATH "${CMAKE_BUILD_RPATH}")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)

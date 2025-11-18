@@ -156,6 +156,10 @@ elif function =='boussinesq_3d':
     dim = np.array([10,30,20])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([149, 449, 199])
+elif function =='fluid':
+    dim = np.array([512,512,100])
+    min = np.array([0.0, 0.0, 0.0])
+    max = np.array([1.0, 1.0, 1.0])
 
 size = args.step_size*dim
     

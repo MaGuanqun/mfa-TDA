@@ -453,10 +453,10 @@ public:
                     root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
                 } 
 
-                // if(i%10==0)
-                // {
-                    // std::cout<<"degenerate case processing block "<<i<<std::endl;
-                // }
+                if(i%50==0)
+                {
+                    std::cout<<"degenerate case processing block "<<i <<" "<<(float)i/(float)num_block<<std::endl;
+                }
             }
 
         },ap               
