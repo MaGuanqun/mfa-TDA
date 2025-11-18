@@ -157,7 +157,7 @@ elif function =='boussinesq_3d':
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([149, 449, 199])
 elif function =='fluid':
-    dim = np.array([512,512,100])
+    dim = np.array([10,10,10])
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([1.0, 1.0, 1.0])
 

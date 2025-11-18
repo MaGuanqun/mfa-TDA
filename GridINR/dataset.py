@@ -15,7 +15,7 @@ class Dataset(torch.utils.data.Dataset):
         self.full_coord_grid = None
 
         t1 = time.time()
-        if opt['dataset_name'] in ['vortex_street', 'quartic_potential_2']:
+        if opt['dataset_name'] in ['vortex_street', 'quartic_potential_2','boussinesq_3d','fluid','vortex_street_3d']:
             d, full_shape, d_min, d_max = bin_to_tensor(opt['data_path'], opt)
         if opt['dataset_name'] in ['vortex']:
             d, full_shape, d_min, d_max = dat_to_tensor(opt['data_path'], opt)

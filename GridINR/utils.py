@@ -429,7 +429,7 @@ def dat_to_tensor(location, opt = None):
 
 def bin_to_tensor(location, opt = None):
     dims = list(map(int, opt['data_dims'].split(',')))
-    d = np.fromfile(location, dtype='<f8')
+    d = np.fromfile(location, dtype='<f4')
     d=d.astype(np.float32)
     d = torch.tensor(d).reshape((dims[2],dims[1],dims[0])).transpose(2,0)
     # testing whether we can process bin correctly

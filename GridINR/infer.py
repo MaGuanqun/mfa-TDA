@@ -93,11 +93,27 @@ def model_reconstruction(model, opt):
         os.path.join(output_folder, 
         "Reconstruction", opt['save_name']+".raw"))
 
-def model_reconstruction_chunked(model, opt):
+
+def span_num(dataset):
+		if dataset == "vortex_street_3d":
+			return np.array([80,10,15])
+		elif dataset == "boussinesq_3d":
+			return np.array([10,30,20])
+		elif dataset == "fluid":
+			return np.array([10,10,10])
+		else:
+			raise NotImplementedError(f"Function {dataset} not implemented.")
+
+
+
+def model_reconstruction_chunked(model, opt, step_size):
     
     chunk_size = 512
-    full_shape = list(map(int, opt['data_dims'].split(',')))
-    
+    # full_shape = list(map(int, opt['data_dims'].split(',')))
+
+    full_shape = span_num(opt['dataset_name'])*step_size
+    full_shape = [int(x) for x in full_shape]
+
     output = torch.empty(full_shape, 
         dtype=torch.float32, 
         device=opt['data_device']).unsqueeze(0).unsqueeze(0)
@@ -150,7 +166,7 @@ def model_reconstruction_chunked(model, opt):
                     print(f"Chunk {z_ind},{z_ind_end},{y_ind},{y_ind_end},{x_ind},{x_ind_end}")
         
     create_path(output_folder)
-    tensor_to_raw(output, os.path.join(output_folder, opt['dataset_name']+".raw"))
+    tensor_to_raw(output, os.path.join(output_folder, opt['dataset_name']+"_"+str(step_size)+".dat"))
 
 
     
@@ -163,6 +179,7 @@ if __name__ == '__main__':
                         help="Device to load model to")
     parser.add_argument('--data_device',default="cuda:0",type=str,
                         help="Device to load data to")
+    parser.add_argument('--step_size',default=16,type=int,help="Step size for reconstruction")
     args = vars(parser.parse_args())
     
     # Load the model
@@ -220,7 +237,7 @@ if __name__ == '__main__':
     # exit()
     # Perform tests
     tic = time()
-    model_reconstruction_chunked(model, opt),
+    model_reconstruction_chunked(model, opt,args['step_size'])
     toc = time()
     print(f"Reconstruction time: {toc-tic}")
     
