@@ -90,43 +90,43 @@ file_path = '../Data/pipedcylinder2d.nc'
 nc_data = Dataset(file_path, mode='r')
 
 
-print(nc_data.variables)
-print(nc_data.variables['u'].shape)
-u0 = nc_data.variables['u'][300:400, 78:, 300:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][300:400, 78:, 300:].filled(-2.0)
-# u0 = nc_data.variables['u'][1400:1500, 78:, 275:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-# v0 = nc_data.variables['v'][1400:1500, 78:, 275:].filled(-2.0)
-# u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-# v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
+# print(nc_data.variables)
+# print(nc_data.variables['u'].shape)
+# u0 = nc_data.variables['u'][300:400, 78:, 300:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# v0 = nc_data.variables['v'][300:400, 78:, 300:].filled(-2.0)
+# # u0 = nc_data.variables['u'][1400:1500, 78:, 275:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# # v0 = nc_data.variables['v'][1400:1500, 78:, 275:].filled(-2.0)
+# # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
 
 
 
-# max_value = np.max(u1)
-# min_value = np.min(u1)
+# # max_value = np.max(u1)
+# # min_value = np.min(u1)
 
-# print(max_value)
-# print(min_value)
+# # print(max_value)
+# # print(min_value)
 
 
-velocity = np.sqrt(u0**2 + v0**2)
+# velocity = np.sqrt(u0**2 + v0**2)
 
-# velocity_morse = morseify_zero_plateau_3d(
-#     velocity,
-#     axis=0,          # slice along time
-#     zero_thr=1e-12,  # plateau = |value| < zero_thr
-#     frac_eps=0.1,    # strong modification: 10% of range
-# )
+# # velocity_morse = morseify_zero_plateau_3d(
+# #     velocity,
+# #     axis=0,          # slice along time
+# #     zero_thr=1e-12,  # plateau = |value| < zero_thr
+# #     frac_eps=0.1,    # strong modification: 10% of range
+# # )
 
-# changed = count_changed_entries(velocity, velocity_morse)
-# print("Changed entries:", changed)
+# # changed = count_changed_entries(velocity, velocity_morse)
+# # print("Changed entries:", changed)
 
-# print("After min/max:", velocity_morse.min(), velocity_morse.max())
+# # print("After min/max:", velocity_morse.min(), velocity_morse.max())
 
-print(velocity.shape)
-# # velocity_t1501 = np.sqrt(u1**2 + v1**2)
+# print(velocity.shape)
+# # # velocity_t1501 = np.sqrt(u1**2 + v1**2)
 
-print(np.max(velocity))
-print(np.min(velocity))
+# print(np.max(velocity))
+# print(np.min(velocity))
 
 # max_value = np.max(velocity_morse)
 # min_value = np.min(velocity_morse)
@@ -145,7 +145,7 @@ print(np.min(velocity))
 # print("Unique values in plateau after:",  np.unique(after[plateau_mask]))
 
 
-velocity.astype('float32').tofile(save_name)
+# velocity.astype('float32').tofile(save_name)
 
 # velocity_t1501.astype('float32').tofile('velocity_t2001.bin')
 
@@ -153,44 +153,44 @@ nc_data.close()
 
 
 
-# save_name = '../Data/boussinesq_3d.bin'
-# file_path = '../Data/boussinesq.nc'
-# nc_data = Dataset(file_path, mode='r')
+save_name = '../Data/boussinesq_3d.bin'
+file_path = '../Data/boussinesq.nc'
+nc_data = Dataset(file_path, mode='r')
 
-# #(2001, 450, 150)
-# print(nc_data.variables)
-# print(nc_data.variables['u'].shape)
-# u0 = nc_data.variables['u'][300:500, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-# v0 = nc_data.variables['v'][300:500, :, :].filled(-2.0)
+#(2001, 450, 150)
+print(nc_data.variables)
+print(nc_data.variables['u'].shape)
+u0 = nc_data.variables['u'][300:450, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+v0 = nc_data.variables['v'][300:450, :, :].filled(-2.0)
 
-# # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-# # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
-
-
-
-# # max_value = np.max(u1)
-# # min_value = np.min(u1)
-
-# # print(max_value)
-# # print(min_value)
+# u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
 
 
-# velocity = np.sqrt(u0**2 + v0**2)
 
-# print(velocity.shape)
-# # # velocity_t1501 = np.sqrt(u1**2 + v1**2)
+# max_value = np.max(u1)
+# min_value = np.min(u1)
 
-# max_value = np.max(velocity)
-# min_value = np.min(velocity)
-# print("max",max_value)
-# print("min",min_value)
-# # # print(velocity_t1500.shape)
+# print(max_value)
+# print(min_value)
 
-# velocity.astype('float32').tofile(save_name)
 
-# # velocity_t1501.astype('float32').tofile('velocity_t2001.bin')
+velocity = np.sqrt(u0**2 + v0**2)
 
-# nc_data.close()
+print(velocity.shape)
+# # velocity_t1501 = np.sqrt(u1**2 + v1**2)
+
+max_value = np.max(velocity)
+min_value = np.min(velocity)
+print("max",max_value)
+print("min",min_value)
+# # print(velocity_t1500.shape)
+
+velocity.astype('float32').tofile(save_name)
+
+# velocity_t1501.astype('float32').tofile('velocity_t2001.bin')
+
+nc_data.close()
 
 
 

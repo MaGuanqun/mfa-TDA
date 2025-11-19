@@ -98,7 +98,7 @@ def span_num(dataset):
     if dataset == "vortex_street_3d":
         return np.array([80,10,15])
     elif dataset == "boussinesq_3d":
-        return np.array([10,30,20])
+        return np.array([10,30,15])
     elif dataset == "fluid":
         return np.array([10,10,10])
     elif dataset == "cylinder":

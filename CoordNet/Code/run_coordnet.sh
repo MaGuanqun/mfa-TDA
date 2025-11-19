@@ -5,7 +5,7 @@ conda activate siren
 
 
 
-function_name=cylinder #vortex_street_3d, boussinesq_3d
+function_name=boussinesq_3d #vortex_street_3d, boussinesq_3d
 
 
 omega=30.0
@@ -42,7 +42,7 @@ vti_critical_point="../Result/$function_name/vti_critical_points.csv"
 
 # for step_size in 2 4 8 16 32
 # do
-#     python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
+    # python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
 # done
 
 source ~/enter/etc/profile.d/conda.sh
@@ -61,8 +61,8 @@ conda activate mfa_env
 
 
 python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_data}" -o "${raw_vti_file}" -f "${function_name}"
-pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${raw_vti_file}" -o "${raw_critical_point}"
-# # conda deactivate
+# pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${raw_vti_file}" -o "${raw_critical_point}"
+# # # conda deactivate
 
 # pvpython ../../src/critical_point_tracking/persistence_simplification.py -i "${raw_vti_file}" -o "${new_raw_vti_file}" -b "${new_raw_data}" -s 2.0 --median_radius 0
 

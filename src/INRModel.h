@@ -119,7 +119,7 @@ static VectorX<T> domain_max_(const string& func_name)
         }
         else if (func_name=="boussinesq_3d")
         {
-            result << 0.5,2.5,2.0;
+            result << 0.5,2.5,1.5;
         }
         else if (func_name=="fluid")
         {
@@ -171,7 +171,7 @@ static VectorXi block_num_(const string& func_name) //number of blocks that spli
         }
         else if (func_name=="boussinesq_3d")
         {
-            result << 10,30,20;
+            result << 10,30,15;
         }
         else if (func_name=="fluid")
         {

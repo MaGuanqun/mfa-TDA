@@ -142,7 +142,7 @@ class ScalarDataSet():
 			self.data_path = '../Data/hurricane_isabel.bin'
 		elif self.dataset == 'boussinesq_3d':
 			self.dim = [150,450]
-			self.total_samples = 200
+			self.total_samples = 150
 			self.data_path = '../Data/boussinesq_3d.bin'
 		elif self.dataset == 'fluid':
 			self.dim = [512,512]
@@ -431,7 +431,7 @@ class ScalarDataSet():
 		if self.dataset == "vortex_street_3d":
 			return np.array([80,10,15])
 		elif self.dataset == "boussinesq_3d":
-			return np.array([10,30,20])
+			return np.array([10,30,15])
 		elif self.dataset == "fluid":
 			return np.array([10,10,10])
 		elif self.dataset == "cylinder":

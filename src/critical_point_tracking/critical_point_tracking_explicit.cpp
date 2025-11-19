@@ -196,7 +196,7 @@ int main(int argc, char** argv)
        
 
 
-        VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of 
+        VectorXi point_num_in_block = closed_form_function::(function_type); //number of point_num_in_block
 
         Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold);
 

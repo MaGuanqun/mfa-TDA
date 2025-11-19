@@ -219,7 +219,7 @@ using namespace std;
         else if (input=="boussinesq_3d")
         {
             dom_bounds.min = {-0.5, -0.5, 0.0};
-            dom_bounds.max = { 0.5,  2.5, 2.0};
+            dom_bounds.max = { 0.5,  2.5, 1.5};
         }
         else if (input=="fluid")
         {
@@ -738,19 +738,19 @@ using namespace std;
 
         if (input == "boussinesq_3d")
         {
-            d_args.full_dom_pts = {150, 450, 200};
+            d_args.full_dom_pts = {150, 450, 150};
             d_args.ndom_pts = d_args.full_dom_pts;
 
             if (!adaptive)
             {
-                vars_nctrl = {10, 30, 13};
+                vars_nctrl = {10, 30, 10};
             }
 
             d_args.min.resize(3);
             d_args.max.resize(3);
             d_args.min[0] = -0.5;    d_args.max[0] = 0.5;
             d_args.min[1] = -0.5;    d_args.max[1] = 2.5;
-            d_args.min[2] = 0.0;    d_args.max[2] = 2.0;
+            d_args.min[2] = 0.0;    d_args.max[2] = 1.5;
             d_args.set_domain_range=true;
 
             std::cout<<"3d vortex street example"<<std::endl;

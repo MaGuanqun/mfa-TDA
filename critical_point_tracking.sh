@@ -23,7 +23,7 @@ export_raw_data="./build/src/encode/analytical/export_raw_data"
 
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
-data_type="vortex_street_3d" #rotating_gaussian, quartic_potential_2, rotating_quartic_multiwell, vortex_street_3d, boussinesq_3d
+data_type="boussinesq_3d" #rotating_gaussian, quartic_potential_2, rotating_quartic_multiwell, vortex_street_3d, boussinesq_3d
 
 # data_type="quartic_potential_2"
 
@@ -46,8 +46,8 @@ smoothed_mfa_file="./build/src/${save_folder}/${data_type}_smoothed.mfa"
 
 ori_raw_data="./build/src/${save_folder}/${data_type}_raw.dat"
 
-step_size="64"
-t_sample_ratio="64"
+step_size="16"
+t_sample_ratio="16"
 
 degenerate_point="./build/src/${save_folder}/${data_type}_degenerate"
 degenerate_point_original="./build/src/${save_folder}/${data_type}_degenerate_ori.dat"
@@ -100,7 +100,7 @@ raw_data_file="./CoordNet/Data/${data_type}_old.bin"
     # t_sample_ratio="64"
 # fi
 
-# upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
+upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
 # "${derivative_control_point}" -f "${mfa_file}" -o "${control_points}"
 
@@ -121,7 +121,7 @@ raw_data_file="./CoordNet/Data/${data_type}_old.bin"
 #     source ~/enter/etc/profile.d/conda.sh
 #     conda activate mfa
 #     # python $convert_obj_domain --csv "${degenerate_point}_${step_size}.csv" --function "${data_type}" --obj "${tracking_result}_${step_size}.obj"
-#     # python ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
+    python ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
 #     # python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
 
 #     "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}_${step_size}.vtk" -m 3 -d 4 -u "${step_size}" -g 0 -z 0 #-s "${block}"
@@ -133,7 +133,7 @@ raw_data_file="./CoordNet/Data/${data_type}_old.bin"
 # done
 
 
-for step_size in "8" "4" "32" "64"
+for step_size in "16" #"4" "4" "32" "64"
 do
 #step size
 
@@ -226,9 +226,9 @@ elif [ "${step_size}" = "4" ]; then
     fi
 fi
 
-source ~/enter/etc/profile.d/conda.sh
-conda activate siren
-python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}.obj" "${mfa_file}_${step_size}.csv" "${spatial_step_size}" "${t_step_size}" --header
+# source ~/enter/etc/profile.d/conda.sh
+# conda activate siren
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}.obj" "${mfa_file}_${step_size}.csv" "${spatial_step_size}" "${t_step_size}" --header
 
 done
 # if [ "${data_type}" = "vortex_street_3d" ]; then
@@ -260,7 +260,7 @@ conda activate mfa_env
 # "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}.vtk" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 #-s "${block}"
 # python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}.vtk" -o "${mfa_file}.vti"
 
-# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}.csv"
+# pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}.vti" -o "${ttk_critical_point_file}_${step_size}.csv"
 
 
 

@@ -605,12 +605,12 @@ struct MFAParser
 
         if (input == "boussinesq_3d")
         {
-            d_args.full_dom_pts = {150, 450, 200};
+            d_args.full_dom_pts = {150, 450, 150};
             d_args.ndom_pts = d_args.full_dom_pts;
 
             if (!adaptive)
             {
-                vars_nctrl = {10, 30, 13};
+                vars_nctrl = {10, 30, 10};
             }
 
             d_args.min.resize(3);
