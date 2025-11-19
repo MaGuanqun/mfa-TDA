@@ -15,6 +15,8 @@ def new_domain(function_name='vortex_street_3d'):
         return np.array([0.0,295.0,0.0,71.0,0.0,99.0])
     elif function_name == 'cylinder2':
         return np.array([0.0,174.0,0.0,71.0,0.0,99.0])
+    elif function_name == 'cylinder3':
+        return np.array([0.0,149.0,0.0,71.0,0.0,99.0])
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
     
@@ -30,6 +32,8 @@ def ori_domain(function_name='vortex_street_3d'):
         return np.array([1.5,5.5,0.5,1.5,0.0,1.0])
     elif function_name == 'cylinder2':
         return np.array([3.2,5.5,0.5,1.5,0.0,1.0])
+    elif function_name == 'cylinder3':
+        return np.array([3.5,5.5,0.5,1.5,0.0,1.0])
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
     

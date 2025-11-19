@@ -32,6 +32,8 @@ def sample_size(function_name='expotential'):
         return (296,72,100)
     elif function_name == 'cylinder2':
         return (175,72,100)
+    elif function_name == 'cylinder3':
+        return (150,72,100)
     else:
         raise NotImplementedError(f"Function {function_name} not implemented.")
 

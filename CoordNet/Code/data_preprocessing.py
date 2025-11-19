@@ -85,15 +85,15 @@ def morseify_slice_debug(f2d, mask):
     f[mask] = 0.12345
     return f
 
-save_name = '../Data/cylinder.bin'
+save_name = '../Data/cylinder3.bin'
 file_path = '../Data/pipedcylinder2d.nc'
 nc_data = Dataset(file_path, mode='r')
 
 
 print(nc_data.variables)
 print(nc_data.variables['u'].shape)
-u0 = nc_data.variables['u'][1400:1500, 78:, 154:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][1400:1500, 78:, 154:].filled(-2.0)
+u0 = nc_data.variables['u'][300:400, 78:, 300:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+v0 = nc_data.variables['v'][300:400, 78:, 300:].filled(-2.0)
 # u0 = nc_data.variables['u'][1400:1500, 78:, 275:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
 # v0 = nc_data.variables['v'][1400:1500, 78:, 275:].filled(-2.0)
 # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)

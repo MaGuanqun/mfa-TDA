@@ -168,6 +168,10 @@ elif function =='cylinder2':
     dim = np.array([23,10,10])
     min = np.array([3.2, 0.5, 0.0])
     max = np.array([5.5,1.5,1])
+elif function =='cylinder3':
+    dim = np.array([20,10,10])
+    min = np.array([3.5, 0.5, 0.0])
+    max = np.array([5.5,1.5,5.0])
 
 size = args.step_size*dim
     

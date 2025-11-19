@@ -156,6 +156,10 @@ class ScalarDataSet():
 			self.dim = [175,72]
 			self.total_samples = 100
 			self.data_path = '../Data/cylinder2.bin'
+		elif self.dataset == 'cylinder3':
+			self.dim = [150,72]
+			self.total_samples = 100
+			self.data_path = '../Data/cylinder3.bin'
 
 
 		if not os.path.exists(args.result_path+args.dataset):
@@ -434,6 +438,8 @@ class ScalarDataSet():
 			return np.array([40,10,10])
 		elif self.dataset == "cylinder2":
 			return np.array([23,10,10])
+		elif self.dataset == "cylinder3":
+			return np.array([20,10,10])
 		else:
 			raise NotImplementedError(f"Function {self.dataset} not implemented.")
 
