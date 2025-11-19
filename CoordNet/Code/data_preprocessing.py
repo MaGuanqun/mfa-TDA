@@ -1,12 +1,13 @@
 from netCDF4 import Dataset
 import numpy as np
 import gzip
-from scipy.ndimage import convolve
+from scipy.ndimage import convolve,label
+# from morseify_the_data import morseify_3d_slices_auto
 
-# import meshio
-# 
-
-
+from morseify_zero_plateau import (
+    morseify_zero_plateau_3d,
+    count_changed_entries,
+)
 
 # import numpy as np
 # import re
@@ -78,17 +79,23 @@ from scipy.ndimage import convolve
 # mag_slice.tofile(output_bin)
 
 
+def morseify_slice_debug(f2d, mask):
+    f = f2d.copy()
+    # Just set plateau region to a constant number, e.g., 0.12345
+    f[mask] = 0.12345
+    return f
+
 save_name = '../Data/cylinder.bin'
 file_path = '../Data/pipedcylinder2d.nc'
 nc_data = Dataset(file_path, mode='r')
 
-#(2001, 450, 150)
+
 print(nc_data.variables)
 print(nc_data.variables['u'].shape)
-# u0 = nc_data.variables['u'][1200:1300, 78:, 154:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-# v0 = nc_data.variables['v'][1200:1300, 78:, 154:].filled(-2.0)
 u0 = nc_data.variables['u'][1400:1500, 78:, 154:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
 v0 = nc_data.variables['v'][1400:1500, 78:, 154:].filled(-2.0)
+# u0 = nc_data.variables['u'][1400:1500, 78:, 275:].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+# v0 = nc_data.variables['v'][1400:1500, 78:, 275:].filled(-2.0)
 # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
 # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
 
@@ -103,14 +110,40 @@ v0 = nc_data.variables['v'][1400:1500, 78:, 154:].filled(-2.0)
 
 velocity = np.sqrt(u0**2 + v0**2)
 
+# velocity_morse = morseify_zero_plateau_3d(
+#     velocity,
+#     axis=0,          # slice along time
+#     zero_thr=1e-12,  # plateau = |value| < zero_thr
+#     frac_eps=0.1,    # strong modification: 10% of range
+# )
+
+# changed = count_changed_entries(velocity, velocity_morse)
+# print("Changed entries:", changed)
+
+# print("After min/max:", velocity_morse.min(), velocity_morse.max())
+
 print(velocity.shape)
 # # velocity_t1501 = np.sqrt(u1**2 + v1**2)
 
-max_value = np.max(velocity)
-min_value = np.min(velocity)
-print("max",max_value)
-print("min",min_value)
-# # print(velocity_t1500.shape)
+print(np.max(velocity))
+print(np.min(velocity))
+
+# max_value = np.max(velocity_morse)
+# min_value = np.min(velocity_morse)
+# print("max",max_value)
+# print("min",min_value)
+# print(velocity_morse.shape)
+
+
+
+# k = 0
+# before = velocity[k]
+# plateau_mask = np.abs(before - before.min()) < 1e-6 * (before.max() - before.min())
+# after = morseify_slice_debug(before, plateau_mask)
+
+# print("Unique values in plateau before:", np.unique(before[plateau_mask]))
+# print("Unique values in plateau after:",  np.unique(after[plateau_mask]))
+
 
 velocity.astype('float32').tofile(save_name)
 

@@ -152,6 +152,10 @@ class ScalarDataSet():
 			self.dim = [296,72]
 			self.total_samples = 100
 			self.data_path = '../Data/cylinder.bin'
+		elif self.dataset == 'cylinder2':
+			self.dim = [175,72]
+			self.total_samples = 100
+			self.data_path = '../Data/cylinder2.bin'
 
 
 		if not os.path.exists(args.result_path+args.dataset):
@@ -254,7 +258,7 @@ class ScalarDataSet():
 			self.data = np.asarray(data_list)
 			return
 
-		if self.dataset in ['vortex_street','vortex_street_3d','hurricane_isabel', 'fluid', 'boussinesq_3d','cylinder'] and self.application == 'super-spatial-temporal':
+		if self.dataset in ['vortex_street','vortex_street_3d','hurricane_isabel', 'fluid', 'boussinesq_3d','cylinder','cylinder2'] and self.application == 'super-spatial-temporal':
 			# Load entire dataset from single binary file
 			data_all = np.fromfile(self.data_path, dtype='<f4')
 			data_all = data_all.astype(np.float32)
@@ -428,6 +432,8 @@ class ScalarDataSet():
 			return np.array([10,10,10])
 		elif self.dataset == "cylinder":
 			return np.array([40,10,10])
+		elif self.dataset == "cylinder2":
+			return np.array([23,10,10])
 		else:
 			raise NotImplementedError(f"Function {self.dataset} not implemented.")
 

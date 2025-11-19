@@ -103,6 +103,8 @@ def span_num(dataset):
         return np.array([10,10,10])
     elif dataset == "cylinder":
         return np.array([40,10,10]) 
+    elif dataset == "cylinder2":
+        return np.array([23,10,10]) 
     else:
         raise NotImplementedError(f"Function {dataset} not implemented.")
 

@@ -90,6 +90,10 @@ static VectorX<T> domain_min_(const string& func_name)
         {
             result << 1.5,0.5,0.0;
         }
+        else if (func_name=="cylinder2")
+        {
+            result << 3.2,0.5,0.0;
+        }
         
         return result;
     } 
@@ -118,6 +122,10 @@ static VectorX<T> domain_max_(const string& func_name)
             result << 1.0,1.0,1.0;
         }
         else if(func_name=="cylinder")
+        {
+            result << 5.5,1.5,1.0;
+        }
+        else if(func_name=="cylinder2")
         {
             result << 5.5,1.5,1.0;
         }
@@ -165,6 +173,10 @@ static VectorXi block_num_(const string& func_name) //number of blocks that spli
         {
             result << 40,10,10;
         }   
+        else if (func_name=="cylinder2")
+        {
+            result << 23,10,10;
+        }   
 
         return result;
     }
@@ -194,6 +206,10 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             result << 4,4,4;
         }
         else if (func_name=="cylinder")
+        {
+            result << 4,4,4;
+        }
+        else if (func_name=="cylinder2")
         {
             result << 4,4,4;
         }

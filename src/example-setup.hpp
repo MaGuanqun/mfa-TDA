@@ -231,6 +231,11 @@ using namespace std;
             dom_bounds.min = { 1.5,  0.5, 0.0};
             dom_bounds.max = { 5.5,  1.5, 1.0};
         }
+        else if(input=="cylinder2")
+        {
+            dom_bounds.min = { 3.2,  0.5, 0.0};
+            dom_bounds.max = { 5.5,  1.5, 1.0};
+        }
         
         else
         {
