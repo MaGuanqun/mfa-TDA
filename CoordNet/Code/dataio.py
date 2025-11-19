@@ -262,7 +262,7 @@ class ScalarDataSet():
 			self.data = np.asarray(data_list)
 			return
 
-		if self.dataset in ['vortex_street','vortex_street_3d','hurricane_isabel', 'fluid', 'boussinesq_3d','cylinder','cylinder2'] and self.application == 'super-spatial-temporal':
+		if self.dataset in ['vortex_street','vortex_street_3d','hurricane_isabel', 'fluid', 'boussinesq_3d','cylinder','cylinder2','cylinder3'] and self.application == 'super-spatial-temporal':
 			# Load entire dataset from single binary file
 			data_all = np.fromfile(self.data_path, dtype='<f4')
 			data_all = data_all.astype(np.float32)
