@@ -162,7 +162,7 @@ int main(int argc, char** argv)
         std::vector<VectorX<double>> root; //the inner vector store the root in a span
 
 
-        VectorXi point_num_in_block = inr_model.point_num_in_block + VectorXi::Ones(inr_model.point_num_in_block.size()); //number of initial points in a block
+        VectorXi point_num_in_block = inr_model.point_num_in_block ;//+ VectorXi::Ones(inr_model.point_num_in_block.size()); //number of initial points in a block
 
         // VectorXd p_test(3);
         // p_test<<0.5,0.5,0.5;
@@ -187,7 +187,8 @@ int main(int argc, char** argv)
         // std::vector<VectorXi> record_span;
         // choose_span(record_span);
 
-        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
+        std::vector<VectorXi> selected_span_index = std::vector<VectorXi>();
+        tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num,selected_span_index, degenerate_point_file);
 
         std::cout<<root.size()<<" roots before deduplication"<<std::endl;
         if(root.empty())

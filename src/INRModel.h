@@ -207,11 +207,11 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         }
         else if (func_name=="vortex_street_3d")
         {
-            result << 4,4,4;
+            result << 2,2,2;
         }
         else if (func_name=="boussinesq_3d")
         {
-            result << 4,4,4;
+            result << 2,2,2;
         }
         else if (func_name=="fluid")
         {

@@ -393,9 +393,12 @@ public:
         std::cout<<"domain max "<<domain_max.transpose()<<std::endl;
     }
     ~Tracking_degenerate_case(){}
+
+
+
     
     void degenerate_finding(std::vector<VectorX<T>>& root,
-    const VectorXi& point_num_in_block, const VectorXi& set_block_num, const std::vector<VectorXi>& selected_span_index = std::vector<VectorXi>())
+    const VectorXi& point_num_in_block, const VectorXi& set_block_num, const std::vector<VectorXi>& selected_span_index = std::vector<VectorXi>(), string& degenerate_point_file = "")
     {
         std::vector<vector<T>> initial_points;
         tracking_utility::generate_initial_points(initial_points,domain_min,domain_max,point_num_in_block,set_block_num,b);
@@ -428,6 +431,7 @@ public:
             std::vector<std::array<int,2>> initial_point_range(initial_points.size());
             VectorXi block_index;
             std::vector<VectorX<T>> block_root;
+            std::vector<VectorX<T>> to_record_root;
             for(int i=range.begin();i!=range.end();++i)
             {
                 // if(i<64)
@@ -451,11 +455,39 @@ public:
                 if(!block_root.empty())
                 {
                     root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
+
+                    to_record_root.insert(to_record_root.end(), block_root.begin(), block_root.end());
                 } 
 
-                if(i%50==0)
-                {
-                    std::cout<<"degenerate case processing block "<<i <<" "<<(float)i/(float)num_block<<std::endl;
+                if(degenerate_point_file != ""){
+                    if(i%50==0)
+                    {
+                        std::cout<<"degenerate case processing block "<<i <<" "<<(float)i/(float)num_block<<std::endl;
+                    }
+
+                        if((i!=0 && i%200==0) || i ==num_block-1)
+                        {
+                            //save roots to a file
+                            std::vector<MatrixX<T>> root_matrix(1);
+
+                            if(to_record_root.empty())
+                            {
+                                continue;
+                            }
+                            root_matrix[0].resize(to_record_root.size(),to_record_root[0].size());
+                            for(int j=0;j<to_record_root.size();j++)
+                            {
+                                root_matrix[0].row(j) = to_record_root[j].transpose();
+                            }
+
+                            string degenerate_file_name = degenerate_point_file + "-temp_record-" + std::to_string(int(i)) + ".dat";
+
+                            to_record_root.clear();
+                            utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+                        
+                            std::cout<<"degenerate case processing block "<<i <<" "<<(float)i/(float)num_block<<std::endl;
+                        }
+                    
                 }
             }
 
