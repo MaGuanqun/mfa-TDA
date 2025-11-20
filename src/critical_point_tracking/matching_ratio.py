@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import vtk
 
 def load_obj_vertices(obj_path):
     """Load vertex positions (x, y, z) from an .obj file."""
@@ -19,6 +20,26 @@ def load_csv_points(csv_path, has_header=True):
     skip = 1 if has_header else 0
     return np.loadtxt(csv_path, delimiter=',', skiprows=skip, usecols=(0, 1, 2))
 
+
+def load_vtp_points(vtp_path):
+    """Load (x, y, z) point coordinates from a .vtp file."""
+    reader = vtk.vtkXMLPolyDataReader()
+    reader.SetFileName(vtp_path)
+    reader.Update()
+
+    polydata = reader.GetOutput()
+    vtk_points = polydata.GetPoints()
+
+    if vtk_points is None:
+        raise ValueError(f"No points found in VTP: {vtp_path}")
+
+    n = vtk_points.GetNumberOfPoints()
+    pts = np.zeros((n, 3), dtype=float)
+
+    for i in range(n):
+        pts[i] = vtk_points.GetPoint(i)
+
+    return pts
 
 def compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_header):
     if obj_pts.size == 0:
@@ -68,7 +89,8 @@ def compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_hea
 
 
 def compute_match_ratio_different(obj_path, csv_path, xy_threshold, z_threshold, csv_has_header):
-    obj_pts = load_obj_vertices(obj_path)
+    # obj_pts = load_obj_vertices(obj_path)
+    obj_pts = load_vtp_points(obj_path)
     csv_pts = load_csv_points(csv_path, has_header=csv_has_header)
     print("discrete result on our result:")
     compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_header)
