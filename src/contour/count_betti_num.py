@@ -1,15 +1,20 @@
 from paraview.simple import *
-
+import os
 import sys
 
 file_name = sys.argv[1]
 
 print(f"File Name: {file_name}")
 
+ext = os.path.splitext(file_name)[1].lower()
+
 # create a new 'Wavefront OBJ Reader'
-obj = WavefrontOBJReader(registrationName='isocontour.obj', FileName=file_name)
+if ext == ".obj":
+    obj = WavefrontOBJReader(registrationName='isocontour.obj', FileName=file_name)
 
-
+elif ext == ".vtp":
+    obj= XMLPolyDataReader(registrationName='isocontour.vtp', FileName=file_name)
+    
 connectivity = Connectivity(registrationName='Connectivity1', Input=obj)
 
 connectivity.UpdatePipeline()
