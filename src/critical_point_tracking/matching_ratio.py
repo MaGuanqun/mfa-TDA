@@ -20,10 +20,7 @@ def load_csv_points(csv_path, has_header=True):
     return np.loadtxt(csv_path, delimiter=',', skiprows=skip, usecols=(0, 1, 2))
 
 
-def compute_match_ratio(obj_path, csv_path, xy_threshold, z_threshold, csv_has_header):
-    obj_pts = load_obj_vertices(obj_path)
-    csv_pts = load_csv_points(csv_path, has_header=csv_has_header)
-
+def compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_header):
     if obj_pts.size == 0:
         raise ValueError("No vertices found in the OBJ file.")
     if csv_pts.size == 0:
@@ -70,6 +67,17 @@ def compute_match_ratio(obj_path, csv_path, xy_threshold, z_threshold, csv_has_h
     return ratio
 
 
+def compute_match_ratio_different(obj_path, csv_path, xy_threshold, z_threshold, csv_has_header):
+    obj_pts = load_obj_vertices(obj_path)
+    csv_pts = load_csv_points(csv_path, has_header=csv_has_header)
+    print("discrete result on our result:")
+    compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_header)
+    print("our result on discrete result:")
+    compute_match_ratio(csv_pts, obj_pts, xy_threshold, z_threshold, csv_has_header)
+
+    
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare OBJ vertices and CSV points.")
     parser.add_argument("obj_file", type=str, help="Path to OBJ file.")
@@ -81,7 +89,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    compute_match_ratio(
+    compute_match_ratio_different(
         obj_path=args.obj_file,
         csv_path=args.csv_file,
         xy_threshold=args.xy_threshold,
