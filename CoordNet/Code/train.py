@@ -121,14 +121,14 @@ def trainNet(model,args,dataset,start_epoch=1):
     # print("Converting model to float64 TorchScript .pt ...")
 
     # Move to CPU (so you can load in LibTorch without GPU dependency)
-    model = model.cpu()#.to(torch.float64)
+    model = model.cpu().to(torch.float64)
     model.eval()
 
     # Infer input dimension (3 for super-spatial-temporal, else 4)
     in_dim = 3 if args.application == 'super-spatial-temporal' else 4
 
     # Create example input in float64
-    example = torch.zeros(1, in_dim)
+    example = torch.zeros(1, in_dim, dtype=torch.float64)
 
     # Trace or script the model
     try:
@@ -237,7 +237,7 @@ def _build_model_from_args(args):
 
 
 def inf(dataset,args):
-
+    device = 'cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu'
     if args.application != 'viewsynthesis':
         in_dim = 3 if args.application == 'super-spatial-temporal' else 4
         if args.active == 'sine':
@@ -432,14 +432,16 @@ def inf(dataset,args):
             f'{args.application}-{args.init}-{args.num_res}-{args.num_epochs}.pth'
         )
         print(f"Loading checkpoint from: {ckpt_path}")
-        state = torch.load(ckpt_path, map_location='cpu')
+        state = torch.load(ckpt_path, map_location="cpu")
         model.load_state_dict(state)
         
-        model = model.to(torch.float64)
+
         
         
         dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = model.to(dev)
+        
+        model = model.to(device).double()
+        # model = model.to(dev)
         model.eval()        
         
         print("Model loaded and converted to float64.")
@@ -500,13 +502,14 @@ def inf(dataset,args):
         # A.astype('<f8', copy=False).ravel(order='C').tofile(onefile_path.replace('.dat','-f64.dat'))
         else:
         
+        
             ts_path = args.model_path + args.dataset + '/' + f'{args.application}-{args.init}-{args.num_res}-f64.pt'
 
             model_f64 = copy.deepcopy(model).to(torch.float64)
             model_f64.eval()
             
             dev = next(model_f64.parameters()).device
-            example = torch.zeros(1, in_dim, dtype=torch.float64, device=dev)
+            example = torch.zeros(1, in_dim, dtype=torch.float64)
 
             with torch.no_grad():
                 try:
