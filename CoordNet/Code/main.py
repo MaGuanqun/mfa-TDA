@@ -59,6 +59,7 @@ p.add_argument('--resume_epoch', type=int, default=0,
                help='If > 0, resume training from this epoch checkpoint')
 p.add_argument('--up_sample_ratio', type=int, default=2,
                help='same points based on the ratio')
+p.add_argument('--save_float64_model', type=bool, default=True, metavar='N',help='If true, save the model in float64 format for higher precision inference')
 
 opt = p.parse_args()
 

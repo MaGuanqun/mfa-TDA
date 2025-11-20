@@ -443,15 +443,15 @@ class ScalarDataSet():
 		else:
 			raise NotImplementedError(f"Function {self.dataset} not implemented.")
 
-	def GetTestingData(self, up_sample_ratio=2):
+	def GetTestingData(self, up_sample_ratio=2, type=np.float32):
 		if self.application == 'super-spatial-temporal':
 			print("Generating testing coords for super-spatial-temporal...")
 			print(self.dataset)
 			sample_size= self.span_num()
 			sample_size = up_sample_ratio*sample_size
 			print(sample_size)
-			return get_mgrid([sample_size[2],sample_size[0],sample_size[1]],dim=3)
-		return get_mgrid([self.total_samples,self.dim[0],self.dim[1],self.dim[2]],dim=4)
+			return get_mgrid([sample_size[2],sample_size[0],sample_size[1]],dim=3,type=type)
+		return get_mgrid([self.total_samples,self.dim[0],self.dim[1],self.dim[2]],dim=4,type=type)
 		
 
 

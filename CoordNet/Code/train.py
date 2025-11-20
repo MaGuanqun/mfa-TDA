@@ -12,6 +12,7 @@ from skimage.io import imsave
 from skimage.io import imread
 from skimage import data,img_as_float,img_as_int
 import lpips
+import copy
 
 def laplacian_loss(v_pred, coord):
     """
@@ -425,73 +426,97 @@ def inf(dataset,args):
         print("Starting inference for super-spatial-temporal...")
         # Build model if not built above (should be already built)
         # Load checkpoint using the same naming as training "else" branch
-        model.load_state_dict(torch.load(
-            args.model_path + args.dataset + '/' + \
-                    f'{args.application}-{args.init}-{args.num_res}-{args.num_epochs}.pth'
-        ))
-        model.eval()
+        
+        ckpt_path = os.path.join(
+            args.model_path, args.dataset,
+            f'{args.application}-{args.init}-{args.num_res}-{args.num_epochs}.pth'
+        )
+        print(f"Loading checkpoint from: {ckpt_path}")
+        state = torch.load(ckpt_path, map_location='cpu')
+        model.load_state_dict(state)
+        
+        model = model.to(torch.float64)
+        
+        
+        dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = model.to(dev)
+        model.eval()        
+        
+        print("Model loaded and converted to float64.")
 
-        print("Model loaded.")
-
-        out_dtype=np.float32        
+        out_dtype=np.float64        
         # Coords: [T*H*W, 3] with (t,y,x) in [-1,1], provided by ScalarDataSet.GetTestingData()
-        coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio)
+        
+        
+        if args.save_float64_model==False:
+               
+            coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio,type=np.float64)
 
-        print("Coords obtained.")
-        print("coords shape:", coords.shape)
-        shape = dataset.span_num()
-        shape = args.up_sample_ratio * shape
-        T = shape[2]
-        H, W = shape[0], shape[1]
+            print("Coords obtained.")
+            print("coords shape:", coords.shape)
+            
+            coords = coords.astype(np.float64)
+            
+            shape = dataset.span_num()
+            shape = args.up_sample_ratio * shape
+            T = shape[2]
+            H, W = shape[0], shape[1]
 
 
 
-        print(f"Coords shape: {coords.shape}")
-
-        loader = DataLoader(dataset=torch.FloatTensor(coords), batch_size=args.batch_size, shuffle=False)
-        preds = []
-        for batch in loader:
+            print(f"Coords shape: {coords.shape}")
+            tensor_coords = torch.from_numpy(coords) 
+            
+            loader = DataLoader(dataset=tensor_coords, batch_size=args.batch_size, shuffle=False)
+            preds = []
             with torch.no_grad():
-                v_pred = model(batch.cuda())
-            preds.append(v_pred.view(-1).detach().cpu().numpy())
-        preds = np.concatenate(preds, axis=0).astype('<f4')  # length T*H*W
+                for batch in loader:
+                    batch = batch.to(dev, dtype=torch.float64)
+                    v_pred = model(batch.cuda())
+                    preds.append(v_pred.view(-1).detach().cpu().numpy())
+                    
+            preds = np.concatenate(preds, axis=0).astype('<f8')  # length T*H*W
 
-        # Existing context: preds is length T*H*W in blocks of H*W per t,
-        # where within each block values are in Fortran 'F' order (y-fastest).
+            # Existing context: preds is length T*H*W in blocks of H*W per t,
+            # where within each block values are in Fortran 'F' order (y-fastest).
 
-        print(preds.shape)
-        print(T,H,W)
+            print(preds.shape)
+            print(T,H,W)
 
-        # Rebuild a [T, H, W] volume where A[t] is the HxW slice at time t.
-        A = np.empty((T, H, W), dtype=out_dtype)
-        per_t = H * W
-        for t in range(T):
-            v = preds[t * per_t:(t + 1) * per_t]      # length H*W, y-fastest inside
-            A[t] = v.reshape(W, H, order='F').transpose()     # restore the 2D slice
+            # Rebuild a [T, H, W] volume where A[t] is the HxW slice at time t.
+            A = np.empty((T, H, W), dtype=out_dtype)
+            per_t = H * W
+            for t in range(T):
+                v = preds[t * per_t:(t + 1) * per_t]      # length H*W, y-fastest inside
+                A[t] = v.reshape(W, H, order='F').transpose()     # restore the 2D slice
 
-        # Now ravel in C-order so x (last axis) is fastest, then y, then t (slowest).
-        onefile_path = os.path.join('../Result', args.dataset,
-                                    f'{args.application}-{args.init}-{args.num_res}-{args.up_sample_ratio}.dat')
-        A.ravel(order='C').tofile(onefile_path)  # float64
-        print(f"Saved single 3D file with x-fastest layout to: {onefile_path}")
+            # Now ravel in C-order so x (last axis) is fastest, then y, then t (slowest).
+            onefile_path = os.path.join('../Result', args.dataset,
+                                        f'{args.application}-{args.init}-{args.num_res}-{args.up_sample_ratio}-f64.dat')
+            A.ravel(order='C').tofile(onefile_path)  # float64
+            print(f"Saved single 3D file with x-fastest layout to: {onefile_path}")
 
         # If you prefer float64:
         # A.astype('<f8', copy=False).ravel(order='C').tofile(onefile_path.replace('.dat','-f64.dat'))
+        else:
         
-        ts_path = args.model_path + args.dataset + '/' + f'{args.application}-{args.init}-{args.num_res}.pt'
+            ts_path = args.model_path + args.dataset + '/' + f'{args.application}-{args.init}-{args.num_res}-f64.pt'
 
+            model_f64 = copy.deepcopy(model).to(torch.float64)
+            model_f64.eval()
+            
+            dev = next(model_f64.parameters()).device
+            example = torch.zeros(1, in_dim, dtype=torch.float64, device=dev)
 
-        
-        model.eval()
-        dev = next(model.parameters()).device
-        example = torch.zeros(1, in_dim, dtype=torch.float32,device=dev)
-        try:
-            ts_model = torch.jit.trace(model, example)
-        except Exception as e:
-            print(f"[warn] trace failed ({e}), using script()")
-            ts_model = torch.jit.script(model)
-        ts_model = torch.jit.freeze(ts_model)
-        ts_model.save(ts_path)
+            with torch.no_grad():
+                try:
+                    ts_model = torch.jit.trace(model_f64, example)
+                except Exception as e:
+                    print(f"[warn] trace failed ({e}), using script()")
+                    ts_model = torch.jit.script(model_f64)
+
+            ts_model = torch.jit.freeze(ts_model)
+            ts_model.save(ts_path)
 
 # def inf(dataset, args):
 #     """
