@@ -65,9 +65,9 @@ namespace {
 }
 
 
-void save_root(std::vector<VectorX<float>>& root_unique, string degenerate_point_file, int spatial_step_size)
+void save_root(std::vector<VectorX<double>>& root_unique, string degenerate_point_file, int spatial_step_size)
 {
-    std::vector<MatrixXf> root_matrix(1);
+    std::vector<MatrixXd> root_matrix(1);
 
     root_matrix[0].resize(root_unique.size(),root_unique[0].size());
     for(int j=0;j<root_unique.size();j++)
@@ -99,36 +99,36 @@ int main(int argc, char** argv)
     // get command line arguments
     opts::Options ops;
 
-    float shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
+    double shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
     // string input_sample_point_number = "100-100";
 
     string cp_tracing_file = "cp_tracing.dat";
 
 
 
-    std::vector<float> same_root_epsilon; // same_root_epsilon
-    float time_step = 1e-3;
+    std::vector<double> same_root_epsilon; // same_root_epsilon
+    double time_step = 1e-3;
     
-    float grad_threshold = 1e-5;
+    double grad_threshold = 1e-5;
 
     int correction_max_itr = 30;
 
 
 
 
-    float initial_point_finding_hessian_threshold = 1e-20;
-    float root_finding_grad_epsilon = 1e-8;
+    double initial_point_finding_hessian_threshold = 1e-20;
+    double root_finding_grad_epsilon = 1e-8;
 
     string input_shrink_ratio = "0-1-0-1-0-1";
-    float dxy_dt_gradient_epsilon = 1e-10;
+    double dxy_dt_gradient_epsilon = 1e-10;
 
     string singular_point_file = "singular_point.dat";
 
     int max_itr=50;
 
-    float point_itr_threshold = 0.5;
+    double point_itr_threshold = 0.5;
 
-    float  spatial_step_size = 1.0;
+    double  spatial_step_size = 1.0;
         string input_model="";
     string edge_type_file ="";
 
@@ -165,8 +165,8 @@ int main(int argc, char** argv)
 
 
     std::istringstream iss(input_shrink_ratio);
-    std::vector<float> shrink_ratio;
-    float number;
+    std::vector<double> shrink_ratio;
+    double number;
     std::string token;
     while (std::getline(iss, token, '-')) {
         std::istringstream tokenStream(token);
@@ -176,31 +176,31 @@ int main(int argc, char** argv)
     }  
 
 
-    INRModel<float> inr_model(input_function_name,input_model);
+    INRModel<double> inr_model(input_function_name,input_model);
     int function_type=-1; 
 
 
 
-    Eigen::VectorXf local_domain_range=inr_model.domain_max-inr_model.domain_min;
-    VectorXf core_maxs = inr_model.domain_max;
-    VectorXf core_mins = inr_model.domain_min;
+    Eigen::VectorXd local_domain_range=inr_model.domain_max-inr_model.domain_min;
+    VectorXd core_maxs = inr_model.domain_max;
+    VectorXd core_mins = inr_model.domain_min;
 
     VectorXi span_num = inr_model.block_num;
 
-    VectorXf Span_size = local_domain_range.cwiseQuotient(span_num.cast<float>());
+    VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
 
     
-    std::vector<float> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
+    std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
     step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
 
-    float d_max_square_= spatial_step_size*spatial_step_size/16* step_size[0]* step_size[0]; 
+    double d_max_square_= spatial_step_size*spatial_step_size/16* step_size[0]* step_size[0]; 
 
-    std::vector<VectorX<float>> degenerate_points;
-    Degenerate_case_tracing<float>::read_degenerate_point(singular_point_file,degenerate_points);
+    std::vector<VectorX<double>> degenerate_points;
+    Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
 
 
-    std::vector<CP_Trace<float>> traces;
+    std::vector<CP_Trace<double>> traces;
    
     same_root_epsilon = step_size; // same_root_epsilon
 
@@ -213,7 +213,7 @@ int main(int argc, char** argv)
         utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
 
 
-        std::vector<VectorX<float>> root; //the inner vector store the root in a span
+        std::vector<VectorX<double>> root; //the inner vector store the root in a span
 
         std::vector<VectorXi> selected_span;
         span_filter::compute_boundary_span(span_num,selected_span,true);
@@ -224,8 +224,8 @@ int main(int argc, char** argv)
 
 
         VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
-        std::vector<VectorX<float>> root_unique;
-        Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<float>*>(nullptr),&inr_model);
+        std::vector<VectorX<double>> root_unique;
+        Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<double>*>(nullptr),&inr_model);
         if(compute_boundary_start==1){
             find_boundary_roots.root_finding(selected_span, root);
 
@@ -253,7 +253,7 @@ int main(int argc, char** argv)
         else
         {
             string name  =  boundary_start + std::to_string(int(spatial_step_size)) + ".dat";
-            Degenerate_case_tracing<float>::read_degenerate_point(name,root_unique);
+            Degenerate_case_tracing<double>::read_degenerate_point(name,root_unique);
 
             std::cout<<"read root num from file "<<root_unique.size()<<std::endl;
         }
@@ -268,14 +268,14 @@ int main(int argc, char** argv)
 
         traces.resize(root_unique.size());
 
-        Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], d_max_square_,function_type, correction_max_itr, static_cast<Block<float>*>(nullptr), &inr_model);
+        Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs,root_finding_grad_epsilon, step_size.back(), step_size[0], d_max_square_,function_type, correction_max_itr, static_cast<Block<double>*>(nullptr), &inr_model);
 
         boundary_critical_point_tracking.find_trace(root_unique, traces);
 
         std::cout<<"finish boundary critical point tracing "<<std::endl;
 
 
-        Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type, static_cast<Block<float>*>(nullptr), &inr_model);
+        Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
         degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
 
 
@@ -322,11 +322,11 @@ int main(int argc, char** argv)
 
     std::vector<int> critical_point_types;
     if(edge_type_file!="")
-        critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, static_cast<Block<float>*>(nullptr), &inr_model);
+        critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, static_cast<Block<double>*>(nullptr), &inr_model);
 
     CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
 
-    critical_point_utility::accuracy(traces, degenerate_points, function_type,static_cast<Block<float>*>(nullptr), &inr_model);
+    critical_point_utility::accuracy(traces, degenerate_points, function_type,static_cast<Block<double>*>(nullptr), &inr_model);
 
 
     // CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points);

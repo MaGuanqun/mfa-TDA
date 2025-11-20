@@ -491,18 +491,18 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         if (device.is_cuda()) {
             // 1) build on CPU
             auto host_opts = torch::TensorOptions()
-                                .dtype(torch::kFloat32)
+                                .dtype(torch::kFloat64)
                                 .device(torch::kCPU);
             torch::Tensor input_host = torch::empty({N, D}, host_opts);
 
             {
-                auto acc = input_host.accessor<float, 2>();
+                auto acc = input_host.accessor<double, 2>();
                 for (int i = 0; i < N; ++i) {
                     VectorX<T> p_model =
                         convert_point_to_domain_reverse_order(points_domain[i]);
-                    acc[i][0] = static_cast<float>(p_model(0));
-                    acc[i][1] = static_cast<float>(p_model(1));
-                    acc[i][2] = static_cast<float>(p_model(2));
+                    acc[i][0] = static_cast<double>(p_model(0));
+                    acc[i][1] = static_cast<double>(p_model(1));
+                    acc[i][2] = static_cast<double>(p_model(2));
                 }
             }
 
@@ -511,18 +511,18 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         } else {
             // Pure CPU path: we can write directly into the tensor
             auto opts = torch::TensorOptions()
-                            .dtype(torch::kFloat32)
+                            .dtype(torch::kFloat64)
                             .device(device);
             input_batch = torch::empty({N, D}, opts);
 
             {
-                auto acc = input_batch.accessor<float, 2>();
+                auto acc = input_batch.accessor<double, 2>();
                 for (int i = 0; i < N; ++i) {
                     VectorX<T> p_model =
                         convert_point_to_domain_reverse_order(points_domain[i]);
-                    acc[i][0] = static_cast<float>(p_model(0));
-                    acc[i][1] = static_cast<float>(p_model(1));
-                    acc[i][2] = static_cast<float>(p_model(2));
+                    acc[i][0] = static_cast<double>(p_model(0));
+                    acc[i][1] = static_cast<double>(p_model(1));
+                    acc[i][2] = static_cast<double>(p_model(2));
                 }
             }
         }
@@ -544,7 +544,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         // Bring gradients back to CPU for Eigen
         torch::Tensor g_all = grads[0].to(torch::kCPU).contiguous();
-        auto g_acc = g_all.accessor<float, 2>();
+        auto g_acc = g_all.accessor<double, 2>();
 
         for (int i = 0; i < N; ++i) {
             VectorX<T> g_model(D);
@@ -771,16 +771,16 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
 //         if (input_.is_cpu()) {
 //             // CPU path: write directly via pointer (no accessor overhead)
-//             float* buf = input_.data_ptr<float>();   // contiguous [1,3]
-//             buf[0] = static_cast<float>(p(0));
-//             buf[1] = static_cast<float>(p(1));
-//             buf[2] = static_cast<float>(p(2));
+//             double* buf = input_.data_ptr<double>();   // contiguous [1,3]
+//             buf[0] = static_cast<double>(p(0));
+//             buf[1] = static_cast<double>(p(1));
+//             buf[2] = static_cast<double>(p(2));
 //         } else {
 //             // CUDA path: never use accessor or data_ptr to write from host.
-//             float* h = input_host_.data_ptr<float>();
-//             h[0] = static_cast<float>(p(0));
-//             h[1] = static_cast<float>(p(1));
-//             h[2] = static_cast<float>(p(2));
+//             double* h = input_host_.data_ptr<double>();
+//             h[0] = static_cast<double>(p(0));
+//             h[1] = static_cast<double>(p(1));
+//             h[2] = static_cast<double>(p(2));
 //             input_.copy_(input_host_, /*non_blocking=*/false);
 //         }
 
@@ -793,7 +793,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 //         torch::Tensor f = module.forward({input_}).toTensor().reshape({}); // scalar
 //    // Helper to map (nx, ny, nt) → coordinate index in reversed order
 
-//         out(0) = static_cast<T>(f.detach().to(torch::kCPU).item<float>());
+//         out(0) = static_cast<T>(f.detach().to(torch::kCPU).item<double>());
        
 
 //     }
@@ -821,12 +821,12 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             torch::Tensor input = torch::from_blob(
                 (void*)p.data(),
                 {1, p.size()},
-                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+                torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
             ).clone();
             input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
 
             torch::Tensor output = module.forward({input}).toTensor().reshape({});
-            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<float>());
+            out(0) = static_cast<T>(output.detach().to(torch::kCPU).item<double>());
             return;
         }
 
@@ -838,7 +838,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             torch::Tensor input = torch::from_blob(
                 (void*)p.data(),
                 {1, p.size()},
-                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+                torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
             ).clone();
             input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
 
@@ -869,9 +869,9 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
             );
 
             torch::Tensor g_full = g_list[0];
-            float val = 0.0f;
+            double val = 0.0;
             if (g_full.defined()) {
-                val = g_full.index({0, coord_model}).detach().to(torch::kCPU).item<float>();
+                val = g_full.index({0, coord_model}).detach().to(torch::kCPU).item<double>();
                 // scale from [-1,1] to domain
                 val = val / domain_range(coord_domain) * 2.0f;
             } else {
@@ -1262,7 +1262,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         // TORCH_CHECK(p_.size() == 3, "Input must be (x,y,t)");
 
         // 0) Build input (CPU -> clone -> to(device))
-        // Eigen::VectorXf p = p_.template cast<float>();
+        // Eigen::VectorXf p = p_.template cast<double>();
 
         input_.detach_();                 // drop previous graph
 
@@ -1271,16 +1271,16 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         if (input_.is_cpu()) {
             // CPU path: write directly via pointer (no accessor overhead)
-            float* buf = input_.data_ptr<float>();   // contiguous [1,3]
-            buf[0] = static_cast<float>(p(0));
-            buf[1] = static_cast<float>(p(1));
-            buf[2] = static_cast<float>(p(2));
+            double* buf = input_.data_ptr<double>();   // contiguous [1,3]
+            buf[0] = static_cast<double>(p(0));
+            buf[1] = static_cast<double>(p(1));
+            buf[2] = static_cast<double>(p(2));
         } else {
             // CUDA path: never use accessor or data_ptr to write from host.
-            float* h = input_host_.data_ptr<float>();
-            h[0] = static_cast<float>(p(0));
-            h[1] = static_cast<float>(p(1));
-            h[2] = static_cast<float>(p(2));
+            double* h = input_host_.data_ptr<double>();
+            h[0] = static_cast<double>(p(0));
+            h[1] = static_cast<double>(p(1));
+            h[2] = static_cast<double>(p(2));
             input_.copy_(input_host_, /*non_blocking=*/false);
         }
 
@@ -1296,7 +1296,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         // torch::Tensor input = torch::from_blob(
         //     (void*)p.data(), {1, 3},
-        //     torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+        //     torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
         // ).clone();//.to(device, /*non_blocking=*/false, /*copy=*/true);
 
         // // 1) Forward (scalar)
@@ -1360,39 +1360,50 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         // Grad (fx, fy)
         grad_out.resize(3);
-        grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<float>());
-        grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<float>());
-        grad_out(2) = static_cast<T>(ft.detach().to(torch::kCPU).item<float>());
+        grad_out(0) = static_cast<T>(fx.detach().to(torch::kCPU).item<double>());
+        grad_out(1) = static_cast<T>(fy.detach().to(torch::kCPU).item<double>());
+        grad_out(2) = static_cast<T>(ft.detach().to(torch::kCPU).item<double>());
 
         convert_gradient_to_domain(grad_out);
 
 
-        // 
+        auto Hx_cpu = Hx_full.detach().to(torch::kCPU);
+        auto Hy_cpu = Hy_full.detach().to(torch::kCPU);
+
         Hessian.resize(3,3);
-        Hessian(0,0) = static_cast<T>(Hx_full.index({0,2}).detach().to(torch::kCPU).item<float>()); // fxx
-        Hessian(0,1) = static_cast<T>(Hx_full.index({0,1}).detach().to(torch::kCPU).item<float>()); // fxy
-        Hessian(1,0) = Hessian(0,1); 
-        Hessian(1,1) = static_cast<T>(Hy_full.index({0,1}).detach().to(torch::kCPU).item<float>()); // fyy
-        Hessian(0,2) = static_cast<T>(Hx_full.index({0,0}).detach().to(torch::kCPU).item<float>()); // fxt
+        Hessian(0,0) = Hx_cpu.index({0,2}).item<T>(); // fxx
+        Hessian(0,1) = Hx_cpu.index({0,1}).item<T>(); // fxy
+        Hessian(1,0) = Hessian(0,1);
+
+        Hessian(1,1) = Hy_cpu.index({0,1}).item<T>(); // fyy
+
+        Hessian(0,2) = Hx_cpu.index({0,0}).item<T>(); // fxt
         Hessian(2,0) = Hessian(0,2);
-        Hessian(1,2) = static_cast<T>(Hy_full.index({0,0}).detach().to(torch::kCPU).item<float>()); // fyt
+
+        Hessian(1,2) = Hy_cpu.index({0,0}).item<T>(); // fyt
         Hessian(2,1) = Hessian(1,2);
+
         Hessian(2,2) = 0.0; // ftt excluded
 
         convert_hessian_to_domain(Hessian);
 
         // Third (spatial only): [fxxx, fxxy, fxyy, fyyy]
         third_spatial_out.resize(4);
-        third_spatial_out(0) = static_cast<T>(G_fxx.index({0,2}).detach().to(torch::kCPU).item<float>()); // fxxx
-        third_spatial_out(1) = static_cast<T>(G_fxx.index({0,1}).detach().to(torch::kCPU).item<float>()); // fxxy
-        third_spatial_out(2) = static_cast<T>(G_fxy.index({0,1}).detach().to(torch::kCPU).item<float>()); // fxyy
-        third_spatial_out(3) = static_cast<T>(G_fyy.index({0,1}).detach().to(torch::kCPU).item<float>()); // fyyy
 
-        // Third (with exactly one t): [fxxt, fxyt, fyyt]
+        auto fxx_cpu = G_fxx.detach().to(torch::kCPU);
+        auto fxy_cpu = G_fxy.detach().to(torch::kCPU);
+        auto fyy_cpu = G_fyy.detach().to(torch::kCPU);
+
+        third_spatial_out(0) = fxx_cpu.index({0,2}).item<T>(); // fxxx
+        third_spatial_out(1) = fxx_cpu.index({0,1}).item<T>(); // fxxy
+        third_spatial_out(2) = fxy_cpu.index({0,1}).item<T>(); // fxyy
+        third_spatial_out(3) = fyy_cpu.index({0,1}).item<T>(); // fyyy  // Third (with exactly one t): [fxxt, fxyt, fyyt]
+        
         third_tmix_out.resize(3);
-        third_tmix_out(0) = static_cast<T>(G_fxx.index({0,0}).detach().to(torch::kCPU).item<float>()); // fxxt
-        third_tmix_out(1) = static_cast<T>(G_fxy.index({0,0}).detach().to(torch::kCPU).item<float>()); // fxyt
-        third_tmix_out(2) = static_cast<T>(G_fyy.index({0,0}).detach().to(torch::kCPU).item<float>()); // fyyt
+
+        third_tmix_out(0) = fxx_cpu.index({0,0}).item<T>(); // fxxt
+        third_tmix_out(1) = fxy_cpu.index({0,0}).item<T>(); // fxyt
+        third_tmix_out(2) = fyy_cpu.index({0,0}).item<T>(); // fyyt
 
         convert_third_order_to_domain(third_spatial_out, third_tmix_out);
     }
@@ -1408,7 +1419,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         torch::Tensor input = torch::from_blob(
             (void*)p.data(),
             {1, p.size()},
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU)
+            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
         ).clone();
         input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
         input.set_requires_grad(true);
@@ -1466,9 +1477,9 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         // Return the required derivatives as a custom structure or vector
         VectorX<T> grad(p.size());
 
-        grad(0) = static_cast<T>(dx.item<float>());
-        grad(1) = static_cast<T>(dy.item<float>());
-        grad(2) = static_cast<T>(dz.item<float>());
+        grad(0) = static_cast<T>(dx.item<double>());
+        grad(1) = static_cast<T>(dy.item<double>());
+        grad(2) = static_cast<T>(dz.item<double>());
     }
 
 private:
@@ -1494,13 +1505,13 @@ private:
 
     // Call this once after loading module
     void init_buffers() {
-        auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+        auto opts = torch::TensorOptions().dtype(torch::kFloat64).device(device);
         input_    = torch::zeros({1,3}, opts);
         grad_buf_ = torch::empty({1,3}, opts);
 
         if (device.is_cuda()) {
             input_host_ = torch::empty({1,3},
-                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU).pinned_memory(true));
+                torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU).pinned_memory(true));
         } else {
             input_host_ = torch::Tensor();
         }
