@@ -98,9 +98,17 @@ namespace critical_point_utility
     {
         T accuracy_value=0;
         int num_points=0;
+        T max_accuracy = 0;
+        T accuracy;
         for(int i=0;i<degenerate_points.size();++i)
         {
-            accuracy_value += compute_accuracy_single_point(degenerate_points[i], function_type, b, inr_model);
+            accuracy= compute_accuracy_single_point(degenerate_points[i], function_type, b, inr_model);
+            accuracy_value += accuracy;
+
+            if(accuracy>max_accuracy)
+            {
+                max_accuracy = accuracy;
+            }
         }   
         num_points += degenerate_points.size();
 
@@ -111,7 +119,13 @@ namespace critical_point_utility
         {
             for(int j=0;j<traces[i].traces.size();++j)
             {
-                accuracy_value += compute_accuracy_single_point(traces[i].traces[j], function_type, b, inr_model);
+                accuracy = compute_accuracy_single_point(traces[i].traces[j], function_type, b, inr_model);
+                accuracy_value += accuracy;
+
+                if(accuracy>max_accuracy)
+                {
+                    max_accuracy = accuracy;
+                }
             }
             num_points += traces[i].traces.size();
            
@@ -123,7 +137,8 @@ namespace critical_point_utility
             return;
         }
         accuracy_value = accuracy_value / (T)num_points;
-        std::cout<<"Average critical point accuracy: "<<accuracy_value<<std::endl;
+        std::cout<<"Average critical point gradient norm: "<<accuracy_value<<std::endl;
+        std::cout<<"Max critical point gradient norm: "<<max_accuracy<<std::endl;
         
     }
 }
