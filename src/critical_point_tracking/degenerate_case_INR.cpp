@@ -162,7 +162,7 @@ int main(int argc, char** argv)
         std::vector<VectorX<float>> root; //the inner vector store the root in a span
 
 
-        VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
+        VectorXi point_num_in_block = inr_model.point_num_in_block + VectorXi::Ones(inr_model.point_num_in_block.size()); //number of initial points in a block
 
         // VectorXf p_test(3);
         // p_test<<0.5,0.5,0.5;
