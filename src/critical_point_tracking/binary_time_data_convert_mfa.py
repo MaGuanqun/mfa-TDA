@@ -55,7 +55,11 @@ def convert_binary_file_to_vti(input_bin, output_vti, dims,min,max,args):
     if data.size != dims[0] * dims[1] * dims[2]:
         print(data.size)
         print(dims[0] * dims[1] * dims[2])
+        
+        print(dims[0],dims[1],dims[2])
         raise ValueError("Data size does not match the provided dimensions.")
+    
+    
 
 
     np_array = data.reshape((dims[2], dims[1], dims[0]))
@@ -147,13 +151,13 @@ elif function == 'vortex_street':
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([99, 79, 49])
 elif function =='vortex_street_3d':
-    dim = np.array([80,10,15])
+    dim = np.array([80,10,18])
     min = np.array([-0.5, -0.5, 13.5])
     max = np.array([7.5, 0.5, 15.0])
     # min = np.array([-0.5, -0.5, 0.0])
     # max = np.array([0.5, 7.5, 15])
 elif function =='boussinesq_3d':
-    dim = np.array([10,30,15])
+    dim = np.array([7,27,7])
     min = np.array([-0.5, -0.5, 0.0])
     max = np.array([0.5, 2.5, 1.5])
 elif function =='fluid':

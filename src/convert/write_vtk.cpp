@@ -225,6 +225,8 @@ void write_function_pointset_vtk(mfa::PointSet<T>* ps, char* filename,Block<real
 }
 
 
+
+
 // TODO: Only scalar-valued and 3D vector-valued variables are supported (because of the VTK writer)
 // If a variable has a different output dimension, the writer will skip that variable and continue.
 template<typename T>
@@ -369,6 +371,10 @@ void write_pointset_vtk(mfa::PointSet<T>* ps, char* filename, int sci_var = -1)
     }
     delete[] pt_data;
 }
+
+
+
+
 
 // make combinations of min, max corner vertices in index and real space
 void CellVertices(
@@ -1411,6 +1417,149 @@ std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio)
 }
 
 
+template<typename T>
+void save_vector(const std::vector<T>& v, char* filename)
+{
+    std::ofstream out(filename, std::ios::binary);
+    // if (!out) {
+    //     throw std::runtime_error("Cannot open file for writing: " + filename);
+    // }
+
+    // Optionally save size
+
+    // Save data
+    size_t size = v.size();
+    out.write(reinterpret_cast<const char*>(v.data()), size * sizeof(T));
+}
+
+template<typename T>
+void save_bin(char* file_name, Block<real_t>* block, size_t dom_dim, size_t pt_dim,
+std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio)
+{
+
+    VectorXi ori_ndom_pts(dom_dim);
+    auto& tc = block->mfa->var(0).tmesh.tensor_prods[0];
+    VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
+    for(int i=0;i<dom_dim;i++)
+    {
+        ori_ndom_pts(i) = upsample_factor[i] * span_num(i);
+    }
+
+    VectorXi ndom_pts = ori_ndom_pts;
+    int npts = ndom_pts.prod();
+
+
+    VectorX<T> d(dom_dim);               // step in domain points in each dimension
+    VectorX<T> p0(dom_dim);   
+    
+               // starting point in each dimension
+
+    for (int i = 0; i < dom_dim; i++)
+    {
+        d(i) =  (block->core_maxs(i) - block->core_mins(i)) / (ndom_pts(i)-1);
+        p0(i) = block->core_mins(i);
+    }
+
+    // VectorX<T> d_geometri(dom_dim);              
+    // VectorX<T> p0_geometri(dom_dim);
+    // for (int i = 0; i < dom_dim; i++)
+    // {
+    //     d_geometri(i) =  1.0 / (ndom_pts(i) - 1) *(modified_shrink_range_raio[2*i+1]-modified_shrink_range_raio[2*i]);
+    //     p0_geometri(i) = modified_shrink_range_raio[2*i];
+    // }
+
+    std::cout<<"point size "<<ndom_pts.transpose()<<std::endl;
+
+    std::vector<std::vector<T>> vertex_domain(dom_dim);
+    // std::vector<std::vector<T>> vertex_geometri(dom_dim);
+    for(int i=0;i<dom_dim;i++)
+    {
+        vertex_domain[i].resize(ndom_pts(i));
+        // vertex_geometri[i].resize(ndom_pts(i));
+        for(int j=0;j<ndom_pts(i);j++)
+        {
+            vertex_domain[i][j]=p0(i)+T(j)*d(i);
+            // vertex_geometri[i][j]=p0_geometri(i)+T(j)*d_geometri(i);
+        }
+    }
+
+    VectorXi number_in_every_domain(dom_dim);
+    utility::obtain_number_in_every_domain( ndom_pts,number_in_every_domain);
+
+
+
+    int nvars = block->mfa->nvars();    
+    std::vector<std::vector<T>> pt_data(nvars);
+
+    for (size_t j = 0; j < nvars; j++)
+    {
+        pt_data[j].resize(npts);
+    }
+
+    tbb::affinity_partitioner ap;
+
+
+    tbb::parallel_for((tbb::blocked_range<size_t>(0,npts)),
+    [&](const tbb::blocked_range<size_t>& interval)
+    {
+        VectorXi domain_index_;
+        for(size_t j=interval.begin();j<interval.end();++j)
+        {
+            utility::obtainDomainIndex(j,domain_index_,number_in_every_domain);
+
+        //Only support 2D
+            VectorX<T> result_value(block->mfa->nvars());
+
+            for(int m=0;m<dom_dim;m++)
+            {
+                if(vertex_domain[m][domain_index_(m)]<block->core_mins(m)){
+                    vertex_domain[m][domain_index_(m)] = block->core_mins(m);
+                }
+                if(vertex_domain[m][domain_index_(m)]>block->core_maxs(m))
+                {
+                    vertex_domain[m][domain_index_(m)]= block->core_maxs(m);
+                }
+            }
+
+            VectorX<T> coordinate(dom_dim);
+            
+            for(int m=0;m<dom_dim;m++)
+            {
+                coordinate[m]=vertex_domain[m][domain_index_(m)];
+            }
+
+
+
+            for (int k = 0; k < nvars; k++)                         // science variables
+            {
+                mfa_extend::recover_mfa(block,coordinate,result_value);
+                // block->mfa->DecodePt(*(block->vars[k].mfa_data),geo_coordinate,result_value);
+                pt_data[k][j] = result_value[0];
+            }
+        }
+        
+    },ap
+    );
+
+
+    save_vector(pt_data[0],file_name);
+    // int text_index;
+    // for(int i=0;i<ndom_pts(1);++i)
+    // {
+    //     text_index = i*ndom_pts(0);
+    //     std::cout<<vertex_geometri[0][0]<<" "<<vertex_geometri[1][i]<<" "<<pt_data[0][text_index] << std::endl;
+    // }
+
+    // vertex_geometri.clear();
+    // vertex_geometri.shrink_to_fit();
+
+
+
+    // write_to_ply::write_ply(file_name,vertex_domain,pt_data[0]);
+
+}
+
+
 // write vtk files for initial, approximated, control points
 void write_vtk_files(
         Block<real_t>* b,
@@ -1420,7 +1569,7 @@ void write_vtk_files(
         std::vector<double>& shrink_range_raio,
         int ignore,
         string& output_obj_name, string& output_vtk_name,
-        int output_gradient_magnitude, bool set_zero)                     // science variable to render geometrically for 1d and 2d domains
+        int output_gradient_magnitude, bool set_zero, bool use_bin=false)                     // science variable to render geometrically for 1d and 2d domains
 {
     vector<vec3d>               geom_ctrl_pts;      // control points (<= 3d) in geometry
     vector < vector <vec3d> >   vars_ctrl_pts;      // control points (<= 3d) in science variables
@@ -1524,6 +1673,15 @@ if(!output_obj_name.empty())
 }
 else
 {
+    if(use_bin)
+    {
+        save_bin(function_filename,b,dom_dim,pt_dim,upsample_factor,shrink_range_raio);
+
+        // return;
+    }
+    else
+    {
+
     //set a upsampled pointset
     auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -1536,6 +1694,7 @@ else
 
     
     std::cout<<"compute value and gradient mag running time, millisecond : "<< std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time + run_time).count()/1000<<std::endl;
+    }
 }
 
 
@@ -1832,6 +1991,9 @@ int main(int argc, char ** argv)
 
     // get command line arguments
     opts::Options ops;
+
+    int use_bin = 0;
+
     ops >> opts::Option('f', "infile",      infile,     " diy input file name");
     ops >> opts::Option('a', "ntest",       ntest,      " number of test points in each dimension of domain (for analytical error calculation)");
     ops >> opts::Option('i', "input",       input,      " input dataset");
@@ -1851,6 +2013,7 @@ int main(int argc, char ** argv)
     ops >> opts::Option('t', "output vtk name",    output_vtk_name,       " output vtk file name");
     ops >> opts::Option('g', "output gradient magnitude",    output_gradient_magnitude,       " add extra variable for gradient magnitude");
     ops >> opts::Option('z', "set zero",    set_zero,       " set zero for the pointset");
+    ops >> opts::Option('b', "use bin",    use_bin,       " save bin file for the pointset");
 
 
     if (!ops.parse(argc, argv) || help)
@@ -1960,5 +2123,5 @@ int main(int argc, char ** argv)
     // write vtk files for initial and approximated points
     master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
             { 
-                write_vtk_files(b, cp, sci_var, upsample_factor,shrink_ratio,ignore, output_obj_name,output_vtk_name,output_gradient_magnitude, set_zero); });
+                write_vtk_files(b, cp, sci_var, upsample_factor,shrink_ratio,ignore, output_obj_name,output_vtk_name,output_gradient_magnitude, set_zero,use_bin); });
 }
