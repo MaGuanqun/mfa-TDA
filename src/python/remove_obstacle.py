@@ -212,7 +212,7 @@ if __name__ == "__main__":
 
     if args.data == "vortex_street_3d":
         center = [0,0]
-        radius =  0.09
+        radius =  0.11
     elif args.data == "boussinesq_3d":
         center = [0,-0.15]
         radius = 0.09
