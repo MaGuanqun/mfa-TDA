@@ -144,7 +144,7 @@ def main():
 
     print(">>> Model device:", next(Model.parameters()).device, flush=True)
 
-    trainNet(Model,opt,Data, start_epoch=opt.resume_epoch +1)
+    trainNet(Model,opt,Data) #start_epoch=opt.resume_epoch +1
 
   elif opt.train == 'inf':
     if opt.application in ['spatial','temporal','super-spatial','extrapolation','super-spatial-temporal']:

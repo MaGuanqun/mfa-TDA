@@ -112,6 +112,7 @@ def trainNet(model,args,dataset):
         args.model_path, args.dataset,
         f"{args.application}-{args.init}-{args.num_res}-float64.pt"
     )
+
     ts_model.save(ts_path)
     print(f"[train] Saved full TorchScript model to: {ts_path}")
     
@@ -307,7 +308,7 @@ def inf(dataset, args):
     # coords = np.stack([zz, yy, xx], axis=-1).reshape(-1, 3).astype(np.float64)
     
     # Coord order: (z, y, x)  -> shape [H*W, 3]
-    coords = dataset.GetTestingData()
+    coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio,type=np.float64)
 
     print(f"[inf] Total coords = {coords.shape[0]}, dim = {coords.shape[1]}")
     
@@ -366,8 +367,8 @@ def inf(dataset, args):
             batch = batch.to(device, non_blocking=pin_mem).to(preferred_dtype)
             out = model(batch)  # [B,1] or [B]
             preds.append(out.view(-1).detach().cpu().to(torch.float64).numpy())
-            if bi % 10 == 0:
-                print(f"[inf] processed batch {bi}")
+            # if bi % 10 == 0:
+                # print(f"[inf] processed batch {bi}")
         if device.type == 'cuda':
             torch.cuda.synchronize()
 
@@ -376,7 +377,7 @@ def inf(dataset, args):
     # ---- save outputs (float64, x-fastest when raveled in C-order)
     result_dir = os.path.join('../Result', args.dataset)
     os.makedirs(result_dir, exist_ok=True)
-    out_path = os.path.join(result_dir, f"{base}.dat")
+    out_path = os.path.join(result_dir, f"{base}-{args.up_sample_ratio}.dat")
 
     # reshape to [H,W] with x as last axis so C-order ravel is x-fastest
     # A = preds.reshape(H, W)                   # rows=y (slow), cols=x (fast)
@@ -387,7 +388,12 @@ def inf(dataset, args):
     dim = getattr(dataset, 'dim', None)
 
     if T is not None and isinstance(dim, (tuple, list)) and len(dim) == 2:
-        H, W = int(dim[0]), int(dim[1])
+        shape = dataset.span_num()
+        shape = args.up_sample_ratio * shape
+
+        H, W = shape[0], shape[1]
+        T = shape[2]
+
         per_t = H * W
         if T * per_t == preds.size:
             # Rebuild a [T, H, W] volume; incoming per-slice stream is y-fastest inside
