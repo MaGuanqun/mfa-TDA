@@ -160,8 +160,8 @@ nc_data = Dataset(file_path, mode='r')
 #(2001, 450, 150)
 print(nc_data.variables)
 print(nc_data.variables['u'].shape)
-u0 = nc_data.variables['u'][300:450, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
-v0 = nc_data.variables['v'][300:450, :, :].filled(-2.0)
+u0 = nc_data.variables['u'][1000:1150, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
+v0 = nc_data.variables['v'][1000:1150, :, :].filled(-2.0)
 
 # u1 = nc_data.variables['u'][2000, :, :].filled(-2.0)  # Shape: (tdim, ydim, xdim)
 # v1 = nc_data.variables['v'][2000, :, :].filled(-2.0)
@@ -196,8 +196,8 @@ nc_data.close()
 
 
 
-# # Replace 'your_file.nc' with the path to your NetCDF file
-# save_name = '../Data/vortex_street_3d_old.bin' #1351:1501
+# # # Replace 'your_file.nc' with the path to your NetCDF file
+# save_name = '../Data/vortex_street_3d.bin' #1351:1501
 # file_path = '../Data/cylinder2d.nc'
 
 # nc_data = Dataset(file_path, mode='r')

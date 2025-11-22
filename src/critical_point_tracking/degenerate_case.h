@@ -398,7 +398,7 @@ public:
 
     
     void degenerate_finding(std::vector<VectorX<T>>& root,
-    const VectorXi& point_num_in_block, const VectorXi& set_block_num, const std::vector<VectorXi>& selected_span_index = std::vector<VectorXi>(), string& degenerate_point_file = "")
+    const VectorXi& point_num_in_block, const VectorXi& set_block_num, const std::vector<VectorXi>& selected_span_index = std::vector<VectorXi>(), string degenerate_point_file = "")
     {
         std::vector<vector<T>> initial_points;
         tracking_utility::generate_initial_points(initial_points,domain_min,domain_max,point_num_in_block,set_block_num,b);
