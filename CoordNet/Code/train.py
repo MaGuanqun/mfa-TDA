@@ -206,208 +206,322 @@ def _build_model_from_args(args):
 
 def inf(dataset, args):
     """
-    Inference with a float64 TorchScript (.pt) model.
-    - Loads the full scripted/traced model (no state_dict needed)
-    - Evaluates in float64 on CPU or CUDA (if available and requested)
-    - Builds a fixed-z slice on a uniform (y,x) grid
-    - Saves outputs as float64 in x-fastest layout
-    # """
-    # import os
-    # import numpy as np
-    # import torch
-    # from torch.utils.data import DataLoader
+    Inference with a float64 TorchScript model.
+    - Loads <application>-<init>-<num_res>-float64.pt
+    - Builds coords in float64
+    - Evaluates in float64 on CPU or CUDA
+    - Saves a 3D field [T,H,W] (super-spatial-temporal) as float64 .dat
+    """
+    import os
+    import numpy as np
+    import torch
+    from torch.utils.data import DataLoader
 
-    # ---- device selection
-    use_cuda = getattr(args, 'cuda', False) and torch.cuda.is_available()
-    device = torch.device('cuda') if use_cuda else torch.device('cpu')
+    # ---- device
+    use_cuda = getattr(args, "cuda", False) and torch.cuda.is_available()
+    device = torch.device("cuda") if use_cuda else torch.device("cpu")
     print(f"[inf] device = {device}")
 
-    # ---- resolve model path (prefer '-float64.pt', fallback to '.pt')
+    # ---- pick model path: we require the float64 TS file
     base = f"{args.application}-{args.init}-{args.num_res}"
     pt64_path = os.path.join(args.model_path, args.dataset, base + "-float64.pt")
-    pt32_path = os.path.join(args.model_path, args.dataset, base + ".pt")
-    
-    ckpt_pth=os.path.join(
-            args.model_path, args.dataset,
-            f'{args.application}-{args.init}-{args.num_res}-{args.num_epochs}.pth'
-        )
 
-    ts_to_use = None
-    
-    if os.path.exists(ckpt_pth):
-        print(f"[inf] Found checkpoint: {ckpt_pth} — exporting TorchScript float64...")
-        py_model = _build_model_from_args(args)
-        # load weights
-        sd = torch.load(ckpt_pth, map_location="cpu")
-        py_model.load_state_dict(sd, strict=True)
-        py_model = py_model.cpu().to(torch.float64).eval()
+    if not os.path.exists(pt64_path):
+        raise FileNotFoundError(f"[inf] float64 TorchScript not found: {pt64_path} "
+                                f"(re-run training/export to create it).")
 
-        # export TS float64
-        in_dim = 3 if args.application == 'super-spatial-temporal' else 4
-        example = torch.zeros(1, in_dim, dtype=torch.float64)
-        try:
-            ts_model = torch.jit.trace(py_model, example)
-        except Exception as e:
-            print(f"[warn] trace failed ({e}), falling back to script()")
-            ts_model = torch.jit.script(py_model)
-        ts_model = torch.jit.freeze(ts_model)
-        ts_model.save(pt64_path)
-        print(f"[inf] Exported TorchScript float64 to: {pt64_path}")
-        ts_to_use = pt64_path
-    
-    
-    else: # ---- if only 32-bit .pt exists, convert to 64-bit and save
-        if os.path.exists(pt64_path):
-            print(f"[inf] Using existing TorchScript: {pt64_path}")
-            ts_to_use = pt64_path
-        elif os.path.exists(pt32_path):
-            print(f"[inf] {pt64_path} not found; converting {pt32_path} -> float64 .pt ...")
-            # Load on CPU to avoid CUDA dependency in saved file
-            m32 = torch.jit.load(pt32_path, map_location="cpu")
-            m32.eval()
-            # Cast internal tensors to float64 if supported
-            try:
-                m32 = m32.to(dtype=torch.float64)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to cast TorchScript module to float64; "
-                    f"re-save the model as float64 at training time. Details: {e}"
-                )
-            # Freeze and save float64 module
-            m32 = torch.jit.freeze(m32)
-            m32.save(pt64_path)
-            ts_to_use = pt64_path
-            print(f"[inf] Saved float64 TorchScript to: {pt64_path}")
-        else:
-            raise FileNotFoundError(f"No model found: {ckpt_pth} / {pt64_path} / {pt32_path}")
-
-    # ---- load the float64 TorchScript for inference
-    print(f"[inf] Loading TorchScript: {pt64_path}")
+    print(f"[inf] Loading TorchScript (float64): {pt64_path}")
     model = torch.jit.load(pt64_path, map_location=device)
     model.eval()
     try:
         model = model.to(device)
     except Exception:
-        pass  # Some TS wrappers don't expose .to; inputs will still be float64
+        pass
 
-    
-    # Many TS models already carry dtype; we still feed float64 inputs to ensure double pipeline
-    # If your TS is truly float32, sending float64 inputs may upcast internally (or you can
-    # re-save as -float64.pt as shown in train()).
+    # ---- get coords from dataset in float64
+    # For super-spatial-temporal: sidelen = [T,H,W], see ScalarDataSet.GetTestingData
+    # Force type=np.float64 here
+    coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio,
+                                    type=np.float64)
+    print(f"[inf] coords shape: {coords.shape}, dtype={coords.dtype}")
 
-    # ---- build a fixed-z slice grid in float64 (normalized coords in [-1,1])
-    # You can expose these via args if you like:
-    # z_fixed = getattr(args, "z_fixed", 0.0)   # normalized z in [-1, 1]
-    # H = getattr(args, "H", 3000)
-    # W = getattr(args, "W", 3000)
-
-    # y_lin = np.linspace(-1.0, 1.0, H, dtype=np.float64)
-    # x_lin = np.linspace(-1.0, 1.0, W, dtype=np.float64)
-    # yy, xx = np.meshgrid(y_lin, x_lin, indexing='ij')       # yy: HxW, xx: HxW
-    # zz = np.full_like(yy, fill_value=float(z_fixed))        # fixed z everywhere
-    # coords = np.stack([zz, yy, xx], axis=-1).reshape(-1, 3).astype(np.float64)
-    
-    # Coord order: (z, y, x)  -> shape [H*W, 3]
-    coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio,type=np.float64)
-
-    print(f"[inf] Total coords = {coords.shape[0]}, dim = {coords.shape[1]}")
-    
-    # ---- robust conversion to torch.DoubleTensor
+    # robust conversion to torch.DoubleTensor
     if torch.is_tensor(coords):
-        coords_tensor = coords if coords.dtype == torch.float64 else coords.to(torch.float64)
+        coords_tensor = coords.to(torch.float64)
     else:
-        try:
-            coords_np = np.asarray(coords, dtype=np.float64)
-            coords_tensor = torch.from_numpy(coords_np)
-        except Exception:
-            coords_tensor = torch.tensor(coords, dtype=torch.float64)
-
+        coords_tensor = torch.from_numpy(
+            np.asarray(coords, dtype=np.float64)
+        )
 
     if coords_tensor.dtype != torch.float64:
         coords_tensor = coords_tensor.to(torch.float64)
-    
+
     in_dim = int(coords_tensor.shape[1])
-    preferred_dtype = None
+    print(f"[inf] in_dim = {in_dim}")
+
+    # ---- sanity check: model accepts float64
     with torch.no_grad():
-        # Try float64 first
-        try:
-            probe64 = torch.zeros(1, in_dim, dtype=torch.float64, device=device)
-            _ = model(probe64)
-            preferred_dtype = torch.float64
-            print("[inf] model accepted float64 inputs")
-        except Exception as e64:
-            # Try float32
-            try:
-                probe32 = torch.zeros(1, in_dim, dtype=torch.float32, device=device)
-                _ = model(probe32)
-                preferred_dtype = torch.float32
-                print("[inf] model accepted float32 inputs")
-            except Exception as e32:
-                raise RuntimeError(
-                    "TorchScript model rejected both float64 and float32 inputs. "
-                    "Please export a valid .pt (consider re-tracing without freeze) "
-                    f"\nfloat64 error: {e64}\nfloat32 error: {e32}"
-                )
-        
-    # ---- run inference in batches (float64 end-to-end)
-    pin_mem = device.type == 'cuda'
+        probe64 = torch.zeros(1, in_dim, dtype=torch.float64, device=device)
+        _ = model(probe64)
+        print("[inf] model accepted float64 inputs")
+
+    # ---- DataLoader over coords (float64 on CPU)
+    pin_mem = (device.type == "cuda")
     loader = DataLoader(
-        dataset=coords_tensor,  # already float64
+        dataset=coords_tensor,
         batch_size=args.batch_size,
         shuffle=False,
-        pin_memory=pin_mem
+        pin_memory=pin_mem,
     )
 
     preds = []
     with torch.no_grad():
         for bi, batch in enumerate(loader, 1):
-            if device.type == 'cuda':
-                torch.cuda.empty_cache()
-            # cast input to model dtype
-            batch = batch.to(device, non_blocking=pin_mem).to(preferred_dtype)
+            batch = batch.to(device, non_blocking=pin_mem).to(torch.float64)
             out = model(batch)  # [B,1] or [B]
             preds.append(out.view(-1).detach().cpu().to(torch.float64).numpy())
-            # if bi % 10 == 0:
-                # print(f"[inf] processed batch {bi}")
-        if device.type == 'cuda':
+            if bi % 10 == 0:
+                print(f"[inf] processed batch {bi}")
+        if device.type == "cuda":
             torch.cuda.synchronize()
 
     preds = np.concatenate(preds, axis=0)  # float64 output
+    print(f"[inf] preds.size = {preds.size}, dtype={preds.dtype}")
 
-    # ---- save outputs (float64, x-fastest when raveled in C-order)
-    result_dir = os.path.join('../Result', args.dataset)
-    os.makedirs(result_dir, exist_ok=True)
-    out_path = os.path.join(result_dir, f"{base}-{args.up_sample_ratio}.dat")
-
-    # reshape to [H,W] with x as last axis so C-order ravel is x-fastest
-    # A = preds.reshape(H, W)                   # rows=y (slow), cols=x (fast)
-    
-    
-    # T = dataset.total_samples
-    T = getattr(dataset, 'total_samples', None)
-    dim = getattr(dataset, 'dim', None)
-
-    if T is not None and isinstance(dim, (tuple, list)) and len(dim) == 2:
-        shape = dataset.span_num()
-        shape = args.up_sample_ratio * shape
-
-        H, W = shape[0], shape[1]
-        T = shape[2]
-
+    # ---- reshape & save as 3D [T,H,W] field (super-spatial-temporal)
+    # Use same dims as in ScalarDataSet.span_num() * up_sample_ratio
+    if args.application == "super-spatial-temporal":
+        sample_size = dataset.span_num() * args.up_sample_ratio     # [H,W,T] blocks
+        H, W, T = map(int, sample_size)
+        print(f"[inf] H={H}, W={W}, T={T}")
         per_t = H * W
-        if T * per_t == preds.size:
-            # Rebuild a [T, H, W] volume; incoming per-slice stream is y-fastest inside
+        if preds.size == T * per_t:
             A = np.empty((T, H, W), dtype=np.float64)
             for t in range(T):
                 v = preds[t * per_t:(t + 1) * per_t]
-                # reshape with Fortran order then transpose -> (H, W) with x-fastest when raveled in C
-                A[t] = v.reshape(W, H, order='F').T
-            A.ravel(order='C').astype('<f8').tofile(out_path)
+                # match original layout: reshape(W,H, 'F').T -> (H,W) x-fastest in C-order
+                A[t] = v.reshape(W, H, order="F").T
+
+            result_dir = os.path.join("../Result", args.dataset)
+            os.makedirs(result_dir, exist_ok=True)
+            out_path = os.path.join(result_dir, f"{base}-{args.up_sample_ratio}.dat")
+            A.ravel(order="C").astype("<f8").tofile(out_path)
             print(f"[inf] Saved 3D field (float64, x-fastest) to: {out_path}")
             return
         else:
             print(f"[inf][warn] Size mismatch: got {preds.size}, expected {T*per_t}. Saving flat.")
 
-    # Fallback: save flat array
-    preds.astype('<f8').tofile(out_path)
+    # ---- fallback: save flat
+    result_dir = os.path.join("../Result", args.dataset)
+    os.makedirs(result_dir, exist_ok=True)
+    out_path = os.path.join(result_dir, f"{base}-{args.up_sample_ratio}.dat")
+    preds.astype("<f8").tofile(out_path)
     print(f"[inf] Saved flat array (float64) to: {out_path}")
+
+# def inf(dataset, args):
+#     """
+#     Inference with a float64 TorchScript (.pt) model.
+#     - Loads the full scripted/traced model (no state_dict needed)
+#     - Evaluates in float64 on CPU or CUDA (if available and requested)
+#     - Builds a fixed-z slice on a uniform (y,x) grid
+#     - Saves outputs as float64 in x-fastest layout
+#     # """
+#     # import os
+#     # import numpy as np
+#     # import torch
+#     # from torch.utils.data import DataLoader
+
+#     # ---- device selection
+#     use_cuda = getattr(args, 'cuda', False) and torch.cuda.is_available()
+#     device = torch.device('cuda') if use_cuda else torch.device('cpu')
+#     print(f"[inf] device = {device}")
+
+#     # ---- resolve model path (prefer '-float64.pt', fallback to '.pt')
+#     base = f"{args.application}-{args.init}-{args.num_res}"
+#     pt64_path = os.path.join(args.model_path, args.dataset, base + "-float64.pt")
+#     pt32_path = os.path.join(args.model_path, args.dataset, base + ".pt")
+    
+#     ckpt_pth=os.path.join(
+#             args.model_path, args.dataset,
+#             f'{args.application}-{args.init}-{args.num_res}-{args.num_epochs}.pth'
+#         )
+
+#     ts_to_use = None
+    
+#     if os.path.exists(ckpt_pth):
+#         print(f"[inf] Found checkpoint: {ckpt_pth} — exporting TorchScript float64...")
+#         py_model = _build_model_from_args(args)
+#         # load weights
+#         sd = torch.load(ckpt_pth, map_location="cpu")
+#         py_model.load_state_dict(sd, strict=True)
+#         py_model = py_model.cpu().to(torch.float64).eval()
+
+#         # export TS float64
+#         in_dim = 3 if args.application == 'super-spatial-temporal' else 4
+#         example = torch.zeros(1, in_dim, dtype=torch.float64)
+#         try:
+#             ts_model = torch.jit.trace(py_model, example)
+#         except Exception as e:
+#             print(f"[warn] trace failed ({e}), falling back to script()")
+#             ts_model = torch.jit.script(py_model)
+#         ts_model = torch.jit.freeze(ts_model)
+#         ts_model.save(pt64_path)
+#         print(f"[inf] Exported TorchScript float64 to: {pt64_path}")
+#         ts_to_use = pt64_path
+    
+    
+#     else: # ---- if only 32-bit .pt exists, convert to 64-bit and save
+#         if os.path.exists(pt64_path):
+#             print(f"[inf] Using existing TorchScript: {pt64_path}")
+#             ts_to_use = pt64_path
+#         elif os.path.exists(pt32_path):
+#             print(f"[inf] {pt64_path} not found; converting {pt32_path} -> float64 .pt ...")
+#             # Load on CPU to avoid CUDA dependency in saved file
+#             m32 = torch.jit.load(pt32_path, map_location="cpu")
+#             m32.eval()
+#             # Cast internal tensors to float64 if supported
+#             try:
+#                 m32 = m32.to(dtype=torch.float64)
+#             except Exception as e:
+#                 raise RuntimeError(
+#                     f"Failed to cast TorchScript module to float64; "
+#                     f"re-save the model as float64 at training time. Details: {e}"
+#                 )
+#             # Freeze and save float64 module
+#             m32 = torch.jit.freeze(m32)
+#             m32.save(pt64_path)
+#             ts_to_use = pt64_path
+#             print(f"[inf] Saved float64 TorchScript to: {pt64_path}")
+#         else:
+#             raise FileNotFoundError(f"No model found: {ckpt_pth} / {pt64_path} / {pt32_path}")
+
+#     # ---- load the float64 TorchScript for inference
+#     print(f"[inf] Loading TorchScript: {pt64_path}")
+#     model = torch.jit.load(pt64_path, map_location=device)
+#     model.eval()
+#     try:
+#         model = model.to(device)
+#     except Exception:
+#         pass  # Some TS wrappers don't expose .to; inputs will still be float64
+
+    
+#     # Many TS models already carry dtype; we still feed float64 inputs to ensure double pipeline
+#     # If your TS is truly float32, sending float64 inputs may upcast internally (or you can
+#     # re-save as -float64.pt as shown in train()).
+
+#     # ---- build a fixed-z slice grid in float64 (normalized coords in [-1,1])
+#     # You can expose these via args if you like:
+#     # z_fixed = getattr(args, "z_fixed", 0.0)   # normalized z in [-1, 1]
+#     # H = getattr(args, "H", 3000)
+#     # W = getattr(args, "W", 3000)
+
+#     # y_lin = np.linspace(-1.0, 1.0, H, dtype=np.float64)
+#     # x_lin = np.linspace(-1.0, 1.0, W, dtype=np.float64)
+#     # yy, xx = np.meshgrid(y_lin, x_lin, indexing='ij')       # yy: HxW, xx: HxW
+#     # zz = np.full_like(yy, fill_value=float(z_fixed))        # fixed z everywhere
+#     # coords = np.stack([zz, yy, xx], axis=-1).reshape(-1, 3).astype(np.float64)
+    
+#     # Coord order: (z, y, x)  -> shape [H*W, 3]
+#     coords = dataset.GetTestingData(up_sample_ratio=args.up_sample_ratio,type=np.float64)
+
+#     print(f"[inf] Total coords = {coords.shape[0]}, dim = {coords.shape[1]}")
+    
+#     # ---- robust conversion to torch.DoubleTensor
+#     if torch.is_tensor(coords):
+#         coords_tensor = coords if coords.dtype == torch.float64 else coords.to(torch.float64)
+#     else:
+#         try:
+#             coords_np = np.asarray(coords, dtype=np.float64)
+#             coords_tensor = torch.from_numpy(coords_np)
+#         except Exception:
+#             coords_tensor = torch.tensor(coords, dtype=torch.float64)
+
+
+#     if coords_tensor.dtype != torch.float64:
+#         coords_tensor = coords_tensor.to(torch.float64)
+    
+#     in_dim = int(coords_tensor.shape[1])
+#     preferred_dtype = None
+#     with torch.no_grad():
+#         # Try float64 first
+#         try:
+#             probe64 = torch.zeros(1, in_dim, dtype=torch.float64, device=device)
+#             _ = model(probe64)
+#             preferred_dtype = torch.float64
+#             print("[inf] model accepted float64 inputs")
+#         except Exception as e64:
+#             # Try float32
+#             try:
+#                 probe32 = torch.zeros(1, in_dim, dtype=torch.float32, device=device)
+#                 _ = model(probe32)
+#                 preferred_dtype = torch.float32
+#                 print("[inf] model accepted float32 inputs")
+#             except Exception as e32:
+#                 raise RuntimeError(
+#                     "TorchScript model rejected both float64 and float32 inputs. "
+#                     "Please export a valid .pt (consider re-tracing without freeze) "
+#                     f"\nfloat64 error: {e64}\nfloat32 error: {e32}"
+#                 )
+        
+#     # ---- run inference in batches (float64 end-to-end)
+#     pin_mem = device.type == 'cuda'
+#     loader = DataLoader(
+#         dataset=coords_tensor,  # already float64
+#         batch_size=args.batch_size,
+#         shuffle=False,
+#         pin_memory=pin_mem
+#     )
+
+#     preds = []
+#     with torch.no_grad():
+#         for bi, batch in enumerate(loader, 1):
+#             if device.type == 'cuda':
+#                 torch.cuda.empty_cache()
+#             # cast input to model dtype
+#             batch = batch.to(device, non_blocking=pin_mem).to(preferred_dtype)
+#             out = model(batch)  # [B,1] or [B]
+#             preds.append(out.view(-1).detach().cpu().to(torch.float64).numpy())
+#             # if bi % 10 == 0:
+#                 # print(f"[inf] processed batch {bi}")
+#         if device.type == 'cuda':
+#             torch.cuda.synchronize()
+
+#     preds = np.concatenate(preds, axis=0)  # float64 output
+
+#     # ---- save outputs (float64, x-fastest when raveled in C-order)
+#     result_dir = os.path.join('../Result', args.dataset)
+#     os.makedirs(result_dir, exist_ok=True)
+#     out_path = os.path.join(result_dir, f"{base}-{args.up_sample_ratio}.dat")
+
+#     # reshape to [H,W] with x as last axis so C-order ravel is x-fastest
+#     # A = preds.reshape(H, W)                   # rows=y (slow), cols=x (fast)
+    
+    
+#     # T = dataset.total_samples
+#     T = getattr(dataset, 'total_samples', None)
+#     dim = getattr(dataset, 'dim', None)
+
+#     if T is not None and isinstance(dim, (tuple, list)) and len(dim) == 2:
+#         shape = dataset.span_num()
+#         shape = args.up_sample_ratio * shape
+
+#         H, W = shape[0], shape[1]
+#         T = shape[2]
+
+#         per_t = H * W
+#         if T * per_t == preds.size:
+#             # Rebuild a [T, H, W] volume; incoming per-slice stream is y-fastest inside
+#             A = np.empty((T, H, W), dtype=np.float64)
+#             for t in range(T):
+#                 v = preds[t * per_t:(t + 1) * per_t]
+#                 # reshape with Fortran order then transpose -> (H, W) with x-fastest when raveled in C
+#                 A[t] = v.reshape(W, H, order='F').T
+#             A.ravel(order='C').astype('<f8').tofile(out_path)
+#             print(f"[inf] Saved 3D field (float64, x-fastest) to: {out_path}")
+#             return
+#         else:
+#             print(f"[inf][warn] Size mismatch: got {preds.size}, expected {T*per_t}. Saving flat.")
+
+#     # Fallback: save flat array
+#     preds.astype('<f8').tofile(out_path)
+#     print(f"[inf] Saved flat array (float64) to: {out_path}")

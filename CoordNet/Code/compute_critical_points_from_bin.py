@@ -13,9 +13,13 @@ from paraview import servermanager as sm
 
 
 # ---------------------------------------------------------------------
-# TTK plugin loading (same as your other script)
+# TTK plugin loading
 # ---------------------------------------------------------------------
 def plugin_log(is_server: int):
+    """
+    Load TTK plugin on local machine (0) or remote server (1).
+    Adjust paths to your ParaView installations.
+    """
     if is_server == 0:
         LoadPlugin(
             "/home/guanqunma/ParaView-5.11.2-MPI-Linux-Python3.9-x86_64"
@@ -33,45 +37,44 @@ def plugin_log(is_server: int):
 
 
 # ---------------------------------------------------------------------
-# Dataset geometry and domain (must match sampling script)
+# Dataset geometry & domain (match binary_time_data_convert.py)
+# dim = [Nx, Ny, Nz]
 # ---------------------------------------------------------------------
 def dataset_span_and_domain(name: str, up_sample_ratio: int):
     if name == "vortex_street_3d":
-        base_span = np.array([80, 10, 15], dtype=int)
+        base_dim = np.array([80, 10, 15], dtype=int)
         dom_min = np.array([-0.5, -0.5, 13.5], dtype=float)
-        dom_max = np.array([7.5,  0.5, 15.0], dtype=float)
+        dom_max = np.array([ 7.5,  0.5, 15.0], dtype=float)
     elif name == "boussinesq_3d":
-        base_span = np.array([10, 30, 15], dtype=int)
+        base_dim = np.array([10, 30, 15], dtype=int)
         dom_min = np.array([-0.5, -0.5, 0.0], dtype=float)
-        dom_max = np.array([0.5,  2.5, 1.5], dtype=float)
+        dom_max = np.array([ 0.5,  2.5, 1.5], dtype=float)
     elif name == "fluid":
-        base_span = np.array([10, 10, 10], dtype=int)
+        base_dim = np.array([10, 10, 10], dtype=int)
         dom_min = np.array([0.0, 0.0, 0.0], dtype=float)
         dom_max = np.array([1.0, 1.0, 1.0], dtype=float)
     elif name == "cylinder":
-        base_span = np.array([40, 10, 10], dtype=int)
+        base_dim = np.array([40, 10, 10], dtype=int)
         dom_min = np.array([1.5, 0.5, 0.0], dtype=float)
         dom_max = np.array([5.5, 1.5, 1.0], dtype=float)
     elif name == "cylinder2":
-        base_span = np.array([23, 10, 10], dtype=int)
+        base_dim = np.array([23, 10, 10], dtype=int)
         dom_min = np.array([3.2, 0.5, 0.0], dtype=float)
         dom_max = np.array([5.5, 1.5, 1.0], dtype=float)
     elif name == "cylinder3":
-        base_span = np.array([20, 10, 10], dtype=int)
+        base_dim = np.array([20, 10, 10], dtype=int)
         dom_min = np.array([3.5, 0.5, 0.0], dtype=float)
         dom_max = np.array([5.5, 1.5, 5.0], dtype=float)
     else:
         raise ValueError(f"Unknown dataset name: {name}")
 
-    sample_size = base_span * int(up_sample_ratio)
-    H, W, T = map(int, sample_size)
-    # For vtkImageData we treat x=W, y=H, z=T
-    Nx, Ny, Nz_global = W, H, T
-    return np.array([Nx, Ny, Nz_global], dtype=int), dom_min, dom_max
+    dim = base_dim * int(up_sample_ratio)  # [Nx, Ny, Nz]
+    Nx, Ny, Nz = map(int, dim)
+    return np.array([Nx, Ny, Nz], dtype=int), dom_min, dom_max
 
 
 # ---------------------------------------------------------------------
-# Bin → vtkImageData
+# Bin → vtkImageData (same layout as binary_time_data_convert.py)
 # ---------------------------------------------------------------------
 def load_bin_to_vtkImageData(
     input_bin: str,
@@ -106,32 +109,34 @@ def load_bin_to_vtkImageData(
         f"z_start={z_start_idx}, z_count={z_count}"
     )
 
-    # reshape to (z_count, Ny, Nx)
+    # Reshape like binary_time_data_convert: (Nz, Ny, Nx) = (T, Ny, Nx)
     arr = data.reshape((z_count, Ny_g, Nx_g))
 
     distance = dom_max - dom_min
-    dx = distance[1] / (Nx_g - 1) if Nx_g > 1 else 1.0
-    dy = distance[0] / (Ny_g - 1) if Ny_g > 1 else 1.0
+    dx = distance[0] / (Nx_g - 1) if Nx_g > 1 else 1.0
+    dy = distance[1] / (Ny_g - 1) if Ny_g > 1 else 1.0
     dz = distance[2] / (Nz_global - 1) if Nz_global > 1 else 1.0
 
     img = vtk.vtkImageData()
     img.SetDimensions((Nx_g, Ny_g, 1))
     img.SetSpacing((dx, dy, 1.0))
-    # origin: (x_min, y_min, z_min)
-    img.SetOrigin(dom_min[1], dom_min[0], dom_min[2])
+    img.SetOrigin(dom_min[0], dom_min[1], dom_min[2])
 
     for local_z in range(z_count):
         global_z = z_start_idx + local_z
         arr_name = f"{global_z:04d}"
 
-        # Flatten XY with x fastest: transpose then Fortran-flatten
-        flat = arr[local_z].T.ravel(order="F")
+        # Exactly as in binary_time_data_convert.py:
+        # slice_2d = np_array[z, :, :]  # (Ny, Nx)
+        # flat = slice_2d.T.ravel(order='F')
+        slice_2d = arr[local_z]              # (Ny, Nx)
+        flat = slice_2d.T.ravel(order="F")   # (Nx*Ny, )
 
         vtk_arr = numpy_to_vtk(flat, deep=True, array_type=vtk.VTK_DOUBLE)
         vtk_arr.SetName(arr_name)
         img.GetPointData().AddArray(vtk_arr)
 
-        # encode physical z (t) in field data
+        # Encode physical z (time) in field data
         z_array = vtk.vtkDoubleArray()
         z_array.SetName(arr_name)
         z_array.SetNumberOfComponents(1)
@@ -177,14 +182,15 @@ def critical_points_from_vtkImageData_chunk(
         pts = vtk_to_numpy(out.GetPoints().GetData())
         zvals = vtk_to_numpy(out.GetFieldData().GetArray(arr_name))
         if zvals.size > 0:
-            pts[:, 2] = zvals[0]
+            pts[:, 2] = zvals[0]  # overwrite z with physical time
 
         bndry = vtk_to_numpy(out.GetPointData().GetArray("IsOnBoundary"))
         mask = bndry != 1
         pts = pts[mask]
 
         for p in pts:
-            csvwriter.writerow([p[0], p[1], p[2]])
+            # csvwriter.writerow([p[0], p[1], p[2]])
+            csvwriter.writerow([f"{p[0]:.16g}",f"{p[1]:.16}",f"{p[2]:.16g}"])
 
 
 # ---------------------------------------------------------------------
