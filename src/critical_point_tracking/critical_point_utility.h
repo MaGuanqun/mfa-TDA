@@ -68,11 +68,12 @@ namespace critical_point_utility
 
         for(int i=0;i<traces.size();++i)
         {
-            for(int j=0;j<traces[i].traces.size();++j)
-            {
-                
-                VectorX<T>& p = traces[i].traces[j];
-                critical_point_type_single_point(p, critical_point_types, function_type, b, inr_model);
+            if(!traces[i].duplicated){
+                for(int j=0;j<traces[i].traces.size();++j)
+                {
+                    VectorX<T>& p = traces[i].traces[j];
+                    critical_point_type_single_point(p, critical_point_types, function_type, b, inr_model);
+                }
             }
         }
     }

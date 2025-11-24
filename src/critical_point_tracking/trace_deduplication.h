@@ -1,9 +1,14 @@
 #pragma once
+
 #include <vector>
+#include <unordered_map>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
 #include <Eigen/Dense>
 #include "CP_Trace.h"
 
-namespace deduplication 
+namespace deduplication
 {
 
 template<typename T>
@@ -14,33 +19,6 @@ struct TraceTimeRange
     int trace_id;
 };
 
-template<typename T>
-struct Hash
-{
-    size_t operator()(const Eigen::VectorX<T>& v) const
-    {
-        std::hash<T> hasher;
-        size_t seed = 0;
-        int index=(v.size()>>1)+2;
-        for (int i =3;i<index;++i) {
-            seed ^= hasher(v[i]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-        }
-        return seed;
-    }
-};
-
-
-template<typename T>
-struct Equal {
-    bool operator()(const Eigen::VectorX<T>& a, const Eigen::VectorX<T>& b) const {
-        int size=(a.size()>>1)-1;
-        T temporal_distance = std::abs(a[a.size()-1] - b[b.size()-1]);
-
-        T squaredDistance = (a.segment(size+3,size-1)-b.segment(size+3,size-1)).squaredNorm();
-
-        return (squaredDistance <= a[0] * a[0])&&(temporal_distance <= a[1]);
-    }
-};
 
 //true: close enough
 template<typename T>
@@ -57,27 +35,6 @@ bool check_compute_distance_from_P_to_A_B(const VectorX<T>& P, const VectorX<T>&
 
     return false; //point P is not close enough to point A or B
 
-    // VectorX<T> AP= (P- A).head(P.size()-1);
-    // VectorX<T> AB = (B - A).head(P.size()-1);
-
-    // VectorX<T> closest_point;
-    // if(AB.squaredNorm()>1e-20)
-    // {
-    //     T t = AP.dot(AB) / AB.squaredNorm();
-    //     t = std::clamp(t,0.0,1.0);
-    //     closest_point = A + t * AB;
-    // }
-    // else
-    // {
-    //     closet_point = A;
-    // }
-
-    // T squared_distance = ((P-closest_point).head(P.size()-1)).squaredNorm();
-    // if(squared_distance < spatial_step_size*spatial_step_size)
-    // {
-    //     return true;
-    // }
-    // return false;
     
 }
 
@@ -204,35 +161,94 @@ void splitting(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degener
             int size = traces.size();
             traces.resize(size+1);
             traces.back().traces.insert(traces.back().traces.end(), traces[i].traces.begin()+matching_degenerate_trace_point_id[i][j], traces[i].traces.begin()+matching_degenerate_trace_point_id[i][j+1]);
-            traces.back().connect_info[0] = matching_degenerate_point_id[i][j];
-            traces.back().connect_info[1] = matching_degenerate_point_id[i][j+1];
+            // traces.back().connect_info[0] = matching_degenerate_point_id[i][j];
+            // traces.back().connect_info[1] = matching_degenerate_point_id[i][j+1];
         }
         //add the last part of the trace
         int size = traces.size();
         traces.resize(size+1);
         traces.back().traces.insert(traces.back().traces.end(), traces[i].traces.begin()+matching_degenerate_trace_point_id[i].back(), traces[i].traces.end());
-        traces.back().connect_info[0] = matching_degenerate_point_id[i].back();
+        // traces.back().connect_info[0] = matching_degenerate_point_id[i].back();
         traces[i].traces.erase(traces[i].traces.begin()+matching_degenerate_trace_point_id[i][0], traces[i].traces.end());
     }
 
 }
+// ============================================================================
+// 1. Cell key & hash for spatial hashing
+// ============================================================================
 
+struct CellKey
+{
+    // One integer index per dimension (spatial dims + time dim)
+    std::vector<long long> idx;
+
+    bool operator==(const CellKey& other) const noexcept
+    {
+        return idx == other.idx;
+    }
+};
+
+struct CellKeyHash
+{
+    size_t operator()(CellKey const& key) const noexcept
+    {
+        std::hash<long long> hasher;
+        size_t seed = 0;
+        for (auto v : key.idx)
+        {
+            seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
+
+// Map: cell -> list of trace IDs whose *first point* lies in that cell
+using CellMap = std::unordered_map<CellKey, std::vector<int>, CellKeyHash>;
+
+// ============================================================================
+// 2. You already have this in your old code: we just forward-declare it here.
+//    (Keep your existing definition; remove this declaration if you include
+//     a header that already declares it.)
+// ============================================================================
 
 template<typename T>
-//for two traces with same start, test if they are the same. Test mid point and end point
-bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces, int trace_id_0, int trace_id_1, T spatial_step_size, T time_step)
+bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces,
+                          int trace_id_0,
+                          int trace_id_1,
+                          T spatial_step_size,
+                          T time_step)
 {
-
     int dim = traces[trace_id_0].traces[0].size();
+
+    if(std::abs(traces[trace_id_0].traces[0][dim-1]-traces[trace_id_1].traces[0][dim-1]) > time_step)
+    {
+
+        return false;
+    }
+
+    if((traces[trace_id_0].traces[0].head(dim-1)-traces[trace_id_1].traces[0].head(dim-1)).squaredNorm() > spatial_step_size*spatial_step_size)
+    {
+        return false;
+    }
+
     if(std::abs(traces[trace_id_0].traces.back()[dim-1]-traces[trace_id_1].traces.back()[dim-1]) > time_step)
     {
+        // std::cout<<"error "<<std::abs(traces[trace_id_0].traces.back()[dim-1]-traces[trace_id_1].traces.back()[dim-1]) <<std::endl;
+
         return false;
     }
     if((traces[trace_id_0].traces.back().head(dim-1)-traces[trace_id_1].traces.back().head(dim-1)).squaredNorm() > spatial_step_size*spatial_step_size)
     {
+        // std::cout<<"error 2 "<<(traces[trace_id_0].traces.back().head(dim-1)-traces[trace_id_1].traces.back().head(dim-1)).squaredNorm()<<std::endl;
+        // std::cout<<trace_id_0<<" "<<trace_id_1<<std::endl;
+        // std::cout<< traces[trace_id_0].traces[0].transpose()<<std::endl;
+        // std::cout<< traces[trace_id_1].traces[1].transpose()<<std::endl;
         return false;
     }
     auto& mid = traces[trace_id_0].traces[traces[trace_id_0].traces.size()>>1];
+
+    // std::cout<<"mid point test "<<mid.transpose()<<std::endl;
+    
 
     auto it2 = std::upper_bound(
             traces[trace_id_1].traces.begin(), traces[trace_id_1].traces.end(), mid[dim-1],
@@ -262,194 +278,192 @@ bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces, int trace_id_0, int 
             return true;
         }
     }
+
+    // std::cout<< it2-traces[trace_id_1].traces.begin()<< " mid point test failed "<<std::endl;
     
     return false;
-
 }
 
-//the point should be 2n+3 <spatial threshold, temporal threshold, trace_index, current hash index, original position>
-template<typename T>
-bool registerCell(Eigen::VectorX<T>& Position, T spatial_epsilon, T temporal_epsilon, std::vector<std::vector<size_t>>& temp_index,std::unordered_set<Eigen::VectorX<T>, Hash<T>, Equal<T>>& points_step_1, const VectorX<T>& domain_min,std::vector<CP_Trace<T>>& traces)
+// ============================================================================
+// 3. Helper: compute candidate cell indices for one coordinate
+//    (central cell + possible neighbor cells if near boundary)
+// ============================================================================
+
+template <typename T>
+inline void build_candidate_indices_1d(
+    T coord,              // coordinate value
+    T domain_min,         // domain min in this dimension
+    T epsilon,            // spatial_step_size (for x/y/z) or time_step (for t)
+    T cell_factor,        // e.g. 10.0  -> cell_size = cell_factor * epsilon
+    std::vector<long long>& out_indices)
 {
-    size_t k1;
+    out_indices.clear();
 
-    T k0, t0;
-    T cell_size=10.0;
-    T left_range=1.0 / cell_size; T right_range=1.0 - left_range;
-
-    int j=0;
-    for(int i=((Position.size()>>1)+2);i<Position.size()-1;++i)
+    T cell_size = cell_factor * epsilon;
+    if (cell_size <= T(0))
     {
-        temp_index[j].clear();
-        k0=(Position[i]-domain_min[j]) / (cell_size*spatial_epsilon);
-        t0=k0-std::floor(k0);
-        k1=std::floor(k0);
-        temp_index[j].emplace_back(k1); 
-        if(t0<left_range)
-        {            
-            temp_index[j].emplace_back(k1-1);
-        }
-        else if(t0>right_range)
+        // Avoid division by zero; treat as single "cell 0"
+        out_indices.push_back(0);
+        return;
+    }
+
+    T k = (coord - domain_min) / cell_size;
+
+    auto k_floor = static_cast<long long>(std::floor(k));
+    T frac = k - static_cast<T>(k_floor);
+
+    const T left_range  = T(1.0) / cell_factor;
+    const T right_range = T(1.0) - left_range;
+
+    // Central cell
+    out_indices.push_back(k_floor);
+
+    // Neighbor cells if near cell boundary
+    if (frac < left_range)
+    {
+        out_indices.push_back(k_floor - 1);
+    }
+    else if (frac > right_range)
+    {
+        out_indices.push_back(k_floor + 1);
+    }
+}
+
+// ============================================================================
+// 4. Core: register one trace by its first point
+//    - Searches nearby cells for a first point close enough
+//    - For each candidate trace, calls two_traces_are_equal()
+//    - If any equal: return false (duplicate)
+//    - Else: insert this trace into the hash and return true
+// ============================================================================
+
+template <typename T>
+bool register_trace_by_first_point(
+    int trace_id,
+    std::vector<CP_Trace<T>>& traces,            // non-const for your existing two_traces_are_equal
+    CellMap& cell_map,                           // stateful structure reused across calls
+    const Eigen::VectorX<T>& domain_min,         // size = dim (spatial + time)
+    T spatial_step_size,
+    T time_step,
+    T cell_factor = T(10.0))                     // controls cell size: cell_size = cell_factor * epsilon
+{
+    // Skip empty traces
+    if (traces[trace_id].traces.empty())
+        return true; // nothing to compare; you can alternatively mark duplicated=true
+
+    const auto& first_point = traces[trace_id].traces.front();
+    const int dim = static_cast<int>(first_point.size()); // number of coordinates: space_dim + 1 (time)
+
+    if (domain_min.size() != dim)
+    {
+        throw std::runtime_error("domain_min.size() != first_point.size() in register_trace_by_first_point");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4.1 Build candidate indices per dimension (including time)
+    // ------------------------------------------------------------------------
+    std::vector<std::vector<long long>> candidates(dim);
+    for (int d = 0; d < dim; ++d)
+    {
+        const bool is_time_dim = (d == dim - 1);
+        T eps = is_time_dim ? time_step : spatial_step_size;
+
+        build_candidate_indices_1d(
+            first_point[d],
+            domain_min[d],
+            eps,
+            cell_factor,
+            candidates[d]);
+    }
+
+    // ------------------------------------------------------------------------
+    // 4.2 Iterate over the cartesian product of candidate indices
+    //     (= neighbor cells) and look for equal traces
+    // ------------------------------------------------------------------------
+    std::vector<int> sizes(dim);
+    int total_combinations = 1;
+    for (int d = 0; d < dim; ++d)
+    {
+        sizes[d] = static_cast<int>(candidates[d].size());
+        total_combinations *= sizes[d];
+    }
+
+    for (int combo = 0; combo < total_combinations; ++combo)
+    {
+        int tmp = combo;
+
+        CellKey key;
+        key.idx.resize(dim);
+
+        // Decode combo index into indices per dimension
+        for (int d = 0; d < dim; ++d)
         {
-            temp_index[j].emplace_back(k1+1);
+            int idx_in_dim = tmp % sizes[d];
+            tmp /= sizes[d];
+
+            key.idx[d] = candidates[d][idx_in_dim];
         }
-        j++;
-    }
 
-    temp_index[j].clear();
-    k0=(Position[Position.size()-1]-domain_min[j]) / (cell_size*temporal_epsilon);
-    t0=k0-std::floor(k0);
-    k1=std::floor(k0);
-    temp_index[j].emplace_back(k1);
-    if(t0<left_range)
-    {            
-        temp_index[j].emplace_back(k1-1);
-    }
-    else if(t0>right_range)
-    {
-        temp_index[j].emplace_back(k1+1);
-    }
+        auto it = cell_map.find(key);
+        if (it == cell_map.end())
+            continue;
 
-   if(Position.size()==7) //dimension = 2
-    {
-        for(auto i:temp_index[0])
+        // For all traces in this cell, test equality by full trace comparison
+        for (int other_trace_id : it->second)
         {
-            for(auto j:temp_index[1])
+            if (two_traces_are_equal(traces,
+                                     other_trace_id,
+                                     trace_id,
+                                     spatial_step_size,
+                                     time_step))
             {
-                Position[3]=i;
-                Position[4]=j;
-
-                auto range = points_step_1.equal_range(Position);
-
-                for (auto it = range.first; it != range.second; ++it) {
-                    const auto& elem = *it;
-                    // elem is equal to Position according to VectorEqual<T>
-                    if(two_traces_are_equal(traces, elem[2], Position[2], spatial_epsilon, temporal_epsilon))
-                    {
-                        return false; // deplicated root
-                    }
-                }
+                // Found an equal trace -> treat this trace as duplicate
+                return false;
             }
         }
     }
-    else if(Position.size()==9) //dimension = 3
+
+    // ------------------------------------------------------------------------
+    // 4.3 No equal trace found, insert this trace into its *central* cell
+    // ------------------------------------------------------------------------
+    CellKey central_key;
+    central_key.idx.resize(dim);
+
+    for (int d = 0; d < dim; ++d)
     {
-        for(auto i:temp_index[0])
+        const bool is_time_dim = (d == dim - 1);
+        T eps = is_time_dim ? time_step : spatial_step_size;
+        T cell_size = cell_factor * eps;
+        if (cell_size <= T(0))
         {
-            for(auto j:temp_index[1])
-            {
-                for(auto k:temp_index[2])
-                {
-                    Position[3]=i;
-                    Position[4]=j;
-                    Position[5]=k;
-
-                    auto range = points_step_1.equal_range(Position);
-
-                    for (auto it = range.first; it != range.second; ++it) {
-                        const auto& elem = *it;
-                        // elem is equal to Position according to VectorEqual<T>
-                        if(two_traces_are_equal(traces, elem[2], Position[2], spatial_epsilon, temporal_epsilon))
-                        {
-                            return false; // deplicated root
-                        }
-                    }
-
-                    // auto status =  points_step_1.insert(Position);
-                    // if(!status.second)
-                    // {
-                    //     duplicated=true;
-
-                    // }
-                }
-            }
+            central_key.idx[d] = 0;
         }
-    }
-    else if(Position.size()==11)
-    {
-
-        for(auto i:temp_index[0])
+        else
         {
-            for(auto j:temp_index[1])
-            {
-                for(auto k:temp_index[2])
-                {
-                    for(auto l:temp_index[3])
-                    {
-                        Position[3]=i;
-                        Position[4]=j;
-                        Position[5]=k;
-                        Position[6]=l;
-
-                        auto range = points_step_1.equal_range(Position);
-
-                        for (auto it = range.first; it != range.second; ++it) {
-                            const auto& elem = *it;
-                            if(two_traces_are_equal(traces, elem[2], Position[2], spatial_epsilon, temporal_epsilon))
-                            {
-                                return false; // deplicated root
-                            }
-                        }
-                       
-                    }
-                }
-            }
-        }
-    
-    }
-    else
-    {
-        int total_case=1;
-        for(auto i:temp_index)
-        {
-            total_case*=i.size();
-        }
-        std::vector<int> domain_store_size(temp_index.size());
-        domain_store_size.back()=1; //domain_store_size [...,d1*d2*d3,d1*d2,d1,1] dn is 1 or 2
-        for(int i=temp_index.size()-2;i>=0;--i)
-        {
-            domain_store_size[i]=domain_store_size[i+1]*temp_index[i+1].size();
-        }
-
-        for(int i=0;i<total_case;++i)
-        {
-            int temp=i;
-            for(int j=0;j<temp_index.size();++j)
-            {
-                Position[j+2]=temp_index[j][temp/domain_store_size[j]];
-                temp=temp%domain_store_size[j];
-            }
-
-            auto range = points_step_1.equal_range(Position);
-
-            for (auto it = range.first; it != range.second; ++it) {
-                const auto& elem = *it;
-                if(two_traces_are_equal(traces, elem[2], Position[2], spatial_epsilon, temporal_epsilon))
-                {
-                    return false; // deplicated root
-                }
-            }
+            T k = (first_point[d] - domain_min[d]) / cell_size;
+            auto k_floor = static_cast<long long>(std::floor(k));
+            central_key.idx[d] = k_floor;
         }
     }
 
-
-
-    for(int i=0;i<temp_index.size();++i)
-    {
-        Position[i+3]=temp_index[i][0]; 
-    }
-
-    points_step_1.insert(Position); //insert the point into the hash table
-    
+    cell_map[central_key].push_back(trace_id);
     return true;
-    
 }
 
-template<typename T>
-void deduplicate_traces(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degenerate_points, T spatial_step_size, T time_step,const VectorX<T>& domain_min)
+// ============================================================================
+// 5. Top-level dedup function: loop over all traces
+//    - For each trace, try to register it by first point
+//    - If register_trace_by_first_point() returns false, mark duplicated=true
+// ============================================================================
+
+template <typename T>
+void deduplicate_traces(
+    std::vector<CP_Trace<T>>& traces,
+    std::vector<VectorX<T>>& degenerate_points, 
+    T spatial_step_size,
+    T time_step,
+    const Eigen::VectorX<T>& domain_min)
 {
-    
-    //sort degenerate points by time in splitting()
 
     if(!degenerate_points.empty())
     {
@@ -457,34 +471,35 @@ void deduplicate_traces(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
 
         // std::cout<<"end splitting "<<std::endl;
     }
-    
-    std::vector<std::vector<size_t>> temp_index;
-    
-    temp_index.resize(domain_min.size());
 
-    std::unordered_set<Eigen::VectorX<T>, Hash<T>, Equal<T>> points_step_1; 
+    CellMap cell_map;
 
-    for(int i=0; i<traces.size();++i)
+    for (int i = 0; i < static_cast<int>(traces.size()); ++i)
     {
-        if(traces[i].traces.empty())
+        if (traces[i].traces.empty())
         {
-            traces[i].duplicated=true; //skip empty traces
-            continue;  
+            // You can decide whether empty traces are considered duplicated.
+            traces[i].duplicated = true;
+            continue;
         }
-        VectorX<T> Pos(2*domain_min.size()+3); //<spatial threshold, temporal threshold, trace_index, current hash index, original position>
-        Pos[0]= spatial_step_size; Pos[1]= time_step; Pos[2]=i;
-        Pos.tail(domain_min.size()) = traces[i].traces[0];
-        //function true means not duplicated
-        if(!registerCell(Pos, spatial_step_size, time_step, temp_index, points_step_1, domain_min, traces))
+
+        bool kept = register_trace_by_first_point(
+            i,
+            traces,
+            cell_map,
+            domain_min,
+            spatial_step_size,
+            time_step);
+
+        if (!kept)
         {
-                traces[i].duplicated=true;
+            traces[i].duplicated = true;
+        }
+        else
+        {
+            traces[i].duplicated = false;
         }
     }
-
 }
 
-
-
-
-
-}
+} // namespace deduplication

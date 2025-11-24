@@ -260,7 +260,7 @@ int main(int argc, char** argv)
     trace_size=0;
     for(auto& trace:traces)
     {
-        if((!trace.duplicated) && trace.traces.size()>1)
+        if((!trace.duplicated))
         {            
             trace_size++;
         }

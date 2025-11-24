@@ -168,6 +168,9 @@ void connect_trajectory(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>
     //connect traces through degenerate points
     for(int i=0;i<traces.size();++i)
     {
+        if(traces[i].duplicated){
+            continue;  
+        }
         VectorX<T> Position(2*domain_min.size()+3); //<spatial threshold, 
         Position[0]= spatial_step_size*1.732; Position[1]= time_step*1.732; Position[2]=i;
 
