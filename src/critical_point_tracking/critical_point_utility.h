@@ -118,6 +118,11 @@ namespace critical_point_utility
         //conmpute_gradient
         for(int i=0;i<traces.size();++i)
         {
+            if(traces[i].duplicated)
+            {
+                continue;
+            }
+
             for(int j=0;j<traces[i].traces.size();++j)
             {
                 accuracy = compute_accuracy_single_point(traces[i].traces[j], function_type, b, inr_model);
