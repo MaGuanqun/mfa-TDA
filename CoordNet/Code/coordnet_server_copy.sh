@@ -25,10 +25,7 @@ num_epoch=300
 omega=30.0
 
 
-for function_name in vortex_street_3d  # boussinesq_3d, fluid vortex_street_3d
-do #cylinder2
-
-
+function_name=vortex_street_3d #vortex_street_3d, boussinesq_3d, fluid #cylinder2
 
 raw_data="../Data/$function_name.bin"
 raw_vti_file="../Result/$function_name/raw_file.vti"
@@ -37,8 +34,6 @@ raw_critical_point="../Result/$function_name/raw_critical_points.csv"
 
 out_root=logs/$function_name
 checkpoint=$out_root/checkpoints/model_final.pth
-
-
 
 
 func_raw_data="../Result/$function_name/$application-$init_feature-$num_res"
@@ -53,74 +48,28 @@ convert_obj_domain=../../src/critical_point_tracking/convert_obj_back_to_domain.
 # 
 # python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000  #--resume_epoch 270
 
-step_size=8
+step_size=2
 
 # python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size
 
-# source ~/.bashrc
-# source ~/enter/etc/profile.d/conda.sh
-# conda activate siren
-# for step_size in 2 #4 8 16 32 64
-# do
-#     python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size --save_float64_model False
-# done
-
-
+#     # source ~/.bashrc
+# # source ~/enter/etc/profile.d/conda.sh
+# # conda activate siren
+for step_size in 2 4 8 16 32 64
+do
+    python main.py --train 'inf' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --batch_size 60000 --up_sample_ratio $step_size --save_float64_model False
+done
 
 source ~/.bashrc
 source /home/u1435513-gma/enter/etc/profile.d/conda.sh
-conda activate siren
+conda activate mfa
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
 
-# # Path to your ParaView build (adjust if different)
-export PV_ROOT=/home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64
-
-export LD_LIBRARY_PATH="$PV_ROOT/lib:$LD_LIBRARY_PATH"
-
-# Debug: which python?
-
-
-for step_size in 64
+for step_size in 2 4 8 16 32 64
 do
-#     # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}-${step_size}.dat" -o "${vti_file}-${step_size}.vti" -f "${function_name}" --step_size $step_size --float_type float64
-#     # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}-${step_size}.vti" -o "${vti_critical_point}-${step_size}.csv" -s 1
-
-    # python sample_compute_cp_by_slice.py \
-    # --ts_model ../Exp/$function_name/super-spatial-temporal-64-$num_res-float64.pt \
-    # --dataset $function_name \
-    # --up_sample_ratio $step_size \
-    # --chunk_size 50 \
-    # --batch_size 100000 \
-    # --output_dir ../Result/$function_name \
-    # --output_csv_name vti_critical_points-$num_res-$step_size.csv \
-    # --pvpython /home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/bin/pvpython \
-    # --pv_script ./compute_critical_points_from_bin.py \
-    # --server 1
-
-
-    python ../../src/python/remove_obstacle.py --data "${function_name}" --input_csv "${vti_critical_point}-${step_size}.csv" --output_csv "${vti_critical_point}-${step_size}_remove_obstacle.csv"
-    python $convert_obj_domain --csv "${vti_critical_point}-${step_size}.csv" --function "${function_name}" --back_to_ori 1
-done
-
-# for step_size in 96 
-# do
-#     python sample_compute_cp_by_slice.py \
-#     --ts_model ../Exp/$function_name/super-spatial-temporal-64-$num_res-float64.pt \
-#     --dataset $function_name \
-#     --up_sample_ratio $step_size \
-#     --chunk_size 20 \
-#     --batch_size 100000 \
-#     --output_dir ../Result/$function_name \
-#     --output_csv_name vti_critical_points-$num_res-$step_size.csv \
-#     --pvpython /home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/bin/pvpython \
-#     --pv_script ./compute_critical_points_from_bin.py \
-#     --server 1
-#     # python ../../src/python/remove_obstacle.py --data "${function_name}" --input_csv "${vti_critical_point}-${step_size}.csv" --output_csv "${vti_critical_point}-${step_size}_remove_obstacle.csv"
-# # #     # python $convert_obj_domain --csv "${vti_critical_point}-${step_size}.csv" --function "${function_name}" --back_to_ori 1
-# done
-
-# done
-
+    python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}-${step_size}.dat" -o "${vti_file}-${step_size}.vti" -f "${function_name}" --step_size $step_size --float_type float64
+    pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}-${step_size}.vti" -o "${vti_critical_point}-${step_size}.csv" -s 1
+    # python $convert_obj_domain --csv "${vti_critical_point}-${step_size}.csv" --function "${function_name}" --back_to_ori 1
 done
 
 

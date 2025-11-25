@@ -23,15 +23,13 @@ convert_obj_domain=./src/critical_point_tracking/convert_obj_back_to_domain.py
 
 step_size="32"
 t_sample_ratio="32"
-root_finding_epsilon="1e-2"
-J_threshold="1e-2"
+root_finding_epsilon="1e-10"
+J_threshold="1e-9"
 
-source ~/.bashrc
-
-for data_type in "fluid"
+for data_type in "vortex_street_3d" #"vortex_street_3d" #"boussinesq_3d"
 do
     echo "Processing data type: ${data_type}"
-    # data_type="vortex_street_3d" #boussinesq_3d
+    # data_type="boussinesq_3d" #boussinesq_3d
     # data_type="quartic_potential_2"
     # data_type="sinc"
     save_folder="${data_type}_INR"
@@ -67,6 +65,8 @@ do
     smoothed_ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cpt_smoothed.csv"
 
 
+
+
     # upsample_ratio="${step_size}-${step_size}-${t_sample_ratio}"
 
     #the reshold should be really small to raw explicit function
@@ -76,42 +76,61 @@ do
     if [ "${data_type}" = "quartic_potential_2" ]; then
         input_model="./GridINR/SavedModels/${data_type}/fVSRN.pt"
     elif [ "${data_type}" = "vortex_street" ]; then
-        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
+        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
     elif [ "${data_type}" = "vortex_street_3d" ]; then
-        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
+        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
     elif [ "${data_type}" = "boussinesq_3d" ]; then
-        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
+        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
     elif [ "${data_type}" = "fluid" ]; then
-        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5.pt"
+        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
+    elif [ "${data_type}" = "cylinder" ]; then
+        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
+    elif [ "${data_type}" = "cylinder2" ]; then
+        input_model="./CoordNet/Exp/${data_type}/super-spatial-temporal-64-5-float64.pt"
     fi
 
 
-    step_size="32"
-
-    # if [ "${data_type}" = "vortex_street_3d" ]; then
-    #     "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
-    # elif [ "${data_type}" = "boussinesq_3d" ]; then
-    "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
-    "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
-    # fi
+    # step_size="64"
 
 
-    for step_size in "2" "4" "8" "16" "32"
+    # "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
+
+
+    # step_size="64"
+    # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
+
+
+    for step_size in "64" 
+    do
+        "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+    
+    done
+
+
+    for step_size in "2"
     do
         # "${convert_root_to_vtk}" -f "${degenerate_point_INR}${step_size}.dat" -o "${degenerate_point_INR}_${step_size}.csv" -j 0 -t 1 
-    #     echo "smoothing with step size: ${step_size}"
+        # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 1 
+
+        echo "smoothing with step size: ${step_size}"
     #     t_sample_ratio="${step_size}"
-        "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+        # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
         # source ~/enter/etc/profile.d/conda.sh
         # conda activate mfa
     #     python $convert_obj_domain --obj "${tracking_result}_${step_size}.obj" --function "${data_type}"
-    #     python ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}_rescale.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
-        python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
+        # pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
+
+        # source /home/u1435513-gma/enter/etc/profile.d/conda.sh
+        # conda activate mfa
+        # export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
+        # python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
     done
-done
 
 
-if [ "${step_size}" = "16" ]; then
+for step_size in "2" "4" "8" "16" "32"
+do
+
+if [ "${step_size}" = "32" ]; then
     # if [ "${data_type}" = "vortex_street_3d" ]; then
         spatial_step_size="0.00625" 
         t_step_size="0.00625"
@@ -120,7 +139,7 @@ if [ "${step_size}" = "16" ]; then
     #     t_step_size="0.0110294"
     # fi
 
-elif [ "${step_size}" = "8" ]; then
+elif [ "${step_size}" = "16" ]; then
     # if [ "${data_type}" = "vortex_street_3d" ]; then
         spatial_step_size="0.0125" 
         t_step_size="0.0125"
@@ -128,7 +147,7 @@ elif [ "${step_size}" = "8" ]; then
     #     spatial_step_size="0.01388888"
     #     t_step_size="0.0220588"
     # fi
-elif [ "${step_size}" = "4" ]; then
+elif [ "${step_size}" = "8" ]; then
     # if [ "${data_type}" = "vortex_street_3d" ]; then
         spatial_step_size="0.025" 
         t_step_size="0.025"
@@ -136,7 +155,7 @@ elif [ "${step_size}" = "4" ]; then
     #     spatial_step_size="0.02777777"
     #     t_step_size="0.0441176"
     # fi
-elif [ "${step_size}" = "32" ]; then
+elif [ "${step_size}" = "64" ]; then
     # if [ "${data_type}" = "vortex_street_3d" ]; then
         spatial_step_size="0.003125" 
         t_step_size="0.003125"
@@ -144,10 +163,18 @@ elif [ "${step_size}" = "32" ]; then
     #     spatial_step_size="0.00347222"
     #     t_step_size="0.0055147"
     # fi
-elif [ "${step_size}" = "2" ]; then
+elif [ "${step_size}" = "4" ]; then
     # if [ "${data_type}" = "vortex_street_3d" ]; then
         spatial_step_size="0.05" 
         t_step_size="0.05"
+    # elif [ "${data_type}" = "boussinesq_3d" ]; then
+    #     spatial_step_size="0.00173611"
+    #     t_step_size="0.00275735"
+    # fi
+elif [ "${step_size}" = "2" ]; then
+    # if [ "${data_type}" = "vortex_street_3d" ]; then
+        spatial_step_size="0.1" 
+        t_step_size="0.1"
     # elif [ "${data_type}" = "boussinesq_3d" ]; then
     #     spatial_step_size="0.00173611"
     #     t_step_size="0.00275735"
@@ -156,45 +183,21 @@ fi
 
 
 
-#2*step_size
-# if [ "${step_size}" = "32" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.00625" 
-#         t_step_size="0.00625"
-#     # elif [ "${data_type}" = "boussinesq_3d" ]; then
-#     #     spatial_step_size="0.00694444"
-#     #     t_step_size="0.0110294"
-#     # fi
 
-# elif [ "${step_size}" = "16" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.0125" 
-#         t_step_size="0.0125"
-#     # elif [ "${data_type}" = "boussinesq_3d" ]; then
-#     #     spatial_step_size="0.01388888"
-#     #     t_step_size="0.0220588"
-#     # fi
-# elif [ "${step_size}" = "8" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.025" 
-#         t_step_size="0.025"
-#     # elif [ "${data_type}" = "boussinesq_3d" ]; then
-#     #     spatial_step_size="0.02777777"
-#     #     t_step_size="0.0441176"
-#     # fi
-# elif [ "${step_size}" = "4" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.05" 
-#         t_step_size="0.05"
-#     # elif [ "${data_type}" = "boussinesq_3d" ]; then
-#     #     spatial_step_size="0.00173611"
-#     #     t_step_size="0.00275735"
-#     # fi
-# elif [ "${step_size}" = "2" ]; then
-#         spatial_step_size="0.1" 
-#         t_step_size="0.1"
-# fi
 
+# source ~/enter/etc/profile.d/conda.sh
+# conda activate siren
+if [ "${data_type}" = "fluid" ]; then
+    csv_file_from_model="./CoordNet/Result/${data_type}/vti_critical_points-${step_size}.csv" 
+elif [ "${data_type}" = "cylinder2" ]; then
+    csv_file_from_model="./CoordNet/Result/${data_type}/vti_critical_points-5-${step_size}.csv"
+fi
+
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}.obj" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
+
+done
+
+done
 
 # python src/python/sample_original_high_dim_func.py
 

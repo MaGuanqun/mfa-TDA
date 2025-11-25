@@ -5,15 +5,11 @@ import subprocess
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+import gc  # <<< added for explicit garbage collection
 
 
 # ---------------------------------------------------------------------
 # Dataset geometry: span_num + domain (H, W, T)
-# These H, W, T match ScalarDataSet.span_num() in dataio.py:
-#   vortex_street_3d: [80, 10, 15]
-#   boussinesq_3d:   [10, 30, 15]
-#   fluid:           [10, 10, 10]
-#   cylinder*:       [...]
 # ---------------------------------------------------------------------
 def dataset_span_and_domain(name: str, up_sample_ratio: int):
     if name == "vortex_street_3d":
@@ -43,25 +39,13 @@ def dataset_span_and_domain(name: str, up_sample_ratio: int):
     else:
         raise ValueError(f"Unknown dataset {name}")
 
-    # upsample like in GetTestingData: span_num() * up_sample_ratio
     H0, W0, T0 = base_span
     H, W, T = (base_span * int(up_sample_ratio)).astype(int)
     return H, W, T, dom_min, dom_max
 
 
 # ---------------------------------------------------------------------
-# Build coords for a chunk [z_start, z_end), matching get_mgrid EXACTLY
-#
-# Original GetTestingData() does:
-#   sample_size = span_num() * up_sample_ratio = [H,W,T]
-#   get_mgrid([T, H, W], dim=3)
-#
-# get_mgrid([T,H,W]) internally uses np.mgrid[:T, :W, :H] and returns a
-# flattened array in the order that we reproduce here analytically.
-#
-# Critically:
-#   - coords are in [-1,1]^3
-#   - flattening order is consistent with original inf() + binary_time_data_convert
+# Build coords for a chunk [z_start, z_end)
 # ---------------------------------------------------------------------
 def build_coords_chunk(H, W, T, z_start, z_end, torch_dtype):
     """
@@ -79,23 +63,8 @@ def build_coords_chunk(H, W, T, z_start, z_end, torch_dtype):
 
     idx = 0
     for t in range(z_start, z_end):
-        # time index normalized [0,1] → [-1,1]
         t_norm = (t * invT - 0.5) * 2.0
 
-        # We want to reproduce the flattened ordering that comes from:
-        # np.mgrid[:T, :W, :H] → shape (T,W,H) → ravel('C')
-        # Then original inf() remaps these to a [T,H,W] array using a
-        # specific permutation. The net effect is:
-        #   global linear index j = t*(H*W) + y*W + x
-        #   coords[j] must equal get_mgrid(T,H,W)[j]
-        #
-        # For each (y,x), define:
-        #   j_slice = y*W + x
-        #   w_idx   = j_slice // H  in [0, W-1]
-        #   h_idx   = j_slice %  H  in [0, H-1]
-        #
-        # These (w_idx,h_idx) are exactly the (W,H) indices used in the
-        # original get_mgrid grid. So we compute coords from them:
         for y in range(H):
             for x in range(W):
                 j_slice = y * W + x
@@ -111,7 +80,14 @@ def build_coords_chunk(H, W, T, z_start, z_end, torch_dtype):
                 idx += 1
 
     np_dtype = np.float64 if torch_dtype == torch.float64 else np.float32
-    return torch.from_numpy(coords.astype(np_dtype))
+    coords = coords.astype(np_dtype)
+    torch_coords = torch.from_numpy(coords)
+
+    # ### MEMORY CLEANUP (numpy buffer)
+    del coords
+    gc.collect()
+
+    return torch_coords
 
 
 # ---------------------------------------------------------------------
@@ -121,6 +97,7 @@ def load_ts_model(path, device):
     print(f"[pipeline] Loading TorchScript model: {path}")
     model = torch.jit.load(path, map_location=device)
     model.eval()
+    torch.set_grad_enabled(False)  # global no-grad just in case
 
     # Try float64 first
     try:
@@ -135,6 +112,12 @@ def load_ts_model(path, device):
         dtype = torch.float32
         print("[pipeline] model accepted float32 inputs")
 
+    # ### MEMORY CLEANUP (probes)
+    del test
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
     return model, dtype
 
 
@@ -142,27 +125,47 @@ def load_ts_model(path, device):
 # Evaluate INR on one chunk: coords_cpu → values[z_count,H,W]
 # ---------------------------------------------------------------------
 def eval_inr_chunk(model, coords_cpu, H, W, batch_size, device, torch_dtype):
+    use_cuda = (device.type == "cuda")
+
     loader = DataLoader(
         coords_cpu,
         batch_size=batch_size,
         shuffle=False,
-        pin_memory=(device.type == "cuda"),
+        pin_memory=use_cuda,
     )
 
     preds = []
     with torch.no_grad():
         for batch in loader:
-            batch = batch.to(device, non_blocking=(device.type == "cuda")).to(torch_dtype)
-            out = model(batch)
-            preds.append(out.view(-1).detach().cpu().numpy())
+            # batch is on CPU; move to device & correct dtype
+            batch = batch.to(device, non_blocking=use_cuda).to(torch_dtype)
 
-        if device.type == "cuda":
+            out = model(batch)
+
+            # bring back to CPU as plain NumPy
+            out_cpu = out.detach().to("cpu").contiguous().view(-1).numpy()
+            preds.append(out_cpu.copy())
+
+            # ### MEMORY CLEANUP (per mini-batch)
+            del out, out_cpu, batch
+            gc.collect()
+            if use_cuda:
+                torch.cuda.empty_cache()
+
+        if use_cuda:
             torch.cuda.synchronize()
 
-    preds = np.concatenate(preds)
-    # We have total = z_count * H * W entries, in exactly the same
-    # (t,y,x) linear order as the original inf() logic reconstructs.
-    values = preds.reshape(-1, H, W)  # (z_count, H, W)
+    preds_np = np.concatenate(preds)
+    # ### MEMORY CLEANUP (pred list)
+    del preds
+    gc.collect()
+
+    values = preds_np.reshape(-1, H, W)  # (z_count, H, W)
+
+    # you can optionally free preds_np after reshape if not reused
+    del preds_np
+    gc.collect()
+
     return values
 
 
@@ -225,7 +228,7 @@ def main():
 
         print(f"\n[pipeline] === CHUNK {z_start} → {z_end - 1} (z_count={z_count}) ===")
 
-        # 1) Build coords on CPU, matching GetTestingData()/get_mgrid
+        # 1) Build coords on CPU
         coords_cpu = build_coords_chunk(H, W, T, z_start, z_end, torch_dtype)
 
         # 2) Evaluate INR on this chunk
@@ -239,11 +242,25 @@ def main():
             torch_dtype=torch_dtype,
         )
 
+        # we won't use coords_cpu again
+        # ### MEMORY CLEANUP (coords)
+        del coords_cpu
+        gc.collect()
+        if use_cuda:
+            torch.cuda.empty_cache()
+
         # 3) Save temporary bin in float64 (for TTK)
         bin_name = f"inr_chunk_{z_start:04d}_{z_end - 1:04d}.bin"
         bin_path = os.path.join(args.output_dir, bin_name)
         print(f"[pipeline] Writing bin: {bin_path}")
         values_chunk.astype("<f8").ravel(order="C").tofile(bin_path)
+
+        # we don't need values_chunk after writing
+        # ### MEMORY CLEANUP (chunk values)
+        del values_chunk
+        gc.collect()
+        if use_cuda:
+            torch.cuda.empty_cache()
 
         # 4) Call pvpython to compute critical points for this chunk
         cmd = [
@@ -272,7 +289,18 @@ def main():
         except OSError:
             pass
 
+        # small cleanup after subprocess
+        gc.collect()
+        if use_cuda:
+            torch.cuda.empty_cache()
+
         z = z_end
+
+    # Final cleanup
+    del model
+    gc.collect()
+    if use_cuda:
+        torch.cuda.empty_cache()
 
     print("\n[pipeline] All done!")
     print("[pipeline] Final CSV:", final_csv)

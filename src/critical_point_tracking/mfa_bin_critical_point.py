@@ -29,7 +29,7 @@ from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 from paraview.simple import *  # noqa: F401,F403
 from paraview import servermanager as sm
 
-
+import gc  # <<< for explicit garbage collection
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +172,13 @@ def load_bin_to_vtkImageData(
         z_array.InsertNextValue(z_coord)
         img.GetFieldData().AddArray(z_array)
 
+        # free per-slice flat array
+        del flat, vtk_arr, z_array
+
+    # ### MEMORY CLEANUP (numpy side)
+    del arr, data
+    gc.collect()
+
     return img
 
 
@@ -192,7 +199,7 @@ def critical_points_from_vtkImageData_chunk(
     producer = TrivialProducer()
     producer.GetClientSideObject().SetOutput(img)
 
-    # 2) Preconditioning + tetrahedralization (same idea as your old pipeline)
+    # 2) Preconditioning + tetrahedralization
     precond = TTKArrayPreconditioning(Input=producer)
     precond.UpdatePipeline()
     tet = Tetrahedralize(Input=precond)
@@ -220,19 +227,40 @@ def critical_points_from_vtkImageData_chunk(
         pts = vtk_to_numpy(out.GetPoints().GetData())
 
         # z/t coordinate stored in field data with same array name
-        zvals = vtk_to_numpy(out.GetFieldData().GetArray(arr_name))
-        if zvals.size > 0:
-            pts[:, 2] = zvals[0]
+        z_array = out.GetFieldData().GetArray(arr_name)
+        if z_array is not None:
+            zvals = vtk_to_numpy(z_array)
+            if zvals.size > 0:
+                pts[:, 2] = zvals[0]
+        else:
+            zvals = np.array([])
 
         # Remove boundary critical points
-        bndry = vtk_to_numpy(out.GetPointData().GetArray("IsOnBoundary"))
-        mask = bndry != 1
-        pts = pts[mask]
+        bndry_arr = out.GetPointData().GetArray("IsOnBoundary")
+        if bndry_arr is not None:
+            bndry = vtk_to_numpy(bndry_arr)
+            mask = bndry != 1
+            pts = pts[mask]
 
         # Append to CSV
         for p in pts:
             csvwriter.writerow([p[0], p[1], p[2]])
 
+        # ### MEMORY CLEANUP for this scalar field
+        del pts, zvals
+        if bndry_arr is not None:
+            del bndry, bndry_arr
+        del out
+        Delete(crit)
+        del crit
+        gc.collect()
+
+    # ### MEMORY CLEANUP for this chunk's pipeline
+    Delete(tet)
+    Delete(precond)
+    Delete(producer)
+    del tet, precond, producer, point_data, arrays
+    gc.collect()
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +406,10 @@ def main() -> None:
 
             # 3) TTK → append critical points
             critical_points_from_vtkImageData_chunk(img, writer)
+
+            # ### MEMORY CLEANUP: drop img and force GC per chunk
+            del img
+            gc.collect()
 
             z = z_end
 

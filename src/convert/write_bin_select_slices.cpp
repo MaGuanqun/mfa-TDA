@@ -227,151 +227,6 @@ void write_function_pointset_vtk(mfa::PointSet<T>* ps, char* filename,Block<real
 
 
 
-// TODO: Only scalar-valued and 3D vector-valued variables are supported (because of the VTK writer)
-// If a variable has a different output dimension, the writer will skip that variable and continue.
-template<typename T>
-void write_pointset_vtk(mfa::PointSet<T>* ps, char* filename, int sci_var = -1)
-{
-    if (ps == nullptr)
-    {
-        cout << "Did not write " << filename << " due to uninitialized pointset" << endl;
-        return;
-    }
-    if (ps->npts == 0)
-    {
-        cout << "Did not write " << filename << " due to empty pointset" << endl;
-        return;
-    }
-
-    int dom_dim = ps->dom_dim;
-    int geom_dim = ps->geom_dim();
-    int nvars = ps->nvars();
-    bool include_var = true;        // Include the specified science variable in the geometry coordinates
-    int var_col = ps->model_dims().head(sci_var + 1).sum(); // column of the variable to be visualized
-
-    // Sanity checks and modify 'include_var' if settings conflict
-    if (geom_dim < 1 || geom_dim > 3)
-    {
-        cerr << "Did not write " << filename << " due to improper dimension in pointset" << endl;
-        return;
-    }
-    if (sci_var < 0)
-    {
-        include_var = false;
-    }
-    else if (ps->var_dim(sci_var) != 1 && geom_dim < 3)
-    {
-        cerr << "For " << filename << ", specified science variable (#" << sci_var << ") is not a scalar. Output will be planar." << endl;
-        include_var = false;
-    }
-
-    vector<int> npts_dim;  // only used if data is structured
-    if (ps->is_structured())
-    {
-        for (size_t k = 0; k < 3; k++)
-        {
-            if (k < dom_dim) 
-                npts_dim.push_back(ps->ndom_pts(k));
-            else
-                npts_dim.push_back(1);
-        }
-    }
-
-    float** pt_data = new float*[nvars];
-    for (size_t k = 0; k < nvars; k++)
-    {
-        pt_data[k]  = new float[ps->npts * ps->var_dim(k)];
-    }
-
-    vec3d           pt;
-    vector<vec3d>   pt_coords;
-    for (int j = 0; j < ps->npts; j++)
-    {
-        // Add geometric coordinates
-        if (geom_dim == 1)
-        {
-            pt.x = ps->domain(j, 0);
-            pt.y = include_var ? ps->domain(j, var_col) : 0.0;
-            pt.z = 0.0;
-        }
-        else if (geom_dim == 2)
-        {
-            pt.x = ps->domain(j, 0);
-            pt.y = ps->domain(j, 1);
-            pt.z = include_var ? ps->domain(j, var_col) : 0.0;
-        }
-        else
-        {
-            pt.x = ps->domain(j, 0);
-            pt.y = ps->domain(j, 1);
-            pt.z = ps->domain(j, 2);
-        }
-        pt_coords.push_back(pt);
-
-        // Add science variable data
-        int offset_idx = 0;
-        for (int k = 0; k < nvars; k++)
-        {
-            int vd = ps->var_dim(k);
-            for (int l = 0; l < vd; l++)
-            {
-                pt_data[k][j*vd + l] = ps->domain(j, geom_dim + offset_idx);
-                offset_idx++;
-            }
-        }    
-    }
-
-    // science variable settings
-    int* vardims        = new int[nvars];
-    char** varnames     = new char*[nvars];
-    int* centerings     = new int[nvars];
-    for (int k = 0; k < nvars; k++)
-    {
-        vardims[k]      = ps->var_dim(k);
-        varnames[k]     = new char[256];
-        centerings[k]   = 1;
-        snprintf(varnames[k], 256, "var%d", k);
-    }
-
-    // write raw original points
-    if (ps->is_structured())
-    {
-        write_curvilinear_mesh(
-            /* const char *filename */                  filename,
-            /* int useBinary */                         0,
-            /* int *dims */                             &npts_dim[0],
-            /* float *pts */                            &(pt_coords[0].x),
-            /* int nvars */                             nvars,
-            /* int *vardim */                           vardims,
-            /* int *centering */                        centerings,
-            /* const char * const *varnames */          varnames,
-            /* float **vars */                          pt_data);
-    }
-    else
-    {
-        write_point_mesh(
-        /* const char *filename */                      filename,
-        /* int useBinary */                             0,
-        /* int npts */                                  pt_coords.size(),
-        /* float *pts */                                &(pt_coords[0].x),
-        /* int nvars */                                 nvars,
-        /* int *vardim */                               vardims,
-        /* const char * const *varnames */              varnames,
-        /* float **vars */                              pt_data);
-    }
-
-    delete[] vardims;
-    for (int i = 0; i < nvars; i++)
-        delete[] varnames[i];
-    delete[] varnames;
-    delete[] centerings;
-    for (int j = 0; j < nvars; j++)
-    {
-        delete[] pt_data[j];
-    }
-    delete[] pt_data;
-}
-
 
 
 
@@ -1437,7 +1292,7 @@ void save_bin(char* file_name, Block<real_t>* block, size_t dom_dim, size_t pt_d
 std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio, int start_slice_index, int end_slice_index)
 {
 
-    VectorXi ori_ndom_pts(dom_dim);
+    VectorX<size_t> ori_ndom_pts(dom_dim);
     auto& tc = block->mfa->var(0).tmesh.tensor_prods[0];
     VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
     for(int i=0;i<dom_dim;i++)
@@ -1445,10 +1300,10 @@ std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio, int start_
         ori_ndom_pts(i) = upsample_factor[i] * span_num(i);
     }
 
-    VectorXi ndom_pts = ori_ndom_pts;
+    VectorX<size_t> ndom_pts = ori_ndom_pts;
     // int npts = ndom_pts.prod();
 
-    int npts = ndom_pts.prod() / ndom_pts(ndom_pts.size()-1) * (end_slice_index - start_slice_index);
+    size_t npts = ndom_pts.prod() / ndom_pts(ndom_pts.size()-1) * (end_slice_index - start_slice_index);
 
     std::cout<<"actuall npts "<<npts<<std::endl;
 
@@ -1487,7 +1342,7 @@ std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio, int start_
         }
     }
 
-    VectorXi number_in_every_domain(dom_dim);
+    VectorX<size_t> number_in_every_domain(dom_dim);
     utility::obtain_number_in_every_domain( ndom_pts,number_in_every_domain);
 
 
@@ -1733,10 +1588,6 @@ if (ignore == 0)
     snprintf(approx_filename, 256, "approx_points_gid_%d.vtk", cp.gid());
     snprintf(errs_filename, 256, "error_gid_%d.vtk", cp.gid());
     snprintf(blend_filename, 256, "blend_gid_%d.vtk", cp.gid());
-    write_pointset_vtk(b->input, input_filename, sci_var);
-    write_pointset_vtk(b->approx, approx_filename, sci_var);
-    write_pointset_vtk(b->errs, errs_filename, sci_var);
-    write_pointset_vtk(b->blend, blend_filename, sci_var);
 
     // write tensor product extents
     int pts_per_cell = pow(2, dom_dim);
@@ -1880,7 +1731,6 @@ void save_data(DomainArgs& d_args,string& file_name, string& input, string& outp
 
     char* cstr = new char[output_name.length() + 1];
     std::strcpy(cstr, output_name.c_str());
-    write_pointset_vtk(point_set, cstr,sci_var);
     delete[] cstr;
 }
 

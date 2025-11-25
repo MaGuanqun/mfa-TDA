@@ -34,8 +34,8 @@ namespace utility
     }
 
 
-    template<class T>
-    void obtain_number_in_every_domain(T& ori_num,VectorXi& number_in_every_domain)
+    template<class T,class U>
+    void obtain_number_in_every_domain(T& ori_num,VectorX<U>& number_in_every_domain)
     {
         number_in_every_domain.resize(ori_num.size());
         number_in_every_domain[0]=1;
@@ -45,8 +45,8 @@ namespace utility
         }
     }
 
-    template<class T>
-    void obtain_number_in_every_domain_row_major(T& ori_num,VectorXi& number_in_every_domain)
+    template<class T,class U>
+    void obtain_number_in_every_domain_row_major(T& ori_num,VectorX<U>& number_in_every_domain)
     {
         number_in_every_domain.resize(ori_num.size());
         number_in_every_domain[number_in_every_domain.size()-1]=1;
@@ -56,9 +56,9 @@ namespace utility
         }
     }
 
-
-    void obtainDomainIndex(size_t index, VectorXi& domain_index,
-    VectorXi& number_in_every_domain) //number_in_every_domain:[1,p0,p0*p1,p0*p1*p2,...]
+    template<class T,class U>
+    void obtainDomainIndex(size_t index, VectorX<T>& domain_index,
+    VectorX<U>& number_in_every_domain) //number_in_every_domain:[1,p0,p0*p1,p0*p1*p2,...]
     {
         domain_index.resize(number_in_every_domain.size());
         size_t temp_0, temp_1;

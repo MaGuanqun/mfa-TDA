@@ -28,7 +28,7 @@ J_threshold="1e-9"
 
 
 
-for data_type in "vortex_street_3d" #"vortex_street_3d" #"boussinesq_3d"
+for data_type in "boussinesq_3d" #"vortex_street_3d" #"boussinesq_3d"
 do
     echo "Processing data type: ${data_type}"
     # data_type="boussinesq_3d" #boussinesq_3d
@@ -110,11 +110,12 @@ do
     # done
 
 
-    # source /home/u1435513-gma/enter/etc/profile.d/conda.sh
-    # conda activate mfa
-    # export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
-    # for step_size in "96" #"48" "24" "12" "6" "3"
+    source /home/u1435513-gma/enter/etc/profile.d/conda.sh
+    conda activate mfa
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
+    # for step_size in "2" "3" "4" "6" "8" "12" "16" "24" "32" "48" "64" "96"
     # do
+    #     echo "post-processing for step size: ${step_size}"
     #     pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
     #     pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}.vtp"
 
@@ -125,7 +126,7 @@ do
     # done
 
 
-for step_size in "64"
+for step_size in "2" "3" "4" "6" "8" "12" "16" "24" "32" "48" "64" "96"
 do
 
 if [ "${step_size}" = "32" ]; then
