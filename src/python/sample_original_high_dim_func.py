@@ -76,10 +76,10 @@ if args.function_name in ['quartic_potential_2', 'rotating_gaussian', 'rotating_
     max = [2,2,4]
 
 # Grid definition
-nx, ny, nz = 100, 100, 1
+nx, ny, nz = 100, 100, 101
 x = np.linspace(min[0], max[0], nx)
 y = np.linspace(min[1], max[1], ny)
-z = np.array([0])
+z = np.linspace(min[2], max[2], nz)
 
 X, Y, Z = np.meshgrid(x, y, z, indexing='ij')  # shape: (nx, ny, nz)
 

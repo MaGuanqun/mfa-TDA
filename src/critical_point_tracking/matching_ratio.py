@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import vtk
+import os
 
 def load_obj_vertices(obj_path):
     """Load vertex positions (x, y, z) from an .obj file."""
@@ -91,10 +92,16 @@ def compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_hea
 def compute_match_ratio_different(obj_path, csv_path, xy_threshold, z_threshold, csv_has_header):
     # obj_pts = load_obj_vertices(obj_path)
     obj_pts = load_vtp_points(obj_path)
-    csv_pts = load_csv_points(csv_path, has_header=csv_has_header)
-    print("discrete result on our result:")
+    
+    ext = os.path.splitext(csv_path)[1].lower()
+    if ext == ".csv":
+        csv_pts= load_csv_points(csv_path, has_header=csv_has_header)
+    elif ext == ".vtp":
+        csv_pts =load_vtp_points(csv_path)
+    # csv_pts = load_csv_points(csv_path, has_header=csv_has_header)
+    print("discrete(second) result on our(first) result:")
     compute_match_ratio(obj_pts, csv_pts, xy_threshold, z_threshold, csv_has_header)
-    print("our result on discrete result:")
+    print("our(first) result on discrete(second) result:")
     compute_match_ratio(csv_pts, obj_pts, xy_threshold, z_threshold, csv_has_header)
 
     
@@ -110,6 +117,8 @@ if __name__ == "__main__":
                         help="Indicate that CSV has a header row.")
 
     args = parser.parse_args()
+
+    print("Comparing points between OBJ and CSV files:")
 
     compute_match_ratio_different(
         obj_path=args.obj_file,
