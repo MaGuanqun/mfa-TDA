@@ -610,7 +610,7 @@ struct MFAParser
 
             if (!adaptive)
             {
-                vars_nctrl = {10, 30, 10};
+                vars_nctrl = {13, 33, 13};
             }
 
             d_args.min.resize(3);
