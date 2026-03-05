@@ -28,7 +28,7 @@ J_threshold="1e-9"
 
 
 
-for data_type in "vortex_street_3d" #"vortex_street_3d" #"boussinesq_3d"
+for data_type in "boussinesq_3d" #"vortex_street_3d" #"boussinesq_3d"
 do
     echo "Processing data type: ${data_type}"
     # data_type="boussinesq_3d" #boussinesq_3d
@@ -102,12 +102,12 @@ do
     # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
 
 
-    # for step_size in "4" "6" "8" "12"
-    # do
-    #     echo "smoothing with step size: ${step_size}"
-    # #     t_sample_ratio="${step_size}"
-    #     "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
-    # done
+    for step_size in "8"
+    do
+        echo "smoothing with step size: ${step_size}"
+    #     t_sample_ratio="${step_size}"
+        "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+    done
 
 
     # source /home/u1435513-gma/enter/etc/profile.d/conda.sh
@@ -170,14 +170,14 @@ elif [ "${step_size}" = "96" ]; then
         t_step_size="0.00104166"
 fi
 
-echo "computing matching ratio for step size: ${step_size}"
-csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}.csv"
-python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
-echo "remove obstacle/n"
+# echo "computing matching ratio for step size: ${step_size}"
+# csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}.csv"
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
+# echo "remove obstacle/n"
 
-csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle.csv"
+# csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle.csv"
 
-python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
 
 done
 

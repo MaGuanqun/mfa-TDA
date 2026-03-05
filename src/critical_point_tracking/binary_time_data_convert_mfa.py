@@ -157,7 +157,7 @@ elif function =='vortex_street_3d':
     # min = np.array([-0.5, -0.5, 0.0])
     # max = np.array([0.5, 7.5, 15])
 elif function =='boussinesq_3d':
-    dim = np.array([7,27,7])
+    dim = np.array([10,30,10])
     min = np.array([-0.5, -0.5, 0.0])
     max = np.array([0.5, 2.5, 1.5])
 elif function =='fluid':
