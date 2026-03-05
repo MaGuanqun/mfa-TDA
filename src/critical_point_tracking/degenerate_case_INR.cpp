@@ -37,9 +37,9 @@
 using namespace std;
 
 
-namespace {
-    tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
-}
+// namespace {
+//     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
+// }
 
 void choose_span(std::vector<VectorXi>& record_span)
 {
@@ -141,7 +141,12 @@ int main(int argc, char** argv)
     }
 
     INRModel<double> inr_model(input_function_name,input_model);
-    int function_type=-1; 
+    int function_type=-1;
+
+    {
+        int nw = std::max(1, tbb::this_task_arena::max_concurrency());
+        inr_model.prepare_thread_modules(static_cast<size_t>(nw));
+    }
 
     auto start_time = std::chrono::high_resolution_clock::now();
         
