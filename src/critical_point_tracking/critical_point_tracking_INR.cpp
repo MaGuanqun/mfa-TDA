@@ -273,7 +273,7 @@ int main(int argc, char** argv)
     string boundary_start="";
     int compute_boundary_start=1;
     int num_procs = 8;  // number of processes for parallel root_finding (when run as single process)
-    int initial_point_num_in_a_block_ = -1;
+    int initial_point_num_in_a_block = -1;
 
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
