@@ -3,11 +3,7 @@
 #include <torch/script.h>
 #include <torch/autograd.h>
 #include <Eigen/Dense>
-#include <atomic>
 #include <iostream>
-#include <memory>
-#include <mutex>
-#include <sstream>
 #include <tuple>
 #include <type_traits>
 
@@ -24,8 +20,8 @@ public:
     VectorXi point_num_in_block;
     T delta_h = 1e-3;
 
-    INRModel(const string& func_name, const std::string& model_path = "inr_base.pt", torch::Device input_device = torch::kCPU): function_name(func_name),
-    device(input_device), //torch::cuda::is_available() ? torch::kCUDA : torch::kCPU
+    INRModel(const string& func_name, const std::string& model_path = "inr_base.pt"): function_name(func_name),
+    device(torch::kCPU), //torch::cuda::is_available() ? torch::kCUDA : torch::kCPU
     // device(torch::kCPU),
     loaded(false) {
         try {
@@ -66,29 +62,8 @@ public:
 
     bool isLoaded() const { return loaded; }
 
-    /// Call once from each TBB (or other) worker thread at startup to clone the module into
-    /// that thread's slot. After that, get_thread_module() is a direct vector lookup.
-    /// Example: tbb::parallel_for(0, num_threads, [&](int){ inr_model.warmup_thread_local_module(); });
-    void warmup_thread_local_module() const {
-        if (loaded)
-            (void)get_thread_module();
-    }
 
-    /// Build a vector of n cloned modules (one per thread). Call once at startup, then in TBB
-    /// each worker uses its thread index and gets thread_modules_[index] with no per-call clone or lock.
-    /// Example: inr_model.prepare_thread_modules(nw); tbb::parallel_for(0, nw, [&](int i){ ... use inr_model ... });
-    void prepare_thread_modules(size_t n) const {
-        if (!loaded || n == 0) return;
-        ensure_serialized_module();
-        if (serialized_module_.empty()) return;
-        std::vector<std::shared_ptr<torch::jit::script::Module>> vec(n);
-        for (size_t i = 0; i < n; ++i)
-            vec[i] = clone_one_from_buffer();
-        std::lock_guard<std::mutex> lock(thread_modules_mutex_);
-        thread_modules_ = std::move(vec);
-    }
-
-    static VectorX<T> domain_min_(const string& func_name)
+static VectorX<T> domain_min_(const string& func_name)
     {
         VectorX<T> result(3);
         if(func_name=="quartic_potential_2")
@@ -236,7 +211,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         }
         else if (func_name=="boussinesq_3d")
         {
-            result << 8,8,8;
+            result << 2,2,2;
         }
         else if (func_name=="fluid")
         {
@@ -510,24 +485,52 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         grads_domain_out.clear();
         grads_domain_out.resize(N);
 
-        // Per-thread module and input buffer for thread-safe use from TBB etc.
-        auto mod = get_thread_module();
-        torch::Tensor& buf = get_thread_input_buffer(N);
-        {
-            auto acc = buf.accessor<double, 2>();
-            for (int i = 0; i < N; ++i) {
-                VectorX<T> p_model =
-                    convert_point_to_domain_reverse_order(points_domain[i]);
-                acc[i][0] = static_cast<double>(p_model(0));
-                acc[i][1] = static_cast<double>(p_model(1));
-                acc[i][2] = static_cast<double>(p_model(2));
+        torch::Tensor input_batch;
+
+        // ---- Build [N,3] input on CPU, then move to GPU if needed ----
+        if (device.is_cuda()) {
+            // 1) build on CPU
+            auto host_opts = torch::TensorOptions()
+                                .dtype(torch::kFloat64)
+                                .device(torch::kCPU);
+            torch::Tensor input_host = torch::empty({N, D}, host_opts);
+
+            {
+                auto acc = input_host.accessor<double, 2>();
+                for (int i = 0; i < N; ++i) {
+                    VectorX<T> p_model =
+                        convert_point_to_domain_reverse_order(points_domain[i]);
+                    acc[i][0] = static_cast<double>(p_model(0));
+                    acc[i][1] = static_cast<double>(p_model(1));
+                    acc[i][2] = static_cast<double>(p_model(2));
+                }
+            }
+
+            // 2) move to GPU
+            input_batch = input_host.to(device, /*non_blocking=*/false, /*copy=*/true);
+        } else {
+            // Pure CPU path: we can write directly into the tensor
+            auto opts = torch::TensorOptions()
+                            .dtype(torch::kFloat64)
+                            .device(device);
+            input_batch = torch::empty({N, D}, opts);
+
+            {
+                auto acc = input_batch.accessor<double, 2>();
+                for (int i = 0; i < N; ++i) {
+                    VectorX<T> p_model =
+                        convert_point_to_domain_reverse_order(points_domain[i]);
+                    acc[i][0] = static_cast<double>(p_model(0));
+                    acc[i][1] = static_cast<double>(p_model(1));
+                    acc[i][2] = static_cast<double>(p_model(2));
+                }
             }
         }
-        torch::Tensor input_batch = buf.slice(0, 0, N).clone();
+
         input_batch.set_requires_grad(true);
 
         // Forward: f for all points; shape [N] or [N,1]
-        torch::Tensor out = mod->forward({input_batch}).toTensor();
+        torch::Tensor out = module.forward({input_batch}).toTensor();
         out = out.view({N});  // ensure shape [N]
 
         // grad(sum_i f_i) wrt each row is just grad(f_i) for that row.
@@ -540,8 +543,7 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         );
 
         // Bring gradients back to CPU for Eigen
-        // Thread-local module is on CPU, so grads[0] is already CPU
-        torch::Tensor g_all = grads[0].contiguous();
+        torch::Tensor g_all = grads[0].to(torch::kCPU).contiguous();
         auto g_acc = g_all.accessor<double, 2>();
 
         for (int i = 0; i < N; ++i) {
@@ -1481,77 +1483,9 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
     }
 
 private:
-    /// Serialize the main module once into memory; used so we never re-serialize when cloning.
-    void ensure_serialized_module() const {
-        std::call_once(serialized_once_, [this]() {
-            if (!loaded) return;
-            std::ostringstream oss;
-            module.save(oss);
-            serialized_module_ = oss.str();
-        });
-    }
-
-    /// Stable per-thread index (0, 1, 2, ...). Used to index into thread_modules_.
-    size_t get_or_assign_thread_index() const {
-        thread_local size_t tls_index = static_cast<size_t>(-1);
-        if (tls_index == static_cast<size_t>(-1))
-            tls_index = next_thread_index_++;
-        return tls_index;
-    }
-
-    /// Clone one module from the in-memory serialized buffer (no file I/O).
-    std::shared_ptr<torch::jit::script::Module> clone_one_from_buffer() const {
-        if (serialized_module_.empty())
-            return nullptr;
-        std::istringstream iss(serialized_module_);
-        torch::jit::script::Module m = torch::jit::load(iss, torch::kCPU);
-        auto p = std::make_shared<torch::jit::script::Module>(std::move(m));
-        p->eval();
-        try { p->to(torch::kCPU); } catch (...) {}
-        return p;
-    }
-
-    /// Per-thread module: direct vector lookup by thread index. After prepare_thread_modules(n),
-    /// this is just thread_modules_[get_or_assign_thread_index()] with no lock in the common path.
-    std::shared_ptr<torch::jit::script::Module> get_thread_module() const {
-        if (!loaded)
-            throw std::runtime_error("INR model not loaded (get_thread_module)");
-        const size_t idx = get_or_assign_thread_index();
-        if (idx < thread_modules_.size() && thread_modules_[idx])
-            return thread_modules_[idx];
-        ensure_serialized_module();
-        if (serialized_module_.empty())
-            throw std::runtime_error("INR model serialization failed (get_thread_module)");
-        std::shared_ptr<torch::jit::script::Module> m = clone_one_from_buffer();
-        std::lock_guard<std::mutex> lock(thread_modules_mutex_);
-        if (idx >= thread_modules_.size())
-            thread_modules_.resize(idx + 1);
-        thread_modules_[idx] = std::move(m);
-        return thread_modules_[idx];
-    }
-
-    /// Per-thread input tensor cache (CPU) for eval_grad_batch_in_domain.
-    torch::Tensor& get_thread_input_buffer(int required_rows) const {
-        thread_local torch::Tensor tls_input;
-        int alloc_rows = std::max(required_rows, 64);
-        if (!tls_input.defined() || tls_input.size(0) < static_cast<int64_t>(required_rows)) {
-            auto opts = torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU);
-            tls_input = torch::empty({alloc_rows, 3}, opts);
-        }
-        return tls_input;
-    }
-
     torch::jit::script::Module module;
     torch::Device device{torch::kCPU};
     bool loaded = false;
-
-    /// One-time serialization of module (in memory only).
-    mutable std::once_flag serialized_once_;
-    mutable std::string serialized_module_;
-    /// One clone per thread; indexed by get_or_assign_thread_index().
-    mutable std::mutex thread_modules_mutex_;
-    mutable std::vector<std::shared_ptr<torch::jit::script::Module>> thread_modules_;
-    mutable std::atomic<size_t> next_thread_index_{0};
 
     torch::Tensor input_;        // [1,3], cached
     torch::Tensor input_host_;   // [1,3], pinned CPU (only used when device is CUDA)
@@ -1582,9 +1516,8 @@ private:
             input_host_ = torch::Tensor();
         }
 
-        // Use 1 thread so each thread's module (see get_thread_module) doesn't oversubscribe.
-        at::set_num_threads(1);
-        at::set_num_interop_threads(1);
+        at::set_num_threads(std::max(1u, std::thread::hardware_concurrency()));
+        at::set_num_interop_threads(2);
     }
 
     void init_stencil_offsets() {

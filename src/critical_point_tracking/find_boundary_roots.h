@@ -279,31 +279,23 @@ public:
         tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
         tbb::affinity_partitioner ap;
 
-
-        // tbb::parallel_for(tbb::blocked_range<size_t>(0,span_index.size()), //
-        // [&](const tbb::blocked_range<size_t>& range)
-        // {
-        //     auto& root_thread = local_root.local();
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, span_index.size()),
+        [&](const tbb::blocked_range<size_t>& range)
+        {
+            auto& root_thread = local_root.local();
             std::vector<VectorX<T>> block_root;
-
-        //     for(int i=range.begin();i!=range.end();++i){
-
-            for(int i=0;i<span_index.size();++i){
-                
-                root_finding_single_block(block_root,initial_points,span_index[i]);
+            for(size_t i = range.begin(); i != range.end(); ++i){
+                root_finding_single_block(block_root, initial_points, span_index[i]);
                 if(!block_root.empty())
                 {
-                    root.insert(root.end(), block_root.begin(), block_root.end());
-                    // root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
+                    root_thread.insert(root_thread.end(), block_root.begin(), block_root.end());
                 }
             }
+        }, ap);
 
-        // },ap               
-        // );
-
-        // for (const auto& thread_vec : local_root) {
-        //     root.insert(root.end(), thread_vec.begin(), thread_vec.end());
-        // }
+        for (const auto& thread_vec : local_root) {
+            root.insert(root.end(), thread_vec.begin(), thread_vec.end());
+        }
 
         return !root.empty();
 
