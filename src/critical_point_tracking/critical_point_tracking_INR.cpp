@@ -343,7 +343,13 @@ int main(int argc, char** argv)
     INRModel<double> inr_model(input_function_name,input_model);
     int function_type=-1; 
 
-
+    // Vector of modules, one per TBB worker; each thread uses thread_modules_[its index] with no per-call clone/lock.
+    {
+        int nw = std::max(1, tbb::this_task_arena::max_concurrency());
+        nw=1;
+        std::cout<<"number of TBB workers "<<nw<<std::endl;
+        inr_model.prepare_thread_modules(static_cast<size_t>(nw));
+    }
 
     Eigen::VectorXd local_domain_range=inr_model.domain_max-inr_model.domain_min;
     VectorXd core_maxs = inr_model.domain_max;
@@ -442,7 +448,8 @@ int main(int argc, char** argv)
 
         auto finding_end_time = std::chrono::high_resolution_clock::now();
 
-        std::cout<<"finding time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(finding_end_time - cpt_extract_start_time).count()/1000<<std::endl;
+        if (world_rank == 0)
+            std::cout<<"finding time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(finding_end_time - cpt_extract_start_time).count()/1000<<std::endl;
 
         // string test_file=cp_tracing_file+"_test.obj";
 
