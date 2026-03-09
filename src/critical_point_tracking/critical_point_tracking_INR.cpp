@@ -273,6 +273,7 @@ int main(int argc, char** argv)
     string boundary_start="";
     int compute_boundary_start=1;
     int num_procs = 8;  // number of processes for parallel root_finding (when run as single process)
+    int initial_point_num_in_a_block_ = -1;
 
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
@@ -295,6 +296,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('j', "boundary_start", boundary_start, " boundary_start_file");
     ops >> opts::Option('c', "compute_boundary_start", compute_boundary_start, " compute_boundary_start");
     ops >> opts::Option('n', "num_procs", num_procs, " number of processes (when run without mpirun; default 8)");
+    ops >> opts::Option('o', "initial_point_num_in_a_block", initial_point_num_in_a_block, " initial point number in a block");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -340,14 +342,14 @@ int main(int argc, char** argv)
     }  
 
 
-    INRModel<double> inr_model(input_function_name,input_model);
+    INRModel<double> inr_model(input_function_name,input_model,initial_point_num_in_a_block);
     int function_type=-1; 
 
     // Vector of modules, one per TBB worker; each thread uses thread_modules_[its index] with no per-call clone/lock.
     {
         int nw = std::max(1, tbb::this_task_arena::max_concurrency());
         nw=1;
-        std::cout<<"number of TBB workers "<<nw<<std::endl;
+        // std::cout<<"number of TBB workers "<<nw<<std::endl;
         inr_model.prepare_thread_modules(static_cast<size_t>(nw));
     }
 
@@ -374,8 +376,10 @@ int main(int argc, char** argv)
    
     same_root_epsilon = step_size; // same_root_epsilon
 
+    if (world_rank == 0){
     std::cout<<Span_size.transpose()<<std::endl;
     std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
+    }
 
         int spanned_block_num =span_num.prod();
 
@@ -454,6 +458,9 @@ int main(int argc, char** argv)
         // string test_file=cp_tracing_file+"_test.obj";
 
         // tracking_utility::convert_to_obj(test_file,root_unique);
+
+        MPI_Barrier(world_comm);
+        return 0;
 
         auto tracking_start_time = std::chrono::high_resolution_clock::now();
 

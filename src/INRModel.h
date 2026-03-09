@@ -24,10 +24,12 @@ public:
     VectorXi point_num_in_block;
     T delta_h = 1e-3;
 
-    INRModel(const string& func_name, const std::string& model_path = "inr_base.pt", torch::Device input_device = torch::kCPU): function_name(func_name),
+    INRModel(const string& func_name, const std::string& model_path = "inr_base.pt",int initial_point_num_in_a_block_=-1, torch::Device input_device = torch::kCPU): function_name(func_name),
     device(input_device), //torch::cuda::is_available() ? torch::kCUDA : torch::kCPU
     // device(torch::kCPU),
-    loaded(false) {
+    loaded(false) 
+    
+    {
         try {
             module = torch::jit::load(model_path, device);
             // module.to(device);
@@ -44,11 +46,18 @@ public:
         this->domain_range = this->domain_max - this->domain_min;
         this->function_range = function_range_(func_name);
         this->block_num = block_num_(func_name);
-        this->point_num_in_block = point_num_in_block_(func_name);
+        if(initial_point_num_in_a_block_==-1)
+        {
+            this->point_num_in_block = point_num_in_block_(func_name);
+        }
+        else
+        {
+            this->point_num_in_block = VectorXi::Constant(3, initial_point_num_in_a_block_);
+        }
 
-        std::cout<<"INR model domain min: "<<this->domain_min.transpose()<<std::endl;
-        std::cout<<"INR model domain max: "<<this->domain_max.transpose()<<std::endl;
-        std::cout<<"INR model domain_range range: "<<this->domain_range.transpose()<<std::endl;
+        // std::cout<<"INR model domain min: "<<this->domain_min.transpose()<<std::endl;
+        // std::cout<<"INR model domain max: "<<this->domain_max.transpose()<<std::endl;
+        // std::cout<<"INR model domain_range range: "<<this->domain_range.transpose()<<std::endl;
 
         init_buffers();
         torch::jit::setGraphExecutorOptimize(false);
