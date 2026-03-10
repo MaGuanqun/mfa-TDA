@@ -546,20 +546,20 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
                     to_record_root.insert(to_record_root.end(), block_root_list.begin(), block_root_list.end());
                 } 
 
-                if(degenerate_point_file != ""){
-                    if(i%50==0)
-                    {
-                        std::cout<<"degenerate case processing block "<<my_spans_index[i] <<" "<<(float)my_spans_index[i]/(float)total_num_block<<std::endl;
-                    }
+                // if(degenerate_point_file != ""){
+                //     // if(i%50==0)
+                //     // {
+                //     //     std::cout<<"degenerate case processing block "<<my_spans_index[i] <<" "<<(float)my_spans_index[i]/(float)total_num_block<<std::endl;
+                //     // }
 
-                        if((i!=0 && i%200==0) || i ==num_block-1)
-                        {
-                            //save roots to a file
-                            write_degenerate_point(to_record_root, degenerate_point_file, my_spans_index[i], total_num_block);
+                //         if((i!=0 && i%400==0) || i ==num_block-1)
+                //         {
+                //             //save roots to a file
+                //             write_degenerate_point(to_record_root, degenerate_point_file, my_spans_index[i], total_num_block);
                             
-                        }
+                //         }
                     
-                }
+                // }
             }
 
         },ap               

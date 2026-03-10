@@ -333,8 +333,8 @@ int main(int argc, char** argv)
         for(int i=0;i<root.size();i++)
         {
             spatial_hashing_spatial_temporal::find_all_unique_root(root[i], root_unique[i], step_size[0], step_size.back());
-            std::cout << "epsilon " << J_threshold_list[i] << std::endl;
-            std::cout << "degenerate case size " << root_unique[i].size() << std::endl;
+            // std::cout << "epsilon " << J_threshold_list[i] << std::endl;
+            // std::cout << "degenerate case size " << root_unique[i].size() << std::endl;
         }
         
 
@@ -355,22 +355,46 @@ int main(int argc, char** argv)
 
             string degenerate_file_name = degenerate_point_file + std::to_string(int(spatial_step_size)) + "_" + std::to_string(initial_point_num_in_a_block) +"_"+ std::to_string(-int(log10(J_threshold_list[k]))) + ".dat";
             utility::writeMatrixVector(degenerate_file_name.c_str(), root_matrix);
+
+            for (int i = spatial_step_size/2; i > 1; i /= 2)
+            {
+                root_unique[k].clear();
+                step_size[0] *= 2;
+                step_size.back() *= 2;
+                spatial_hashing_spatial_temporal::find_all_unique_root(root[k], root_unique[k], step_size[0], step_size.back());
+                root_matrix[0].resize(root_unique[k].size(), root_unique[k][0].size());
+                for (size_t j = 0; j < root_unique[k].size(); j++)
+                {
+                    root_matrix[0].row(static_cast<Eigen::Index>(j)) = root_unique[k][j].transpose();
+                }
+                degenerate_file_name = degenerate_point_file + std::to_string(i) + "_" + std::to_string(initial_point_num_in_a_block) +"_"+ std::to_string(-int(log10(J_threshold_list[k]))) + ".dat";
+                utility::writeMatrixVector(degenerate_file_name.c_str(), root_matrix);
+            }
+
+            // spatial_step_size=64;
+
+            for (int i = 64; i > 1; i /= 2)
+            {
+                root_unique[k].clear();
+                step_size[0] *= 2;
+                step_size.back() *= 2;
+                spatial_hashing_spatial_temporal::find_all_unique_root(root[k], root_unique[k], step_size[0], step_size.back());
+                root_matrix[0].resize(root_unique[k].size(), root_unique[k][0].size());
+                for (size_t j = 0; j < root_unique[k].size(); j++)
+                {
+                    root_matrix[0].row(static_cast<Eigen::Index>(j)) = root_unique[k][j].transpose();
+                }
+                degenerate_file_name = degenerate_point_file + std::to_string(i) + "_" + std::to_string(initial_point_num_in_a_block) +"_"+ std::to_string(-int(log10(J_threshold_list[k]))) + ".dat";
+                utility::writeMatrixVector(degenerate_file_name.c_str(), root_matrix);
+
+                if(i==8)
+                {
+                    std::cout<<"root_unique[k].size() "<< J_threshold_list[k] << " "<<root_unique[k].size()<<std::endl;
+                }
+            }
         }
 
-        // for (int i = spatial_step_size/2; i > 1; i /= 2)
-        // {
-        //     root_unique.clear();
-        //     step_size[0] *= 2;
-        //     step_size.back() *= 2;
-        //     spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique, step_size[0], step_size.back());
-        //     root_matrix[0].resize(root_unique.size(), root_unique[0].size());
-        //     for (size_t j = 0; j < root_unique.size(); j++)
-        //     {
-        //         root_matrix[0].row(static_cast<Eigen::Index>(j)) = root_unique[j].transpose();
-        //     }
-        //     degenerate_file_name = degenerate_point_file + std::to_string(i) + ".dat";
-        //     utility::writeMatrixVector(degenerate_file_name.c_str(), root_matrix);
-        // }
+        
     
     MPI_Barrier(world_comm);
 }
