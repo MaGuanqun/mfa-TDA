@@ -1,6 +1,17 @@
 project                     (mfa-TDA)
 cmake_minimum_required      (VERSION 3.15)
 
+
+# Ensure MPI imported targets are available for all subdirs
+find_package(MPI REQUIRED C CXX)
+# create a libraries variable that uses imported targets when available
+if (TARGET MPI::MPI_C AND TARGET MPI::MPI_CXX)
+  set(libraries MPI::MPI_C MPI::MPI_CXX)
+else()
+  # fallback to the classic variables for older CMake/FindMPI behavior
+  set(libraries ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
+endif()
+
 set                         (CMAKE_CXX_STANDARD 17)
 set                         (CMAKE_CXX_STANDARD_REQUIRED ON)
 set                         (CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -28,8 +39,8 @@ set(mfa_thread "tbb")
 
 
 # MPI
-find_package                (MPI REQUIRED)
-set                         (libraries MPI::MPI_C)
+# find_package                (MPI REQUIRED CXX)
+# set                         (libraries MPI::MPI_C MPI::MPI_CXX)
 
 list(APPEND libraries ${CMAKE_DL_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 

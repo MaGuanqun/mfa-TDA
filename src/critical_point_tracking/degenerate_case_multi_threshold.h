@@ -565,6 +565,8 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
         },ap               
         );
 
+
+
         std::vector<std::vector<VectorX<T>>> combined_root_list;
 
         for (const auto& thread_vec : local_root) {
@@ -582,6 +584,7 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
                 root[i].insert(root[i].end(), re_arranged_root_list[i].begin(), re_arranged_root_list[i].end());
             }
         }
+
 
         // std::cout<<"every thread root size "<<root[0].size()<<std::endl;
 

@@ -362,6 +362,8 @@ int main(int argc, char** argv)
                 step_size[0] *= 2;
                 step_size.back() *= 2;
                 spatial_hashing_spatial_temporal::find_all_unique_root(root[k], root_unique[k], step_size[0], step_size.back());
+
+                // std::cout<<i << " "<<root_unique[k].size()<<std::endl;
                 root_matrix[0].resize(root_unique[k].size(), root_unique[k][0].size());
                 for (size_t j = 0; j < root_unique[k].size(); j++)
                 {
@@ -370,14 +372,21 @@ int main(int argc, char** argv)
                 degenerate_file_name = degenerate_point_file + std::to_string(i) + "_" + std::to_string(initial_point_num_in_a_block) +"_"+ std::to_string(-int(log10(J_threshold_list[k]))) + ".dat";
                 utility::writeMatrixVector(degenerate_file_name.c_str(), root_matrix);
             }
+        }
 
             // spatial_step_size=64;
 
+        // the last 
+        for (size_t k = 0; k < root_unique.size(); k++){
+            step_size[0]=Span_size.head(Span_size.size()-1).minCoeff()/64.0;
+            step_size.back() = Span_size[Span_size.size()-1]/64.0; 
+            if (root_unique[k].empty())
+                continue;
+            std::vector<MatrixXd> root_matrix(1);
+            string degenerate_file_name;
             for (int i = 64; i > 1; i /= 2)
             {
                 root_unique[k].clear();
-                step_size[0] *= 2;
-                step_size.back() *= 2;
                 spatial_hashing_spatial_temporal::find_all_unique_root(root[k], root_unique[k], step_size[0], step_size.back());
                 root_matrix[0].resize(root_unique[k].size(), root_unique[k][0].size());
                 for (size_t j = 0; j < root_unique[k].size(); j++)
@@ -391,6 +400,8 @@ int main(int argc, char** argv)
                 {
                     std::cout<<"root_unique[k].size() "<< J_threshold_list[k] << " "<<root_unique[k].size()<<std::endl;
                 }
+                step_size[0] *= 2;
+                step_size.back() *= 2;
             }
         }
 
