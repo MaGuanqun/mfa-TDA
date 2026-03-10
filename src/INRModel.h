@@ -35,8 +35,8 @@ public:
             // module.to(device);
             module.eval();
             loaded = true;
-            std::cout << "Loaded INR base model on "
-                      << (device.is_cuda() ? "CUDA" : "CPU") << std::endl;
+            // std::cout << "Loaded INR base model on "
+                    //   << (device.is_cuda() ? "CUDA" : "CPU") << std::endl;
         } catch (const c10::Error& e) {
             std::cerr << "Error loading INR model: " << e.what() << std::endl;
             loaded = false;

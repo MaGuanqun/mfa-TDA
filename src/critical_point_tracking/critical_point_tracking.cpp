@@ -65,6 +65,25 @@ using namespace std;
 //     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
 // }
 
+void save_root(std::vector<VectorX<double>>& root_unique, string degenerate_point_file, int spatial_step_size)
+{
+    std::vector<MatrixXd> root_matrix(1);
+
+    root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+    for(int j=0;j<root_unique.size();j++)
+    {
+        root_matrix[0].row(j) = root_unique[j].transpose();
+    }
+
+    string degenerate_file_name = degenerate_point_file + std::to_string(spatial_step_size) + ".dat";
+
+    utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+
+    std::cout<<"save root with step size "<<degenerate_file_name<<std::endl;
+
+}
+
+
 int main(int argc, char** argv)
 {
 
@@ -118,6 +137,8 @@ int main(int argc, char** argv)
     double  spatial_step_size = 1.0;
     string edge_type_file = "";
 
+    string boundary_start="";
+
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -137,6 +158,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
 
     ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
+
+    ops >> opts::Option('j', "boundary_start", boundary_start, " boundary_start_file");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -282,9 +305,11 @@ int main(int argc, char** argv)
 
         string test_file=cp_tracing_file+"_test.obj";
 
+
+        save_root(root_unique, boundary_start, spatial_step_size);
         // tracking_utility::convert_to_obj(test_file,root_unique);
 
-
+        return 0;
         // root_unique.resize(1);
 
 

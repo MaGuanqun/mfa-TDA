@@ -94,6 +94,63 @@ def filter_polydata_in_circle(polydata, cx, cy, radius):
 
 
 
+def filter_our_csv_in_circle(input_csv, output_csv, cx, cy, radius, for_our_csv=False):
+    """
+    Read a CSV file, interpret columns:
+      PositionX -> x
+      PositionY -> y
+      PositionZ -> z
+    Remove rows where (x, y) is inside the same circle and write to output_csv.
+    """
+    r2 = radius * radius
+
+    with open(input_csv, "r", newline="") as fin:
+        reader = csv.DictReader(fin)
+        fieldnames = reader.fieldnames
+
+        if fieldnames is None:
+            raise ValueError("CSV file has no header / fieldnames.")
+
+        required_cols = ["x0", "x1", "x2"]
+        for col in required_cols:
+            if col not in fieldnames:
+                raise ValueError(
+                    f"Required column '{col}' not found in CSV header: {fieldnames}"
+                )
+
+        kept_rows = 0
+        removed_rows = 0
+
+        with open(output_csv, "w", newline="") as fout:
+            writer = csv.DictWriter(fout, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for row in reader:
+                try:
+                    x = float(row["x0"])
+                    y = float(row["x1"])
+                    # z is read but not used in the circle test
+                    _ = float(row["x2"])
+                except ValueError:
+                    # If conversion fails, keep the row unchanged (or you can choose to skip)
+                    writer.writerow(row)
+                    kept_rows += 1
+                    continue
+
+                dx = x - cx
+                dy = y - cy
+
+                # Keep if outside circle
+                if dx * dx + dy * dy > r2:
+                    writer.writerow(row)
+                    kept_rows += 1
+                else:
+                    removed_rows += 1
+
+    print(f"[CSV] Kept rows: {kept_rows}, removed rows: {removed_rows}")
+    # print(f"[CSV] Filtered CSV written to: {output_csv}")
+    
+    
 def filter_csv_in_circle(input_csv, output_csv, cx, cy, radius):
     """
     Read a CSV file, interpret columns:
@@ -151,7 +208,7 @@ def filter_csv_in_circle(input_csv, output_csv, cx, cy, radius):
     print(f"[CSV] Filtered CSV written to: {output_csv}")
     
     
-def main(input_vtp, output_vtp, input_csv, output_csv, cx, cy, radius):
+def main(input_vtp, output_vtp, input_csv, output_csv, cx, cy, radius, for_our_csv=False):
     
     if input_vtp!="input.vtp":
         # Read input .vtp
@@ -172,8 +229,10 @@ def main(input_vtp, output_vtp, input_csv, output_csv, cx, cy, radius):
         print(f"Filtered VTP written to: {output_vtp}")
         
     if input_csv!="input.csv":
-    
-        filter_csv_in_circle(input_csv, output_csv, cx, cy, radius)
+        if for_our_csv:
+            filter_our_csv_in_circle(input_csv, output_csv, cx, cy, radius)
+        else:
+            filter_csv_in_circle(input_csv, output_csv, cx, cy, radius)
 
 
 if __name__ == "__main__":
@@ -204,6 +263,10 @@ if __name__ == "__main__":
         help="Output filtered CSV file",
     )
     parser.add_argument(
+        "--for_our_csv", type=int, default=0,
+        help="Whether the input CSV is for our CSV format"
+    )
+    parser.add_argument(
         "--data", type=str, required=True,
         help="dataset name"
     )
@@ -227,4 +290,5 @@ if __name__ == "__main__":
         cx=center[0],
         cy=center[1],
         radius=radius,
+        for_our_csv=args.for_our_csv,
     )

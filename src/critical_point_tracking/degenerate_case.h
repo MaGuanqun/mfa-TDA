@@ -188,7 +188,7 @@ private:
     //     J[0] = Hessian_f.determinant();        
     // }
 
-    void compute_J_dev_J_INR(VectorX<T>& p, VectorX<T>& J, MatrixX<T>& Jacobian_f)
+    void compute_J_dev_J_INR(VectorX<T>& p, VectorX<T>& J, MatrixX<T>& Jacobian_f,T hessian_norm)
     {
         J.resize(p.size());
         Jacobian_f.resize(p.size(),p.size());
@@ -202,6 +202,7 @@ private:
         J.tail(p.size()-1) = gradient.head(p.size()-1); // only xy gradient
         Eigen::MatrixX<T> Hessian_xy = Hessian_.block(0,0,p.size()-1,p.size()-1);
         J[0] = Hessian_xy.determinant();
+        hessian_norm = Hessian_xy.squaredNorm();
 
             // third_deriv_INR: _xxx, _xyx, _yyx, _xxy, _xyy, _yyy, _xxt, _xyt, _yyt
 
@@ -227,12 +228,12 @@ private:
     }
 
     
-    void compute_J_dev_J(VectorX<T>& p, VectorX<T>& J, MatrixX<T>& Jacobian_f)
+    void compute_J_dev_J(VectorX<T>& p, VectorX<T>& J, MatrixX<T>& Jacobian_f,T hessian_norm)
     {
 
         if(inr_model!=nullptr)
         {
-            compute_J_dev_J_INR(p,J,Jacobian_f);
+            compute_J_dev_J_INR(p,J,Jacobian_f,hessian_norm);
             return;
         }
 
@@ -259,7 +260,8 @@ private:
 
         MatrixX<T> Hessian_f;
         Hessian(p, Hessian_f);
-        J[0] = Hessian_f.determinant();     
+        J[0] = Hessian_f.determinant();    
+        hessian_norm = Hessian_f.squaredNorm();
 
         VectorX<T> diff;
         diff_Hessian_determinant(p, Hessian_f, diff);
@@ -279,8 +281,9 @@ private:
         int itr_num=0;
         MatrixX<T> dev_J;
         VectorX<T> J;
-        compute_J_dev_J(p,J,dev_J);
-        if(J.norm()<degenerate_finding_epsilon)
+        T hessian_norm;
+        compute_J_dev_J(p,J,dev_J,hessian_norm);
+        if(J[0]<degenerate_finding_epsilon* hessian_norm && J.tail(J.size()-1).squaredNorm()<gradient_epsilon*gradient_epsilon)
         {
             result = p;
             return true;
@@ -310,11 +313,11 @@ private:
                 return false;
             }
 
-            compute_J_dev_J(p,J,dev_J);   
+            compute_J_dev_J(p,J,dev_J,hessian_norm);   
 
             if(itr_num>0){
-                if(J.norm()< degenerate_finding_epsilon 
-                && J.tail(J.size()-1).norm()<gradient_epsilon
+                if(J[0]< degenerate_finding_epsilon* hessian_norm 
+                && J.tail(J.size()-1).squaredNorm()<gradient_epsilon*gradient_epsilon
                 ){                    
                     result = p;
                     return true;

@@ -195,7 +195,7 @@ public:
 
         utility::loadMatrixVector(filename.c_str(),root);
 
-        std::cout<<"read critical points 0"<<root[0].rows()<<std::endl;
+        // std::cout<<"read critical points 0"<<root[0].rows()<<std::endl;
         
         singular_points.resize(root[0].rows());
         for(auto i=0;i<root[0].rows();++i)

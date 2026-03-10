@@ -5,8 +5,9 @@ def filter_points(input_file):
     # Read the CSV file
     points = pd.read_csv(input_file)
     
+    z=min(points['x2'])
     # Filter points where z is 0
-    filtered_points = points[points['x2'] == 0]
+    filtered_points = points[points['x2'] == z]
     
     return filtered_points
 

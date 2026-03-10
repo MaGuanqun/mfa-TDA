@@ -262,7 +262,7 @@ int main(int argc, char** argv)
 
     string singular_point_file = "singular_point.dat";
 
-    int max_itr=50;
+    int max_itr=100;
 
     double point_itr_threshold = 0.5;
 
@@ -399,6 +399,7 @@ int main(int argc, char** argv)
 
 
         VectorXi point_num_in_block = inr_model.point_num_in_block; //number of initial points in a block
+        std::cout<<"point_num_in_block "<<point_num_in_block.transpose()<<std::endl;
         std::vector<VectorX<double>> root_unique;
         Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<double>*>(nullptr),&inr_model);
         if(compute_boundary_start==1){
