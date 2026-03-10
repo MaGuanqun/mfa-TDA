@@ -82,5 +82,43 @@ namespace tracking_utility
         return true;
     }
 
+    template<typename T>
+    bool newRootList(std::vector<VectorX<T>>& z, std::vector<std::vector<VectorX<T>>>& root_so_far, std::vector<T>& threshold)
+    {
+        for(int i=0;i<root_so_far.size();++i)
+        {
+            for(int j=0;j<z.size();++j)
+            {
+                if(z[j].size()==0)
+                {
+                    continue;
+                }
+                if(root_so_far[i].size()>j)
+                {
+                    if (root_so_far[i][j].size()!=0)
+                    {
+                        if(std::abs(z[j][z[j].size()-1]-root_so_far[i][j][z[j].size()-1])<threshold.back())
+                        {
+                            if((z[j].head(z[j].size()-1)-root_so_far[i][j].head(z[j].size()-1)).norm()<threshold[0])
+                            {
+                                z[j].resize(0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for(int i=0;i<z.size();++i)
+        {
+            if(z[i].size()!=0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
 
 }
