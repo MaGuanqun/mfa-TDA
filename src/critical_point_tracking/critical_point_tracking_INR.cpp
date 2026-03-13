@@ -345,13 +345,13 @@ int main(int argc, char** argv)
     INRModel<double> inr_model(input_function_name,input_model,initial_point_num_in_a_block);
     int function_type=-1; 
 
-    // Vector of modules, one per TBB worker; each thread uses thread_modules_[its index] with no per-call clone/lock.
-    {
-        int nw = std::max(1, tbb::this_task_arena::max_concurrency());
-        nw=1;
-        // std::cout<<"number of TBB workers "<<nw<<std::endl;
-        inr_model.prepare_thread_modules(static_cast<size_t>(nw));
-    }
+    // // Vector of modules, one per TBB worker; each thread uses thread_modules_[its index] with no per-call clone/lock.
+    // {
+    //     int nw = std::max(1, tbb::this_task_arena::max_concurrency());
+    //     nw=1;
+    //     // std::cout<<"number of TBB workers "<<nw<<std::endl;
+    //     inr_model.prepare_thread_modules(static_cast<size_t>(nw));
+    // }
 
     Eigen::VectorXd local_domain_range=inr_model.domain_max-inr_model.domain_min;
     VectorXd core_maxs = inr_model.domain_max;
@@ -369,10 +369,12 @@ int main(int argc, char** argv)
     double d_max_square_= spatial_step_size*spatial_step_size/16* step_size[0]* step_size[0]; 
 
     std::vector<VectorX<double>> degenerate_points;
+    
     Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
 
-
     std::vector<CP_Trace<double>> traces;
+
+
    
     same_root_epsilon = step_size; // same_root_epsilon
 
@@ -402,6 +404,9 @@ int main(int argc, char** argv)
         std::cout<<"point_num_in_block "<<point_num_in_block.transpose()<<std::endl;
         std::vector<VectorX<double>> root_unique;
         Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<double>*>(nullptr),&inr_model);
+
+        boundary_start = boundary_start +"_" + std::to_string(initial_point_num_in_a_block) + "_";
+
         if(compute_boundary_start==1){
             if (world_size > 1) {
                 // MPI: partition spans across ranks, each process does its chunk
@@ -436,7 +441,20 @@ int main(int argc, char** argv)
                     temp_step_size.back() *=2;
                     spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,temp_step_size[0],temp_step_size.back());
                     save_root(root_unique, boundary_start, i);
-                    std::cout<<"finish finding root before deduplicate between spans "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+                    std::cout<<"finish finding root before deduplicate between spans "<<i<<" "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+                }
+
+                std::vector<double> new_step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/64.0);
+                new_step_size.back() = Span_size[Span_size.size()-1]/64.0; // the last dimension is time
+                temp_step_size= new_step_size;
+                for (int i = 64; i > 1; i /= 2)
+                {
+                    root_unique.clear();
+                    spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,temp_step_size[0],temp_step_size.back());
+                    save_root(root_unique, boundary_start, i);
+                    std::cout<<"finish finding root before deduplicate between spans "<<i<<" "<<root.size()<<" after "<<root_unique.size()<<std::endl;
+                    temp_step_size[0] *=2;
+                    temp_step_size.back() *=2;
                 }
             }
             root.clear();
@@ -445,9 +463,9 @@ int main(int argc, char** argv)
         else
         {
             if (world_rank == 0) {
-                string name  =  boundary_start + std::to_string(int(spatial_step_size)) + ".dat";
+                string name  =  boundary_start  + std::to_string(int(spatial_step_size)) + ".dat";
                 Degenerate_case_tracing<double>::read_degenerate_point(name,root_unique);
-                std::cout<<"read root num from file "<<root_unique.size()<<std::endl;
+
             }
         }
 
@@ -456,12 +474,13 @@ int main(int argc, char** argv)
         if (world_rank == 0)
             std::cout<<"finding time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(finding_end_time - cpt_extract_start_time).count()/1000<<std::endl;
 
+
+            // MPI_Barrier(world_comm);
+            // return 0;
         // string test_file=cp_tracing_file+"_test.obj";
 
         // tracking_utility::convert_to_obj(test_file,root_unique);
 
-        MPI_Barrier(world_comm);
-        return 0;
 
         auto tracking_start_time = std::chrono::high_resolution_clock::now();
 
@@ -474,38 +493,39 @@ int main(int argc, char** argv)
             Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs, root_finding_grad_epsilon, step_size.back(), step_size[0], d_max_square_, function_type, correction_max_itr, static_cast<Block<double>*>(nullptr), &inr_model);
             my_traces.resize(my_root_unique.size());
             boundary_critical_point_tracking.find_trace(my_root_unique, my_traces);
+
+            // mpi_gather_traces(my_traces, traces, world_comm);
+            // if (world_rank == 0)
+            // {
+            //     std::cout << "finish boundary critical point tracing (MPI)" << std::endl;
+            // }
+
+            std::vector<VectorX<double>> my_degenerate_points;
+            mpi_scatter_root_unique(degenerate_points, my_degenerate_points, dim, world_comm);
+            Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
+            degenerate_case_tracing.tracing_from_all_degenerate_points(my_degenerate_points, my_traces, 0.1, d_max_square_);
             mpi_gather_traces(my_traces, traces, world_comm);
-            if (world_rank == 0)
-                std::cout << "finish boundary critical point tracing (MPI)" << std::endl;
+            if (world_rank == 0) {
+                std::cout << "finish tracing (MPI)" << std::endl;
+            }
+                
         } else {
             traces.resize(root_unique.size());
             Boundary_critical_point_tracking boundary_critical_point_tracking(core_mins, core_maxs, root_finding_grad_epsilon, step_size.back(), step_size[0], d_max_square_, function_type, correction_max_itr, static_cast<Block<double>*>(nullptr), &inr_model);
             boundary_critical_point_tracking.find_trace(root_unique, traces);
-            if (world_rank == 0)
-                std::cout << "finish boundary critical point tracing " << std::endl;
-        }
 
-        if (world_size > 1) {
-            // MPI: scatter degenerate_points, each rank calls tracing_from_all_degenerate_points on its chunk, gather and append
-            std::vector<VectorX<double>> my_degenerate_points;
-            int dim = static_cast<int>(core_mins.size());
-            mpi_scatter_root_unique(degenerate_points, my_degenerate_points, dim, world_comm);
-            std::vector<CP_Trace<double>> my_degen_traces;
-            Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
-            degenerate_case_tracing.tracing_from_all_degenerate_points(my_degenerate_points, my_degen_traces, 0.1, d_max_square_);
-            std::vector<CP_Trace<double>> deg_traces;
-            mpi_gather_traces(my_degen_traces, deg_traces, world_comm);
-            if (world_rank == 0) {
-                traces.insert(traces.end(), deg_traces.begin(), deg_traces.end());
-                std::cout << "finish degenerate case tracing (MPI)" << std::endl;
-            }
-        } else if (world_rank == 0) {
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
             degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
         }
 
-    int trace_size=0;
+
+    if (world_rank != 0) {
+        MPI_Barrier(world_comm);
+        return 0;
+    }
+
     if (world_rank == 0) {
+        int trace_size=0;
         for(auto& trace:traces)
         {
             if((!trace.duplicated) && trace.traces.size()>=1)
@@ -553,4 +573,5 @@ int main(int argc, char** argv)
         critical_point_utility::accuracy(traces, degenerate_points, function_type,static_cast<Block<double>*>(nullptr), &inr_model);
     }
     MPI_Barrier(world_comm);
+    return 0;
 }

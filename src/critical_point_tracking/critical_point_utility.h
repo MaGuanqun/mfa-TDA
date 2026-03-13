@@ -79,12 +79,14 @@ namespace critical_point_utility
     }
 
     template<typename T>
-    T compute_accuracy_single_point(VectorX<T>& point,int function_type=0, Block<T>* b=nullptr, INRModel<T>* inr_model=nullptr)
+    T compute_accuracy_single_point(VectorX<T>& point,const int function_type=0, const Block<T>* b=nullptr, INRModel<T>* inr_model=nullptr)
     {
         VectorX<T> gradient;
         if(inr_model!=nullptr)
         {
-            inr_model->query_grad_exclude_last(point, gradient);
+            Eigen::MatrixX<T> Hessian;
+            inr_model->query_dim_reduced_grad_hessian(point, gradient, Hessian, 2);
+            // inr_model->query_grad_exclude_last(point, gradient);
         }
         else
         {
@@ -114,6 +116,7 @@ namespace critical_point_utility
         num_points += degenerate_points.size();
 
         std::cout<<"degenerat_accuracy "<<accuracy_value/ (T)num_points<<std::endl;
+        std::cout<<"degenerate max accuracy "<<max_accuracy<<std::endl;
 
         //conmpute_gradient
         for(int i=0;i<traces.size();++i)

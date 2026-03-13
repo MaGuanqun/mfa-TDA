@@ -14,6 +14,7 @@
 #include "block.hpp"
 
 #include "utility_function.h"
+#include "critical_point_utility.h"
 #include "RK4.h"
 
 
@@ -21,7 +22,7 @@ namespace particle_tracing{
  template<typename T>
     bool tracing_one_direction(T time_step, T spatial_step_size, VectorX<T>& initial, std::vector<VectorX<T>>& result, bool upper_search,
      T gradient_epsilon, int max_itr, T d_max_square, const VectorX<T>&         block_min,
-    const VectorX<T>&         block_max, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr, INRModel<T>* inr_model=nullptr)
+    const VectorX<T>&         block_max, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, int function_type=0, Block<T>* b=nullptr, INRModel<T>* inr_model=nullptr)
     {
         result.clear();
         VectorX<T> p_new = VectorX<T>::Zero(initial.size());
@@ -60,7 +61,9 @@ namespace particle_tracing{
                 // std::cout<<"time step too large "<<std::abs(p_new[p_new.size()-1]-p_old[p_old.size()-1])<<" "<<time_step<<std::endl;
                 break;
             }
+
             
+
             result.emplace_back(p_new);
             p_old = p_new;
 

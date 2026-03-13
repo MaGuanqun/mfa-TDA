@@ -225,7 +225,7 @@ namespace RK4
 
 
  
-            if(f.squaredNorm()<root_finding_epsilon*root_finding_epsilon){             
+            if(f.norm()<root_finding_epsilon){             
                 input_point = p;
 
                 // std::cout<<"successfully correction itr num "<<f.squaredNorm()<<std::endl;
