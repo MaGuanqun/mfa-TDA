@@ -214,11 +214,11 @@ int main(int argc, char** argv)
     INRModel<double> inr_model(input_function_name,input_model,initial_point_num_in_a_block);
     int function_type=-1;
 
-    {
-        int nw = std::max(1, tbb::this_task_arena::max_concurrency());
-        nw=1;
-        inr_model.prepare_thread_modules(static_cast<size_t>(nw));
-    }
+    // {
+    //     int nw = std::max(1, tbb::this_task_arena::max_concurrency());
+    //     nw=1;
+    //     inr_model.prepare_thread_modules(static_cast<size_t>(nw));
+    // }
 
     auto start_time = std::chrono::high_resolution_clock::now();
         
