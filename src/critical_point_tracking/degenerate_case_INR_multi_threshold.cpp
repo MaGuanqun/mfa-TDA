@@ -346,6 +346,8 @@ int main(int argc, char** argv)
         for (size_t k = 0; k < root_unique.size(); k++){
             if (root_unique[k].empty())
                 continue;
+            step_size[0]=Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size;
+            step_size.back() = Span_size[Span_size.size()-1]/spatial_step_size; 
             std::vector<MatrixXd> root_matrix(1);
             root_matrix[0].resize(root_unique[k].size(), root_unique[k][0].size());
             for (size_t j = 0; j < root_unique[k].size(); j++)
