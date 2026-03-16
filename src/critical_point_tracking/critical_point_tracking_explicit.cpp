@@ -276,7 +276,7 @@ int main(int argc, char** argv)
     if(edge_type_file!="")
         critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type);
 
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points, domain_min, domain_range, &critical_point_types, edge_type_file);
+    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points, core_mins, local_domain_range, &critical_point_types, edge_type_file);
 
     critical_point_utility::accuracy(traces, degenerate_points, function_type);
 
