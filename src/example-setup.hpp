@@ -206,6 +206,11 @@ using namespace std;
             dom_bounds.min = {-2.0, -2.0, 0.0};
             dom_bounds.max = { 2.0, 2.0, 4.0};
         }
+        else if(input=="quartic_potential_3d")
+        {
+            dom_bounds.min = {-2.0, -2.0, -2.0, 0.0};
+            dom_bounds.max = { 2.0, 2.0, 2.0, 4.0};
+        }
         else if(input=="rotating_quartic_multiwell")
         {
             dom_bounds.min = {-2.0, -2.0, 0.0};

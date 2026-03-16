@@ -48,6 +48,14 @@ def quartic_potential_2(point):
     x, y, z = point
     return 0.25 * (x ** 4 + y ** 4) + 0.5 * (1 - z) * x ** 2 + 0.5 * np.cos(z) * y ** 2
 
+def quartic_potential_3d(point):
+    """
+    Quartic potential function:
+    f(x, y, z, t) = 0.25*(x^4 + y^4 + z^4) + 0.5*(1 - t)*x^2 + 0.5*cos(t)*y^2 + 0.5*cos(t)*z^2
+    """
+    x, y, z, t = point
+    return 0.25 * (x ** 4 + y ** 4 + z ** 4) + 0.5 * (1 - t) * x ** 2 + 0.5 * np.cos(t) * y ** 2 + 0.5 * np.cos(t) * z ** 2
+
 def rotating_quartic_multiwell(point):
     """
     f(x,y,t) = 1/4 * [ (x cos t + y sin t)^2 - 1 ]^2
@@ -74,8 +82,12 @@ args = parser.parse_args()
 if args.function_name in ['quartic_potential_2', 'rotating_gaussian', 'rotating_quartic_multiwell']:
     min=[-2,-2,0]
     max = [2,2,4]
+elif args.function_name == 'quartic_potential_3d':
+    min=[-2,-2,-2,0]
+    max = [2,2,2,4]
 
 # Grid definition
+
 nx, ny, nz = 100, 100, 101
 x = np.linspace(min[0], max[0], nx)
 y = np.linspace(min[1], max[1], ny)

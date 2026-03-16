@@ -19,6 +19,10 @@ namespace closed_form_function
         {
             return 3;
         }
+        if(function_name=="quartic_potential_3d")
+        {
+            return 4;
+        }
         std::cout<<"error: invalid function name"<<std::endl;
         exit(0);
         return -1;
@@ -40,6 +44,10 @@ namespace closed_form_function
         case 3:
             result << -2.0,-2.0,0.0;
             break;
+        case 4:
+            result.resize(4);
+            result << -2.0,-2.0,-2.0,0.0;
+            break;
         default:
             break;
         }
@@ -59,6 +67,10 @@ namespace closed_form_function
             break;
         case 3:
             result << 2.0,2.0,4.0;
+            break;
+        case 4:
+            result.resize(4);
+            result << 2.0,2.0,2.0,4.0;
             break;
         default:
             break;
@@ -80,6 +92,10 @@ namespace closed_form_function
         case 3:
             result << 10,10,10;
             break;
+        case 4:
+            result.resize(4);
+            result << 10,10,10,10;
+            break;
         default:
             break;
         }
@@ -100,6 +116,10 @@ namespace closed_form_function
             break;
         case 3:
             result << 5,5,5;
+            break;
+        case 4:
+            result.resize(4);
+            result << 4,4,4,4;
             break;
         default:
             break;
@@ -309,6 +329,138 @@ namespace closed_form_function
             }
             // derivs(1)==2  // (0,2,1)
                 result(0)=-sin(point(2));
+                return;
+        }
+
+        std::cout<<"Error: the order of derivative is larger than 3, which is not supported!"<<std::endl;
+        exit(0);
+    }
+
+
+
+
+    //$$f(x,y,t)=\frac{x^4}{4}+\frac{1-t}{2}x^2+\frac{y^4}{4}+\frac{\cos t}{2}y^2 +\frac{z^4}{4}+\frac{\cos t}{2}z^2$$
+    //the third derivatives only contain /partial_t = 1 or 0
+    template<typename T>
+    void quartic_potential_3d(const VectorX<T>&   point,VectorX<T>&         result,const VectorXi&     derivs = VectorXi())
+    {
+        result.resize(1);
+        if(derivs.size()==0)
+        {
+            result(0)=0.25*pow(point(0),4)+0.5*(1-point(3))*point(0)*point(0)+0.25*pow(point(1),4)+0.5*cos(point(3))*point(1)*point(1)+0.25*pow(point(2),4)+0.5*cos(point(3))*point(2)*point(2);
+            return;
+        }
+        if(derivs.sum()==1)
+        {
+            if(derivs(0)==1)
+            {
+                result(0)=point(0)*point(0)*point(0)+point(0)*(1-point(3));
+                return;
+            }
+            if(derivs(1)==1)
+            {
+                result(0)=point(1)*point(1)*point(1)+point(1)*cos(point(3));
+                return;
+            }
+            if(derivs(2)==1)
+            {
+                result(0)=point(2)*point(2)*point(2)+point(2)*cos(point(3));
+                return;
+            }
+            // derivs(3)==1
+            result(0)=-0.5*point(0)*point(0)-0.5*point(1)*point(1)*sin(point(3))-0.5*point(2)*point(2)*sin(point(3));
+            return;
+            
+        }
+        if(derivs.sum()==2)
+        {
+            if(derivs(3)==2)
+            {
+                result(0)=-0.5*point(1)*point(1)*cos(point(3))-0.5*point(2)*point(2)*cos(point(3));
+                return;
+            }
+            if(derivs(3)==1)
+            {
+                if(derivs(1)==1 && derivs(2)==0) //(0,1,0,1)
+                {
+                    result(0)=-point(1)*sin(point(3));
+                    return;
+                }
+                if(derivs(1)==0 && derivs(2)==1) //(0,0,1,1)
+                {
+                    result(0)=-point(2)*sin(point(3));
+                    return;
+                }
+                // derivs(0)==1 (1,0,0,1)
+                result(0)=-point(0);
+                return;
+            }
+            // derivs(3)==0
+            if(derivs(1)==2) // (0,2,0,0)
+            {
+                result(0)=3.0*point(1)*point(1)+cos(point(3));
+                return;
+            }
+
+            if(derivs(0)==2) //(2,0,0,0)
+            {
+                result(0)=3.0*point(0)*point(0)+1.0-point(3);
+                return;
+            }
+            if(derivs(2)==2) //(0,0,2,0)
+            {
+                result(0)=3.0*point(2)*point(2)+cos(point(3));
+                return;
+            }
+            //(1,1,0,0) // (0,1,1,0) // (1,0,1,0)
+            result(0)=0.0;
+            return;
+            
+        }
+        if(derivs.sum()==3)
+        {
+            if(derivs(3)==0)
+            {
+                if(derivs(0)==3) //(3,0,0,0)
+                {
+                    result(0)=6.0*point(0);
+                    return;
+                }
+                if(derivs(1)==3) //(0,3,0,0)
+                {
+                    result(0)=6.0*point(1);
+                    return;
+                }
+                if(derivs(2)==3) //(0,0,3,0)
+                {
+                    result(0)=6.0*point(2);
+                    return;
+                }
+                //(2,1,0,0) // (1,2,0,0) // (0,1,2,0) (1,1,1,0)
+                result(0)=0.0;
+                return;
+            }
+
+            // the following must be derivs(3)==1 
+            //(2,0,0,1)
+            if(derivs(0)==2)
+            {
+               result(0)=-1.0;
+                return;
+            }
+            if(derivs(1)==2)
+            {
+                result(0)=-sin(point(3));
+                return;
+            }
+            if(derivs(2)==2)
+            {
+                result(0)=-sin(point(3));
+                return;
+            }
+            // (1,1,0,1) (1,0,1,1) (0,1,1,1)
+                result(0)=0.0;
+                
                 return;
         }
 

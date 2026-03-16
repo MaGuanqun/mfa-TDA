@@ -31,8 +31,11 @@ namespace CP_Trace_fuc
         std::cout << "Edge values saved to " << filename << std::endl;
     }
 
+        
+
+    // for 4d, add t to y. So that y dim can go to 3y in the end.  
     template<typename T>
-    void convert_to_obj(const std::string& filename, std::vector<CP_Trace<T>>& traces, std::vector<VectorX<T>>& degenerate_points, std::vector<int>* critical_point_types=nullptr, std::string edge_type_filename="")
+    void convert_to_obj(const std::string& filename, std::vector<CP_Trace<T>>& traces, std::vector<VectorX<T>>& degenerate_points,  VectorX<T>& domain_min, VectorX<T>& domain_range, std::vector<int>* critical_point_types=nullptr, std::string edge_type_filename="")
     {
         std::ofstream outFile(filename);
         if (!outFile.is_open()) {
@@ -40,22 +43,48 @@ namespace CP_Trace_fuc
             return;
         }
 
-        for(auto i=0;i<degenerate_points.size();++i)
+        if(domain_min.size()==3)
         {
-            outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] << " " << degenerate_points[i].data()[2] << "\n";
-        }
+            for(auto i=0;i<degenerate_points.size();++i)
+            {
+                outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] << " " << degenerate_points[i].data()[2] << "\n";
+            }
 
-        for (auto i=traces.begin();i<traces.end();++i)
+            for (auto i=traces.begin();i<traces.end();++i)
+            {
+                if(i->duplicated)
+                {
+                    continue;
+                }
+                for(auto j=0;j<i->traces.size();++j)
+                {
+                    outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] << " " << i->traces[j].data()[2] << "\n";
+                }
+                
+            }
+        }
+        else if(domain_min.size()==4)
         {
-            if(i->duplicated)
+            T ratio = 2.0*domain_range(1) / domain_range(domain_range.size()-1);
+            for(auto i=0;i<degenerate_points.size();++i)
             {
-                continue;
+                outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] + ratio *(degenerate_points[i].data()[3]-domain_min(3)) << " " << degenerate_points[i].data()[2] << "\n";
             }
-            for(auto j=0;j<i->traces.size();++j)
+
+
+            for (auto i=traces.begin();i<traces.end();++i)
             {
-                outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] << " " << i->traces[j].data()[2] << "\n";
+                if(i->duplicated)
+                {
+                    continue;
+                }
+                for(auto j=0;j<i->traces.size();++j)
+                {
+                    outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] + ratio *(i->traces[j].data()[3]-domain_min(3)) << " " << i->traces[j].data()[2] << "\n";
+                }
+                
             }
-            
+
         }
 
         std::vector<int> edge_type;

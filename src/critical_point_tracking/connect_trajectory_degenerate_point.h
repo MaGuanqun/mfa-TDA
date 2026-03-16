@@ -97,9 +97,30 @@ void registerPoints(Eigen::VectorX<T>& Position, T spatial_epsilon, T temporal_e
             }
         }
     }
-    else 
+    else if(Position.size()==11) //dimension = 4
     {
-        std::cout<<"error, only support 3D data"<<std::endl;
+        for(auto i:temp_index[0])
+        {
+            for(auto j:temp_index[1])
+            {
+                for(auto k:temp_index[2])
+                {
+                    for(auto l:temp_index[3])
+                    {
+                        Position[3]=i;
+                        Position[4]=j;
+                        Position[5]=k;
+                        Position[6]=l;
+
+                        points_step_1.insert(Position);
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        std::cout<<"error, only support 3D and 4D data"<<std::endl;
     }
 
 

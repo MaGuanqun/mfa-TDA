@@ -32,7 +32,7 @@
 
 #include "spatial_hashing_spatial_temporal.h"
 #include "closed_form_function.h"
-
+#include "critical_point_utility.h"
 
 using namespace std;
 
@@ -108,6 +108,8 @@ int main(int argc, char** argv)
         }
     }  
 
+    std::cout<<"step size "<<spatial_step_size<<std::endl;
+
     int function_type = closed_form_function::initial_func_type(input_function_name);
 
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -131,6 +133,8 @@ int main(int argc, char** argv)
 
         VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of initial points in a block
 
+        std::cout<<"print point num in block "<<point_num_in_block.transpose()<<std::endl;
+
         Tracking_degenerate_case tracking_degenerate_case(core_mins, core_maxs, J_threshold, grad_epsilon,step_size, max_itr, function_type);
 
         tracking_degenerate_case.degenerate_finding(root,point_num_in_block, span_num);
@@ -153,6 +157,8 @@ int main(int argc, char** argv)
         {
             root_matrix[0].row(j) = root_unique[j].transpose();
         }
+
+        // critical_point_utility::test_accuracy(root_unique, function_type);
 
         utility::writeMatrixVector(degenerate_point_file.c_str(),root_matrix);
 

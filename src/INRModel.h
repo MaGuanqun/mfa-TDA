@@ -49,7 +49,7 @@ public:
         else
         {
             this->point_num_in_block = VectorXi::Constant(3, initial_point_num_in_a_block_);
-            std::cout<<"initial point num set in a block "<<this->point_num_in_block.transpose()<<std::endl;
+            // std::cout<<"initial point num set in a block "<<this->point_num_in_block.transpose()<<std::endl;
         }
 
         // std::cout<<"INR model domain min: "<<this->domain_min.transpose()<<std::endl;
@@ -79,7 +79,7 @@ static VectorX<T> domain_min_(const string& func_name)
         if(func_name=="quartic_potential_2")
         {
             result << -2.0,-2.0,0.0;
-        }
+        }   
         else if (func_name=="vortex_street")
         {
             result << 0,0,0;
@@ -108,6 +108,15 @@ static VectorX<T> domain_min_(const string& func_name)
         {
             result << 3.5,0.5,0.0;
         }
+        else
+        {
+            result.resize(4);
+            if (func_name=="quartic_potential_3d")
+            {
+                result << -2.0,-2.0,-2.0,0.0;
+            }
+        }
+
         
         return result;
     } 
@@ -146,6 +155,14 @@ static VectorX<T> domain_max_(const string& func_name)
         else if(func_name=="cylinder3")
         {
             result << 5.5,1.5,1.0;
+        }
+        else
+        {
+            result.resize(4);
+            if (func_name=="quartic_potential_3d")
+            {
+                result << 2.0,2.0,2.0,4.0;
+            }
         }
         return result;
     } 
@@ -199,6 +216,14 @@ static VectorXi block_num_(const string& func_name) //number of blocks that spli
         {
             result << 20,10,10;
         }
+        else
+        {
+            result.resize(4);
+            if (func_name=="quartic_potential_3d")
+            {
+                result << 10,10,10,10;
+            }
+        }
 
         return result;
     }
@@ -238,6 +263,14 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         else if (func_name=="cylinder3")
         {
             result << 4,4,4;
+        }
+        else
+        {
+            result.resize(4);
+            if (func_name=="quartic_potential_3d")
+            {
+                result << 4,4,4,4;
+            }
         }
         return result;
     }
