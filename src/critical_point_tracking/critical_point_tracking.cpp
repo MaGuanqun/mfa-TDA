@@ -353,7 +353,7 @@ int trace_size=0;
     std::cout<<"trace before splitting "<<traces.size()<<" real traces "<<trace_size<<std::endl;
 
         //the result will sort degenerate_points by time
-    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
+    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins, core_maxs);
 
     connect_trajectory_degenerate_point::connect_trajectory(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
 

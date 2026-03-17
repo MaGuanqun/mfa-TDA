@@ -467,7 +467,66 @@ bool register_trace_by_first_point(
 // 5. Top-level dedup function: loop over all traces
 //    - For each trace, try to register it by first point
 //    - If register_trace_by_first_point() returns false, mark duplicated=true
-// ============================================================================
+// ==
+// 
+// 
+// ==========================================================================
+
+
+template<typename T>
+bool is_point_on_boundary(const VectorX<T>& point, const VectorX<T>& core_mins, const VectorX<T>& core_maxs)
+{
+    for(int i=0;i<point.size();++i)
+    {
+        if(abs(point[i]-core_mins[i]) < 1e-8 || abs(point[i]-core_maxs[i]) < 1e-8)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+template<typename T>
+void check_point_on_boundary(std::vector<CP_Trace<T>>& traces, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, std::vector<int>& has_boundary)
+{
+    has_boundary.resize(traces.size(),0);
+    for(int i=0;i<traces.size();++i)
+    {
+        if (is_point_on_boundary(traces[i].traces[0], core_mins, core_maxs))
+        {
+            has_boundary[i]=1;
+            continue;
+        }
+        if (is_point_on_boundary(traces[i].traces.back(), core_mins, core_maxs))
+        {
+            has_boundary[i]=1;
+            continue;
+        }
+    }
+}
+
+
+//put all traces that contain boundary to the front, and then put all traces that do not contain boundary to the back
+template<typename T>
+void sort_all_traces(std::vector<CP_Trace<T>>& traces, std::vector<int>& has_boundary, std::vector<size_t>& ordered_trace_id)
+{
+    ordered_trace_id.reserve(traces.size());
+    for(auto i=0;i<traces.size();++i)
+    {
+        if(has_boundary[i]==1)
+        {
+            ordered_trace_id.emplace_back(i);
+        }
+    }
+    for(auto i=0;i<traces.size();++i)
+    {
+        if(has_boundary[i]==0)
+        {
+            ordered_trace_id.emplace_back(i);
+        }
+    }
+}
+
 
 template <typename T>
 void deduplicate_traces(
@@ -475,7 +534,8 @@ void deduplicate_traces(
     std::vector<VectorX<T>>& degenerate_points, 
     T spatial_step_size,
     T time_step,
-    const Eigen::VectorX<T>& domain_min)
+    const Eigen::VectorX<T>& domain_min,
+    const Eigen::VectorX<T>& domain_max)
 {
 
     if(!degenerate_points.empty())
@@ -485,10 +545,17 @@ void deduplicate_traces(
         // std::cout<<"end splitting "<<std::endl;
     }
 
+    std::vector<int> has_boundary;
+    check_point_on_boundary(traces, domain_min, domain_max, has_boundary);
+    std::vector<size_t> ordered_trace_id;
+    sort_all_traces(traces, has_boundary, ordered_trace_id);
+
     CellMap cell_map;
 
-    for (int i = 0; i < static_cast<int>(traces.size()); ++i)
+    for(auto k=0; k<ordered_trace_id.size();++k)
+    // for (int i = 0; i < static_cast<int>(traces.size()); ++i)
     {
+        size_t i = ordered_trace_id[k];
         if (traces[i].traces.empty())
         {
             // You can decide whether empty traces are considered duplicated.

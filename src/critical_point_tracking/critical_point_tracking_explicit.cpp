@@ -248,7 +248,7 @@ int main(int argc, char** argv)
     std::cout<<"trace before splitting "<<traces.size()<<" real traces "<<trace_size<<std::endl;
 
         //the result will sort degenerate_points by time
-    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
+    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins, core_maxs);
 
     std::cout<<"trace_after splitting "<<traces.size()<<std::endl;
 
