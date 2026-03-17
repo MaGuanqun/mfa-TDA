@@ -222,7 +222,6 @@ public:
         step_size.back() = time_step* step_ratio; // the last dimension is time
   
 
-
         for(int i=0;i<degenerate_points.size();++i)
         {
 

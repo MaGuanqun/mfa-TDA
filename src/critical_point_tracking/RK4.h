@@ -40,7 +40,7 @@ namespace RK4
             {
                 deriv.setZero();
                 deriv[i]=1;
-                deriv[2]=1;
+                deriv[deriv.size()-1]=1;
                 query_function::query_function(p, f_vector, function_type, b, deriv);
                 dev_f[i] = f_vector[0];
             }

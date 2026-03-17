@@ -218,6 +218,7 @@ bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces,
                           T spatial_step_size,
                           T time_step)
 {
+
     int dim = traces[trace_id_0].traces[0].size();
 
     if(std::abs(traces[trace_id_0].traces[0][dim-1]-traces[trace_id_1].traces[0][dim-1]) > time_step)
@@ -226,10 +227,21 @@ bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces,
         return false;
     }
 
+
+
     if((traces[trace_id_0].traces[0].head(dim-1)-traces[trace_id_1].traces[0].head(dim-1)).squaredNorm() > spatial_step_size*spatial_step_size)
     {
+
+        // if((traces[trace_id_0].traces[0].head(dim-1)-traces[trace_id_1].traces[0].head(dim-1)).squaredNorm() < 9*spatial_step_size*spatial_step_size)
+        // {
+            // T distance = (traces[trace_id_0].traces[0].head(dim-1)-traces[trace_id_1].traces[0].head(dim-1)).norm();
+            // if(distance/spatial_step_size < 1.5)
+        //     std::cout<<distance<<" "<<spatial_step_size<< " "<<distance/spatial_step_size<<std::endl;
+        // }
         return false;
     }
+
+
 
     if(std::abs(traces[trace_id_0].traces.back()[dim-1]-traces[trace_id_1].traces.back()[dim-1]) > time_step)
     {
@@ -245,6 +257,7 @@ bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces,
         // std::cout<< traces[trace_id_1].traces[1].transpose()<<std::endl;
         return false;
     }
+
     auto& mid = traces[trace_id_0].traces[traces[trace_id_0].traces.size()>>1];
 
     // std::cout<<"mid point test "<<mid.transpose()<<std::endl;

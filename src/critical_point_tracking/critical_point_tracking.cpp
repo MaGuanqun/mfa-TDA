@@ -375,7 +375,8 @@ int trace_size=0;
     if(edge_type_file!="")
         critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, b);
 
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
+    string tracing_file=cp_tracing_file+".obj";
+    CP_Trace_fuc::convert_to_obj(tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
 
     critical_point_utility::accuracy(traces, degenerate_points, function_type,b);
 

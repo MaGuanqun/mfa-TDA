@@ -189,7 +189,7 @@ int main(int argc, char** argv)
         std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
 
         std::vector<VectorXi> selected_span;
-        span_filter::compute_boundary_span(span_num,selected_span,true);
+        span_filter::compute_boundary_span(span_num,selected_span,false);
         std::cout<<"valid span num "<<selected_span.size()<<std::endl;
         // std::vector<VectorXi> selected_span;
 
@@ -215,6 +215,7 @@ int main(int argc, char** argv)
         root.shrink_to_fit();
 
         string test_file=cp_tracing_file+"_test.obj";
+
 
         tracking_utility::convert_to_obj(test_file,root_unique);
 
@@ -275,8 +276,8 @@ int main(int argc, char** argv)
 
     if(edge_type_file!="")
         critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type);
-
-    CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces,degenerate_points, core_mins, local_domain_range, &critical_point_types, edge_type_file);
+    string tracing_file=cp_tracing_file+".obj";
+    CP_Trace_fuc::convert_to_obj(tracing_file,traces,degenerate_points, core_mins, local_domain_range, &critical_point_types, edge_type_file);
 
     critical_point_utility::accuracy(traces, degenerate_points, function_type);
 

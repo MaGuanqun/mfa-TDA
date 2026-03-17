@@ -65,10 +65,11 @@ namespace CP_Trace_fuc
         }
         else if(domain_min.size()==4)
         {
-            T ratio = 2.0*domain_range(1) / domain_range(domain_range.size()-1);
+            // T ratio = 2.0*domain_range(1) / domain_range(domain_range.size()-1);
             for(auto i=0;i<degenerate_points.size();++i)
             {
-                outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] + ratio *(degenerate_points[i].data()[3]-domain_min(3)) << " " << degenerate_points[i].data()[2] << "\n";
+                outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] << " " << degenerate_points[i].data()[2] << " " << degenerate_points[i].data()[3] << "\n";
+                // outFile << std::setprecision(15) << "v " << degenerate_points[i].data()[0] << " " << degenerate_points[i].data()[1] << " "  << degenerate_points[i].data()[3] << "\n";
             }
 
 
@@ -80,7 +81,8 @@ namespace CP_Trace_fuc
                 }
                 for(auto j=0;j<i->traces.size();++j)
                 {
-                    outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] + ratio *(i->traces[j].data()[3]-domain_min(3)) << " " << i->traces[j].data()[2] << "\n";
+                    // outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] << " "  << i->traces[j].data()[3] << "\n";
+                    outFile << std::setprecision(15) << "v " << i->traces[j].data()[0] << " " << i->traces[j].data()[1] << " " << i->traces[j].data()[2]<<" "<<i->traces[j].data()[3] << "\n";
                 }
                 
             }

@@ -73,6 +73,15 @@ def main(obj_file, edge_values_file, output_file):
     edge_values = read_edge_values(edge_values_file)
 
     assert len(edges) == len(edge_values), "Mismatch between edge count and edge values!"
+    
+    if len(vertices[0]) == 4:
+        new_vertices = []
+        for v in vertices:
+            x = v[0] + 2.0 * v[3]
+            y = v[1] + 2.0 * v[3]
+            z = v[2] + 2.0 * v[3]
+            new_vertices.append((x, y, z))
+        vertices = new_vertices
 
     # Create the dataset in ParaView
     programmableSource = create_programmable_source(vertices, edges, edge_values)

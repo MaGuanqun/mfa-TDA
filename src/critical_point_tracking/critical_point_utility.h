@@ -45,14 +45,14 @@ namespace critical_point_utility
             return -1;
         }
 
-        const double eps = 1e-12; // adjust tolerance to your problem scale
+        // const double eps = 1e-12; // adjust tolerance to your problem scale
         int pos = 0, neg = 0, zero = 0;
         auto vals = es.eigenvalues();
 
         for (int i = 0; i < vals.size(); ++i) {
             double v = vals[i];
-            if (v > eps) ++pos;
-            else if (v < -eps) ++neg;
+            if (v > 0) ++pos;
+            else if (v < 0) ++neg;
             else ++zero;
         }
 
@@ -223,6 +223,7 @@ namespace critical_point_utility
         {
             accuracy= compute_accuracy_single_point(degenerate_points[i], function_type, b, inr_model);
             compute_Hessian_single_point(degenerate_points[i], function_type, b, inr_model);
+            std::cout<<"gradient norm "<<accuracy<<std::endl;
             accuracy_value += accuracy;
 
             if(accuracy>max_accuracy)

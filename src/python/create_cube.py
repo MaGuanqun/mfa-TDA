@@ -33,7 +33,7 @@ def save3D(min,max,name,index):
     ]).flatten()
     cube = pv.PolyData(points, faces)
     # Save to a PLY file
-    filename = "../build/examples/"+name+"/"+name+"_"+index+".ply"
+    filename = "./build/src/"+name+"/"+name+"_"+index+".ply"
     cube.save(filename)
 
 def save2D(min,max,name,index):
@@ -88,12 +88,19 @@ max=[]
 # max.append([ 47.05, 63.24, 209.1])
 
 
-min.append([-0.207732, 0.350515 ])
-max.append([-0.175773, 0.382474])
+# min.append([-0.207732, 0.350515 ])
+# max.append([-0.175773, 0.382474])
 
-name="expotential"
+min.append([-2,-2,-2])
+max.append([2,2,2])
 
-index=[0]
+min.append([6,6,6])
+max.append([10,10,10])
+
+
+name="quartic_potential_3d"
+
+index=[0,1]
 
 for i in index:
-    save2D(min[i],max[i],name,str(i+5))
+    save3D(min[i],max[i],name,str(i))

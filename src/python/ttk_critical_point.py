@@ -4,7 +4,16 @@ import os
 import csv
 import argparse
 import time
+import os
+# os.environ["OMP_NUM_THREADS"] = "8"   # optional: set this to desired threads
 
+LoadPlugin(
+    "/home/guanqunma/paraview-5.13.3"
+    "/lib/paraview-5.13/plugins/TopologyToolKit/TopologyToolKit.so",
+    remote=False,
+    ns=globals(),
+)
+        
 #use environment "mfa" for paraview+ttk
 
 def compute_critical_point(path,name, csv_file):  
@@ -27,10 +36,21 @@ def compute_critical_point(path,name, csv_file):
     start_time = time.perf_counter()
 
     tTKScalarFieldCriticalPoints1 = TTKScalarFieldCriticalPoints(registrationName='TTKScalarFieldCriticalPoints1', Input=calculator1)
-    
+    # # ParaView plugin usually exposes ThreadNumber property
+    # if hasattr(tTKScalarFieldCriticalPoints1, "ThreadNumber"):
+    #     tTKScalarFieldCriticalPoints1.ThreadNumber = 8
+
+    # # also try SetThreadNumber on the VTK/TTK object if available
+    # if hasattr(tTKScalarFieldCriticalPoints1, "SetThreadNumber"):
+    #     tTKScalarFieldCriticalPoints1.SetThreadNumber(8)
+
+    # # enable debug if available
+    # if hasattr(tTKScalarFieldCriticalPoints1, "SetDebugLevel"):
+    #     tTKScalarFieldCriticalPoints1.SetDebugLevel(8)
+    end_time =  time.perf_counter()
 
     SaveData("CriticalPoints.vtk", proxy=tTKScalarFieldCriticalPoints1)
-    end_time =  time.perf_counter()
+
     elapsed_time = end_time - start_time
     print(f"Computing critical points needs {elapsed_time} seconds.")
     
