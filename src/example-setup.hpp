@@ -246,7 +246,11 @@ using namespace std;
             dom_bounds.min = { 3.5,  0.5, 0.0};
             dom_bounds.max = { 5.5,  1.5, 1.0};
         }
-        
+        else if(input=="vortex")
+        {
+            dom_bounds.min = {0, 0, 0,0.0};
+            dom_bounds.max = {127,127,127,89};
+        }
         else
         {
             std::cout<<"input "<<input<<std::endl;
@@ -718,6 +722,26 @@ using namespace std;
 
             std::cout<<"3d vortex street example"<<std::endl;
             std::cout<<"ndom pts "<<mfa::print_vec(d_args.ndom_pts)<<std::endl;
+        }
+
+        if (input == "vortex")
+        {
+            d_args.full_dom_pts = {128, 128, 128, 90};
+            d_args.ndom_pts = d_args.full_dom_pts;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {18, 18, 18, 13};
+            }   
+
+            d_args.min.resize(4);
+            d_args.max.resize(4);
+            d_args.min[0] = 0.0;    d_args.max[0] = 127.0;
+            d_args.min[1] = 0.0;    d_args.max[1] = 127.0;
+            d_args.min[2] = 0.0;    d_args.max[2] = 127.0;
+            d_args.min[3] = 0.0;    d_args.max[3] = 89.0;
+            d_args.set_domain_range=true;
+            
         }
 
         if (input == "fluid")

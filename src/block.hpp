@@ -1082,6 +1082,167 @@ struct Block : public BlockBase<T, U>
         cerr << "domain extent:\n min\n" << bounds_mins << "\nmax\n" << bounds_maxs << endl;
     }
 
+
+
+
+    // read a floating point 3d vector time-varying dataset, ie, 4d
+    // f = (x, y, z, t, velocity magnitude)
+    void read_4d_scalar_data(
+        const       diy::Master::ProxyWithLink& cp,
+        mfa::MFAInfo&    mfa_info,
+        DomainArgs& args)
+{
+    assert(mfa_info.dom_dim == dom_dim);
+    assert(mfa_info.dom_dim == 4);
+    assert(mfa_info.pt_dim() == pt_dim);
+    assert(mfa_info.nvars() == 1);
+    assert(mfa_info.geom_dim() == 4);
+    assert(mfa_info.var_dim(0) == 1);
+
+    const int nvars         = mfa_info.nvars();
+    const int gdim          = mfa_info.geom_dim();
+    const VectorXi mdims    = mfa_info.model_dims();
+
+    DomainArgs* a = &args;
+    size_t tot_ndom_pts = 1;
+    this->max_errs.resize(nvars);
+    this->sum_sq_errs.resize(nvars);
+    VectorXi ndom_pts(dom_dim);
+    this->bounds_mins.resize(pt_dim);
+    this->bounds_maxs.resize(pt_dim);
+    for (int i = 0; i < dom_dim; i++)
+    {
+        ndom_pts(i)                     =  a->ndom_pts[i];
+        tot_ndom_pts                    *= ndom_pts(i);
+    }
+
+    std:cout<<"tot_ndom_pts "<<tot_ndom_pts<<std::endl;
+    int num_skip = a->r;
+
+    // construct point set to contain input
+    if (args.structured)
+        input = new mfa::PointSet<T>(dom_dim, mdims, tot_ndom_pts, ndom_pts);
+    else
+        input = new mfa::PointSet<T>(dom_dim, mdims, tot_ndom_pts);
+
+    size_t space_ndom_pts = tot_ndom_pts / ndom_pts(3);    // total number of domain points in one time step
+    vector<float> vel(3 * space_ndom_pts);
+
+    ifstream fd;
+    fd.open(a->infile);
+    if (!fd.is_open())
+    {
+        fmt::print(stderr, "Error: read_4d_scalar_data(): Unable to open file {}\n", a->infile);
+        abort();
+    }
+
+    string line;
+
+    for (auto j = 0; j < ndom_pts(3); j++)           // for all files
+    {
+        getline(fd, line);
+
+        // debug
+        fmt::print(stderr, "read_4d_scalar_data(): opening file {}\n", line);
+
+        ifstream cur_fd;
+        cur_fd.open(line);
+        if (!cur_fd.is_open())
+        {
+            fmt::print(stderr, "Error: read_4d_scalar_data(): Unable to open file {}\n", line);
+            abort();
+        }
+
+        size_t ofst = j * space_ndom_pts;           // starting offset in input->domain for this time step
+
+        // read all three components of velocity and compute magnitude
+        cur_fd.read((char*)(&vel[0]), space_ndom_pts * sizeof(float));
+        if (!cur_fd)
+        {
+            fmt::print(stderr, "read_4d_scalar_data(): unable to read file {} only {} bytes read\n", line, cur_fd.gcount());
+            abort();
+        }
+        for (size_t i = 0; i < space_ndom_pts; i++)
+        {
+            input->domain(ofst + i, 4) = vel[i];
+                // sqrt(   vel[3 * i    ] * vel[3 * i    ] +
+                //         vel[3 * i + 1] * vel[3 * i + 1] +
+                //         vel[3 * i + 2] * vel[3 * i + 2] );
+            input->domain(ofst + i, 4) *= a->s[0];
+            // debug: print the first few velocities
+//                 if (i < 5)
+//                     fprintf(stderr, "vel [%.3f %.3f %.3f]\n", vel[3 * i], vel[3 * i + 1], vel[3 * i + 2]);
+        }
+
+        // rest is hard-coded for 4d
+
+        // find extent of range
+        for (size_t i = 0; i < (size_t)input->domain.rows(); i++)
+        {
+            if (i == 0 || input->domain(i, 4) < bounds_mins(4))
+                bounds_mins(4) = input->domain(i, 4);
+            if (i == 0 || input->domain(i, 4) > bounds_maxs(4))
+                bounds_maxs(4) = input->domain(i, 4);
+        }
+
+        // set domain values (just equal to i, j; ie, dx, dy = 1, 1)
+        size_t n = 0;
+        for (size_t l = 0; l < (size_t)(ndom_pts(3)); l++)
+            for (size_t k = 0; k < (size_t)(ndom_pts(2)); k++)
+                for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++)
+                    for (size_t i = 0; i < (size_t)(ndom_pts(0)); i++)
+                    {
+                        input->domain(n, 0) = i;
+                        input->domain(n, 1) = j;
+                        input->domain(n, 2) = k;
+                        input->domain(n, 3) = l;
+                        n++;
+                    }
+
+        cur_fd.close();
+    }   // for all files
+    fd.close();
+
+    // extents
+    if(!a->set_domain_range)
+    {
+        bounds_mins(0) = 0.0;
+        bounds_mins(1) = 0.0;
+        bounds_mins(2) = 0.0;
+        bounds_mins(3) = 0.0;
+        bounds_maxs(0) = input->domain(tot_ndom_pts - 1, 0);
+        bounds_maxs(1) = input->domain(tot_ndom_pts - 1, 1);
+        bounds_maxs(2) = input->domain(tot_ndom_pts - 1, 2);
+        bounds_maxs(3) = input->domain(tot_ndom_pts - 1, 3);
+        core_mins.resize(dom_dim);
+        core_maxs.resize(dom_dim);
+        for (int i = 0; i < dom_dim; i++)
+        {
+            core_mins(i) = bounds_mins(i);
+            core_maxs(i) = bounds_maxs(i);
+        }
+    }
+    else
+    {
+        std::cout<<"Setting domain extents from args min/max"<<std::endl;
+        std::cout << "args.min: "<<args.min[0]<<" "<<args.min[1] <<" "<<args.min[2] <<" "<<args.min[3] <<std::endl;
+        for (int i = 0; i < dom_dim; i++)
+        {
+            bounds_mins(i)  = args.min[i];
+            bounds_maxs(i)  = args.max[i];
+            core_mins(i)    = args.min[i];
+            core_maxs(i)    = args.max[i];
+        }
+    }
+    input->set_domain_params();
+
+    // initialize MFA models (geometry, vars, etc)
+    this->setup_MFA(cp, mfa_info);
+
+    // debug
+    cerr << "domain extent:\n min\n" << bounds_mins << "\nmax\n" << bounds_maxs << endl;
+}
+
     // read a floating point 3d vector dataset and take a 3d subset out of it
     // f = (x, y, z, velocity magnitude)
     void read_3d_subset_3d_vector_data(

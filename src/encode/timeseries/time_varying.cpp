@@ -54,6 +54,8 @@ int main(int argc, char** argv)
     real_t      e_threshold = 1e-1;         // error threshold for adaptive encoding
     int         rounds      = 0;            // max number of rounds for adaptive encoding
     bool        help        = false;        // show help
+    string      outfile         = "approx.mfa";       // input file name
+    int         save_datasets   = 1;        // write output MFA and data files (bool 0/1)
 
     // get command line arguments
     opts::Options ops;
@@ -67,6 +69,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('w', "weights",     weighted,   " solve for and use weights");
     ops >> opts::Option('f', "infile",      infile,     " input file name");
     ops >> opts::Option('h', "help",        help,       " show help");
+    ops >> opts::Option('o', "outfile",      outfile,     " output mfa file name"); 
+    ops >> opts::Option('s', "save_datasets",save_datasets," save input, approx, errs datasets to .mfa file (0/1)");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -127,7 +131,21 @@ int main(int argc, char** argv)
     {
         master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
         { 
+            
+
             b->read_4d_vector_data(cp, mfa_info, d_args); 
+        });
+    }
+    else if (input == "vortex")
+    {
+        master.foreach([&](Block<real_t>* b, const diy::Master::ProxyWithLink& cp)
+        { 
+            if (save_datasets)
+                b->save_datasets = 1;
+            else
+                b->save_datasets = 0;
+            
+            b->read_4d_scalar_data(cp, mfa_info, d_args); 
         });
     }
     else
@@ -168,5 +186,5 @@ int main(int argc, char** argv)
     fprintf(stderr, "-------------------------------------\n\n");
 
     // save the results in diy format
-    diy::io::write_blocks("approx.mfa", world, master);
+    diy::io::write_blocks(outfile, world, master);
 }

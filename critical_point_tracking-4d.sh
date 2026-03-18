@@ -2,7 +2,7 @@
 echo "Start Runing Script"
 analytical="./build/src/encode/analytical/analytical"
 
-gridded_3d="./build/src/encode/grid/gridded_3d"
+time_varying="./build/src/encode/timeseries/time_varying"
 write_vtk="./build/src/convert/write_vtk"
 write_slice_bin="./build/src/convert/write_bin_select_slices"
 
@@ -24,7 +24,7 @@ export_raw_data="./build/src/encode/analytical/export_raw_data"
 
 control_point_smoothing="./build/src/critical_point_tracking/control_point_smoothing"
 
-data_type="quartic_potential_3d" #
+data_type="vortex" #quartic_potential_3d vortex
 
 # data_type="quartic_potential_2"
 
@@ -88,7 +88,7 @@ point_itr_threshold="4.0"
 
 
 
-raw_data_file="./CoordNet/Data/${data_type}.bin"
+raw_data_file="./build/src/ori_data/vorts/vorts_list.txt"
 
 
 
@@ -99,7 +99,7 @@ raw_data_file="./CoordNet/Data/${data_type}.bin"
 # if [ "${data_type}" = "rotating_gaussian" ]; then
 # "${analytical}" -d 4 -m 3 -q 3 -s 0.0 -i "${data_type}" -f "${mfa_file}"
 # else 
-# "${gridded_3d}" -d 4 -f "${raw_data_file}" -i "${data_type}" -q 3 -z 0 -o "${mfa_file}" -s 0
+# "${time_varying}" -f "${raw_data_file}" -i "${data_type}" -q 3 -o "${mfa_file}" -s 0
 # fi
 
 
@@ -111,7 +111,7 @@ raw_data_file="./CoordNet/Data/${data_type}.bin"
 # # t_sample_ratio="64"
 
 
-# step_size=16
+# step_size=96
 # for J_threshold in "1e-2" # "1e-3" "1e-4" "1e-5" "1e-6" "1e-7" "1e-8"
 # do  
 # echo "degenerate case with threshold: ${J_threshold}"
@@ -120,15 +120,15 @@ raw_data_file="./CoordNet/Data/${data_type}.bin"
 # done
 
 
-# for step_size in 16
-# do
-    # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
+for step_size in 8
+do
+    "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
     # # gdb --args 
     # for root_finding_epsilon in "1e-6" #"1e-7" "1e-8" "1e-9" "1e-10" "1e-11" "1e-12" "1e-13"
     # do
     echo "test"
     # echo "tracking with step size: ${step_size}"
-    # "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}"
+    "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}"
     
     
     # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 0
@@ -160,7 +160,7 @@ raw_data_file="./CoordNet/Data/${data_type}.bin"
 
     # pvpython ./src/critical_point_tracking/mfa_bin_critical_point.py --cpp_exe "${write_slice_bin}" --chunk_size 20 --step_size "${step_size}" --float_type 'float64' --function "${data_type}" --server 0 --output_csv "${mfa_file}_${step_size}.csv" --mfa_file "${mfa_file}"
 
-#     done
+    done
 # done
 
 # for step_size in "2" "4" "8" "16" "32" "64"
@@ -350,21 +350,24 @@ raw_data_file="./CoordNet/Data/${data_type}.bin"
 
 for step_size in 4
 do
-    # "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}_${step_size}.dat" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+#     "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}_${step_size}.dat" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-    # "${convert_root_to_vtk}" -f "${degenerate_point_original}_${step_size}.dat" -o "${degenerate_point_original}.csv" -j 0 -t 0
+#     "${convert_root_to_vtk}" -f "${degenerate_point_original}_${step_size}.dat" -o "${degenerate_point_original}.csv" -j 0 -t 0
 
-#     # gdb --args 
-    "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}_${step_size}" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}_${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv"
-
-
-step_size=4
+# #     # gdb --args 
+    # "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}_${step_size}" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}_${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv"
 
 
-# source ~/enter/etc/profile.d/conda.sh
-# conda activate mfa
+source ~/enter/etc/profile.d/conda.sh
+conda activate mfa_env
 
-#     pvpython ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}_${step_size}" -j "${edge_type_file}_${step_size}.csv" -o "${ori_tracking_result_w_type}_${step_size}.vtp"
+    # python ./src/python/create_cube.py
+
+
+source ~/enter/etc/profile.d/conda.sh
+conda activate mfa
+
+    # pvpython ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${ori_tracking_result_w_type}_${step_size}.vtp"
 
 # pvpython ./src/python/point_at_certain_time.py --input "${ori_tracking_result_w_type}_${step_size}.vtp" --output "${ori_tracking_result_w_type}_${step_size}_2.76.vtp" --z 2.76 --type-array EdgeValues
 

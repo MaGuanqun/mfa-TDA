@@ -194,7 +194,7 @@ int main(int argc, char** argv)
         utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
 
 
-        for (int i = spatial_step_size/2; i > 3; i /= 2)
+        for (int i = spatial_step_size/2; i > 1; i /= 2)
         {
                 root_unique.clear();
                 step_size[0] *=2;
@@ -208,6 +208,26 @@ int main(int argc, char** argv)
 
                 degenerate_file_name = degenerate_point_file + std::to_string(i) + ".dat";
                 utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+        }
+
+        step_size[0]=Span_size.head(Span_size.size()-1).minCoeff()/64.0;
+        step_size.back() = Span_size[Span_size.size()-1]/64.0; 
+        for (int i = 64; i > 1; i /= 2)
+        {
+       
+            root_unique.clear();
+            step_size[0] *=2;
+            step_size.back() *=2;
+            spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique, step_size[0], step_size.back());
+            root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+            for(int j=0;j<root_unique.size();j++)
+            {
+                root_matrix[0].row(j) = root_unique[j].transpose();
+            }
+
+            degenerate_file_name = degenerate_point_file + std::to_string(i) + ".dat";
+            utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+
         }
 
     });

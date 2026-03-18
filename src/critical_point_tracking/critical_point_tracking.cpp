@@ -309,7 +309,7 @@ int main(int argc, char** argv)
         save_root(root_unique, boundary_start, spatial_step_size);
         // tracking_utility::convert_to_obj(test_file,root_unique);
 
-        return 0;
+        // return 0;
         // root_unique.resize(1);
 
 
@@ -353,7 +353,7 @@ int trace_size=0;
     std::cout<<"trace before splitting "<<traces.size()<<" real traces "<<trace_size<<std::endl;
 
         //the result will sort degenerate_points by time
-    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins, core_maxs);
+    deduplication::deduplicate_traces(traces, degenerate_points, step_size[0], step_size.back(), core_mins, b->core_maxs);
 
     connect_trajectory_degenerate_point::connect_trajectory(traces, degenerate_points, step_size[0], step_size.back(), core_mins);
 
@@ -376,7 +376,7 @@ int trace_size=0;
         critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, b);
 
     string tracing_file=cp_tracing_file+".obj";
-    CP_Trace_fuc::convert_to_obj(tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
+    CP_Trace_fuc::convert_to_obj(tracing_file,traces, degenerate_points, core_mins, local_domain_range, &critical_point_types, edge_type_file);
 
     critical_point_utility::accuracy(traces, degenerate_points, function_type,b);
 
