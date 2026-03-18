@@ -120,9 +120,9 @@ raw_data_file="./build/src/ori_data/vorts/vorts_list.txt"
 # done
 
 
-for step_size in 8
+for step_size in 8 16
 do
-    "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
+    # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
     # # gdb --args 
     # for root_finding_epsilon in "1e-6" #"1e-7" "1e-8" "1e-9" "1e-10" "1e-11" "1e-12" "1e-13"
     # do

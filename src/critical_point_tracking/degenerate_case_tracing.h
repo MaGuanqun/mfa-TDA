@@ -7,7 +7,7 @@
 
 #include <mfa/mfa.hpp>
 
-
+#include <tbb/tbb.h>
 
 #include "opts.h"
 
@@ -300,28 +300,36 @@ public:
         int size = trace.size();
         
         trace.resize(size+start_points_up.size()+start_points_down.size());
-        for(int i=0;i<start_points_up.size();++i)
-        {
-            // if((start_points[i]-test_root).norm()>0.001)
-            // {
-            //     continue;
-            // }
-                // {
-            // std::cout<<start_points[i].transpose()<<std::endl;
-            // std::cout<<"upper tracing "<<upper_tracing[i]<<std::endl;
 
-            tracing_from_start_points(start_points_up[i], true, trace[i+size].traces, d_max_square);
 
-        }
+        std::cout<<"start points up size "<<start_points_up.size()<<std::endl;
+
+        tbb::affinity_partitioner ap;
+        
+
+        const int up_size = static_cast<int>(start_points_up.size());
+        tbb::parallel_for(
+            tbb::blocked_range<int>(0, up_size),
+            [&](const tbb::blocked_range<int>& r)
+            {
+                for (int i = r.begin(); i != r.end(); ++i)
+                    tracing_from_start_points(start_points_up[i], true, trace[i + size].traces, d_max_square);
+            },
+            ap
+        );
 
         int new_size = size + start_points_up.size();
 
-        for(int i=0;i<start_points_down.size();++i)
-        {
-
-            tracing_from_start_points(start_points_down[i], false, trace[i+new_size].traces, d_max_square);
-
-        }
+        const int down_size = static_cast<int>(start_points_down.size());
+        tbb::parallel_for(
+            tbb::blocked_range<int>(0, down_size),
+            [&](const tbb::blocked_range<int>& r)
+            {
+                for (int i = r.begin(); i != r.end(); ++i)
+                    tracing_from_start_points(start_points_down[i], false, trace[i + new_size].traces, d_max_square);
+            },
+            ap
+        );
 
         // if (trace.size() == size)
         // {
