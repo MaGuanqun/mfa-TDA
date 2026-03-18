@@ -222,36 +222,56 @@ public:
         step_size.back() = time_step* step_ratio; // the last dimension is time
   
 
-        for(int i=0;i<degenerate_points.size();++i)
+        tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_raw_up;
+        tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_raw_down;
+
+        tbb::affinity_partitioner ap;
+        tbb::parallel_for(tbb::blocked_range<int>(0, degenerate_points.size()),
+        [&](const tbb::blocked_range<int>& range)
         {
-
-            // if((degenerate_points[i]-test_point).norm()>0.001 &&
-            // (degenerate_points[i]-test_point2).norm()>0.001
-            // )
-            // {
-            //     continue;
-            // }
-            // std::cout<<degenerate_points[i].transpose()<<std::endl;
-
-            std::vector<VectorX<T>> temp_start_points;
-            find_neighbor_start_points(degenerate_points[i], step_size, temp_start_points);
-
-            // std::vector<int> temp_upper_tracing;
-            for(auto& start_point: temp_start_points)
+            auto& raw_up_thread = local_raw_up.local();
+            auto& raw_down_thread = local_raw_down.local();
+            for(int i=range.begin();i!=range.end();++i)
             {
-                if(start_point[start_point.size()-1]>degenerate_points[i][degenerate_points[i].size()-1])
+    
+                // if((degenerate_points[i]-test_point).norm()>0.001 &&
+                // (degenerate_points[i]-test_point2).norm()>0.001
+                // )
+                // {
+                //     continue;
+                // }
+                // std::cout<<degenerate_points[i].transpose()<<std::endl;
+    
+                std::vector<VectorX<T>> temp_start_points;
+                find_neighbor_start_points(degenerate_points[i], step_size, temp_start_points);
+    
+                // std::vector<int> temp_upper_tracing;
+                for(auto& start_point: temp_start_points)
                 {
-                    // temp_upper_tracing.emplace_back(1);
-                    raw_start_points_up.emplace_back(start_point);
-
-                }
-                else
-                {
-                    raw_start_points_down.emplace_back(start_point);
+                    if(start_point[start_point.size()-1]>degenerate_points[i][degenerate_points[i].size()-1])
+                    {
+                        // temp_upper_tracing.emplace_back(1);
+                        raw_up_thread.emplace_back(start_point);
+    
+                    }
+                    else
+                    {
+                        raw_down_thread.emplace_back(start_point);
+                    }
                 }
             }
-        }
+           
+        }, ap);
 
+        for(const auto& thread_vec : local_raw_up)
+        {
+            raw_start_points_up.insert(raw_start_points_up.end(), thread_vec.begin(), thread_vec.end());
+        }
+        for(const auto& thread_vec : local_raw_down)
+        {
+            raw_start_points_down.insert(raw_start_points_down.end(), thread_vec.begin(), thread_vec.end());
+        }
+       
 
 
 
@@ -270,6 +290,9 @@ public:
             spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_down, start_points_down,step_size[0],step_size.back());
         }
 
+
+        std::cout<<"find degenerate point start points up size "<<start_points_up.size()<<std::endl;
+        std::cout<<"find degenerate point start points down size "<<start_points_down.size()<<std::endl;
 
         // string test_file2="start points test down.obj";
         // tracking_utility::convert_to_obj(test_file2,start_points_down);
