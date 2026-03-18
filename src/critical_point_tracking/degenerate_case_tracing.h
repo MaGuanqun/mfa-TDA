@@ -326,8 +326,6 @@ public:
 
 
         std::cout<<"start points up size "<<start_points_up.size()<<std::endl;
-
-        tbb::affinity_partitioner ap;
         
 
         const int up_size = static_cast<int>(start_points_up.size());
