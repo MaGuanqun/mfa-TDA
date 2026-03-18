@@ -65,23 +65,7 @@ using namespace std;
 //     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
 // }
 
-void save_root(std::vector<VectorX<double>>& root_unique, string degenerate_point_file, int spatial_step_size)
-{
-    std::vector<MatrixXd> root_matrix(1);
 
-    root_matrix[0].resize(root_unique.size(),root_unique[0].size());
-    for(int j=0;j<root_unique.size();j++)
-    {
-        root_matrix[0].row(j) = root_unique[j].transpose();
-    }
-
-    string degenerate_file_name = degenerate_point_file + std::to_string(spatial_step_size) + ".dat";
-
-    utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
-
-    std::cout<<"save root with step size "<<degenerate_file_name<<std::endl;
-
-}
 
 
 int main(int argc, char** argv)
@@ -139,6 +123,8 @@ int main(int argc, char** argv)
 
     string boundary_start="";
 
+    int directly_read_file = 0;
+
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -160,6 +146,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
 
     ops >> opts::Option('j', "boundary_start", boundary_start, " boundary_start_file");
+
+    ops >> opts::Option('d', "directly_read_file", directly_read_file, " directly read degenerate tracing file");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -306,7 +294,7 @@ int main(int argc, char** argv)
         string test_file=cp_tracing_file+"_test.obj";
 
 
-        save_root(root_unique, boundary_start, spatial_step_size);
+        tracking_utility::save_root(root_unique, boundary_start, spatial_step_size);
         // tracking_utility::convert_to_obj(test_file,root_unique);
 
         // return 0;
@@ -339,8 +327,8 @@ int main(int argc, char** argv)
         Degenerate_case_tracing degenerate_case_tracing(b->core_mins, b->core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, 0, b);
 
         std::cout<< "d_max_square_ "<<d_max_square_<<std::endl;
-
-        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
+        string degenerate_start = singular_point_file + "_start_";
+        degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_, directly_read_file,degenerate_start);
 
 int trace_size=0;
     for(auto& trace:traces)

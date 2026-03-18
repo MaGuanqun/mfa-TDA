@@ -96,6 +96,7 @@ void splitting(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degener
         return a[a.size()-1] < b[b.size()-1]; //sort by time
     });
 
+    std::cout<<"start time range sorting "<<std::endl;
     //check if traces pass through the degenerate points
     std::vector<TraceTimeRange<T>> time_ranges(traces.size());
     for(int i=0;i<traces.size();++i)
@@ -116,6 +117,8 @@ void splitting(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degener
         return a.start_time < b.start_time;
     });
 
+    // std::cout<<"end time range sorting "<<std::endl;
+
     std::vector<std::vector<int>> matching_trace_ids(degenerate_points.size());
     std::vector<std::vector<int>> closest_trace_point_index(degenerate_points.size());//the first point index that is larger than t
 
@@ -124,7 +127,7 @@ void splitting(std::vector<CP_Trace<T>>& traces,std::vector<VectorX<T>>& degener
         find_matching_traces(degenerate_points[i], time_ranges, matching_trace_ids[i], closest_trace_point_index[i], traces, spatial_step_size);
     }
 
-
+    // std::cout<<"end finding matching traces "<<std::endl;
     //record info of degenerate points into traces
 
     std::vector<std::vector<int>> matching_degenerate_point_id(traces.size());
@@ -492,6 +495,11 @@ void check_point_on_boundary(std::vector<CP_Trace<T>>& traces, const VectorX<T>&
     has_boundary.resize(traces.size(),0);
     for(int i=0;i<traces.size();++i)
     {
+        if(traces[i].traces.empty())
+        {
+            // has_boundary[i]=0;
+            continue;
+        }
         if (is_point_on_boundary(traces[i].traces[0], core_mins, core_maxs))
         {
             has_boundary[i]=1;
@@ -542,14 +550,18 @@ void deduplicate_traces(
     {
         splitting(traces, degenerate_points, spatial_step_size);
 
-        // std::cout<<"end splitting "<<std::endl;
+        std::cout<<"end splitting "<<std::endl;
     }
 
     std::vector<int> has_boundary;
     check_point_on_boundary(traces, domain_min, domain_max, has_boundary);
+
+    // std::cout<<"end checking point on boundary "<<std::endl;
     std::vector<size_t> ordered_trace_id;
     sort_all_traces(traces, has_boundary, ordered_trace_id);
 
+
+    // std::cout<<"end sorting traces "<<std::endl;
     CellMap cell_map;
 
     for(auto k=0; k<ordered_trace_id.size();++k)

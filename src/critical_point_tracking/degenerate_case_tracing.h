@@ -209,23 +209,24 @@ public:
 
     
     
-    void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T step_ratio,  T d_max_square)
+    void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T step_ratio,  T d_max_square, int directly_read_file, string degenerate_start = "")
     {
 
         std::vector<VectorX<T>> raw_start_points_up;
         std::vector<VectorX<T>> raw_start_points_down;
         std::vector<int> upper_tracing; 
-
-
+        std::vector<VectorX<T>> start_points_up;
+        std::vector<VectorX<T>> start_points_down;
 
         std::vector<T> step_size(core_mins.size(),spatial_step* step_ratio);
         step_size.back() = time_step* step_ratio; // the last dimension is time
-  
-
         tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_raw_up;
         tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_raw_down;
 
         tbb::affinity_partitioner ap;
+  
+        if(directly_read_file==0){
+
         tbb::parallel_for(tbb::blocked_range<int>(0, degenerate_points.size()),
         [&](const tbb::blocked_range<int>& range)
         {
@@ -275,7 +276,7 @@ public:
 
 
 
-        std::vector<VectorX<T>> start_points_up;
+
         if(!raw_start_points_up.empty())
         {
              spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_up, start_points_up,step_size[0],step_size.back());
@@ -284,15 +285,34 @@ public:
         // string test_file="start points test up.obj";
         // tracking_utility::convert_to_obj(test_file,start_points_up);
 
-        std::vector<VectorX<T>> start_points_down;
+
         if(!raw_start_points_down.empty())
         {
             spatial_hashing_spatial_temporal::find_all_unique_root(raw_start_points_down, start_points_down,step_size[0],step_size.back());
         }
 
+        if (degenerate_start != "")
+        {
+            string degenerate_start_up = degenerate_start + "_up";
+            tracking_utility::save_root(start_points_up, degenerate_start_up, 8);
+            string degenerate_start_down = degenerate_start + "_down";
+            tracking_utility::save_root(start_points_down, degenerate_start_down, 8);
+        }
+
+    }else{
+        string degenerate_start_up = degenerate_start + "_up8.dat";
+        string degenerate_start_down = degenerate_start + "_down8.dat"; 
+
+        read_degenerate_point(degenerate_start_up,start_points_up);
+        read_degenerate_point(degenerate_start_down,start_points_down);
+
+
+    }
 
         std::cout<<"find degenerate point start points up size "<<start_points_up.size()<<std::endl;
         std::cout<<"find degenerate point start points down size "<<start_points_down.size()<<std::endl;
+
+
 
         // string test_file2="start points test down.obj";
         // tracking_utility::convert_to_obj(test_file2,start_points_down);

@@ -25,6 +25,25 @@ namespace tracking_utility
 
     }
 
+    template<typename T>
+    void save_root(std::vector<VectorX<T>>& root_unique, string degenerate_point_file, int spatial_step_size)
+    {
+        std::vector<MatrixXd> root_matrix(1);
+
+        root_matrix[0].resize(root_unique.size(),root_unique[0].size());
+        for(int j=0;j<root_unique.size();j++)
+        {
+            root_matrix[0].row(j) = root_unique[j].transpose();
+        }
+
+        string degenerate_file_name = degenerate_point_file + std::to_string(spatial_step_size) + ".dat";
+
+        utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+
+        std::cout<<"save root with step size "<<degenerate_file_name<<std::endl;
+
+    }
+
     
     template<typename T>
     void generate_initial_points(std::vector<vector<T>>& initial_points, const VectorX<T>& domain_min, const VectorX<T>& domain_max,
