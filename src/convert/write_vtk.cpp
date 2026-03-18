@@ -1418,9 +1418,9 @@ std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio)
 
 
 template<typename T>
-void save_vector(const std::vector<T>& v, char* filename)
+void save_vector(const std::vector<T>& v, string& filename)
 {
-    std::ofstream out(filename, std::ios::binary);
+    std::ofstream out(filename.c_str(), std::ios::binary);
     // if (!out) {
     //     throw std::runtime_error("Cannot open file for writing: " + filename);
     // }
@@ -1432,8 +1432,163 @@ void save_vector(const std::vector<T>& v, char* filename)
     out.write(reinterpret_cast<const char*>(v.data()), size * sizeof(T));
 }
 
+
+
+
 template<typename T>
-void save_bin(char* file_name, Block<real_t>* block, size_t dom_dim, size_t pt_dim,
+void save_bin_4d_slice(string& file_name, Block<T>* block, size_t dom_dim, size_t pt_dim,
+std::vector<int>& upsample_factor, T t_value)
+{
+
+    VectorXi ori_ndom_pts(dom_dim);
+    auto& tc = block->mfa->var(0).tmesh.tensor_prods[0];
+    VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
+    for(int i=0;i<dom_dim;i++)
+    {
+        ori_ndom_pts(i) = upsample_factor[i] * span_num(i);
+    }
+
+    VectorXi ndom_pts = ori_ndom_pts;
+    int npts = ndom_pts.prod();
+
+    std::cout<<"npts "<<ndom_pts.transpose()<<std::endl;
+
+    VectorX<T> d(dom_dim);               // step in domain points in each dimension
+    VectorX<T> p0(dom_dim);   
+    
+               // starting point in each dimension
+
+    for (int i = 0; i < dom_dim; i++)
+    {
+        d(i) =  (block->core_maxs(i) - block->core_mins(i)) / (ndom_pts(i)-1);
+        p0(i) = block->core_mins(i);
+    }
+
+    // VectorX<T> d_geometri(dom_dim);              
+    // VectorX<T> p0_geometri(dom_dim);
+    // for (int i = 0; i < dom_dim; i++)
+    // {
+    //     d_geometri(i) =  1.0 / (ndom_pts(i) - 1) *(modified_shrink_range_raio[2*i+1]-modified_shrink_range_raio[2*i]);
+    //     p0_geometri(i) = modified_shrink_range_raio[2*i];
+    // }
+
+    std::cout<<"point size "<<ndom_pts.transpose()<<std::endl;
+
+    std::vector<std::vector<T>> vertex_domain(dom_dim);
+    // std::vector<std::vector<T>> vertex_geometri(dom_dim);
+    for(int i=0;i<dom_dim;i++)
+    {
+        vertex_domain[i].resize(ndom_pts(i));
+        // vertex_geometri[i].resize(ndom_pts(i));
+        for(int j=0;j<ndom_pts(i);j++)
+        {
+            vertex_domain[i][j]=p0(i)+T(j)*d(i);
+            // vertex_geometri[i][j]=p0_geometri(i)+T(j)*d_geometri(i);
+        }
+    }
+
+    VectorXi number_in_every_domain(dom_dim);
+    utility::obtain_number_in_every_domain( ndom_pts,number_in_every_domain);
+
+
+
+    int nvars = block->mfa->nvars();    
+    std::vector<std::vector<T>> pt_data(nvars);
+
+    for (size_t j = 0; j < nvars; j++)
+    {
+        pt_data[j].resize(npts);
+    }
+
+    tbb::affinity_partitioner ap;
+
+
+    tbb::parallel_for((tbb::blocked_range<size_t>(0,npts)),
+    [&](const tbb::blocked_range<size_t>& interval)
+    {
+        VectorXi domain_index_;
+        for(size_t j=interval.begin();j<interval.end();++j)
+        {
+            utility::obtainDomainIndex(j,domain_index_,number_in_every_domain);
+
+        //Only support 2D
+            VectorX<T> result_value(block->mfa->nvars());
+
+            for(int m=0;m<dom_dim;m++)
+            {
+                if(vertex_domain[m][domain_index_(m)]<block->core_mins(m)){
+                    vertex_domain[m][domain_index_(m)] = block->core_mins(m);
+                }
+                if(vertex_domain[m][domain_index_(m)]>block->core_maxs(m))
+                {
+                    vertex_domain[m][domain_index_(m)]= block->core_maxs(m);
+                }
+            }
+
+            VectorX<T> coordinate(dom_dim+1);
+            
+            for(int m=0;m<dom_dim;m++)
+            {
+                coordinate[m]=vertex_domain[m][domain_index_(m)];
+            }
+            coordinate[dom_dim]=t_value;
+
+            for (int k = 0; k < nvars; k++)                         // science variables
+            {
+                mfa_extend::recover_mfa(block,coordinate,result_value);
+                // block->mfa->DecodePt(*(block->vars[k].mfa_data),geo_coordinate,result_value);
+                pt_data[k][j] = result_value[0];
+            }
+        }
+        
+    },ap
+    );
+
+
+    save_vector(pt_data[0],file_name);
+    // int text_index;
+    // for(int i=0;i<ndom_pts(1);++i)
+    // {
+    //     text_index = i*ndom_pts(0);
+    //     std::cout<<vertex_geometri[0][0]<<" "<<vertex_geometri[1][i]<<" "<<pt_data[0][text_index] << std::endl;
+    // }
+
+    // vertex_geometri.clear();
+    // vertex_geometri.shrink_to_fit();
+
+
+
+    // write_to_ply::write_ply(file_name,vertex_domain,pt_data[0]);
+
+}
+
+
+template<typename T>
+void save_bin_4d(string& file_name, Block<T>* block, size_t dom_dim, size_t pt_dim,
+std::vector<int>& upsample_factor)
+{
+    auto& tc = block->mfa->var(0).tmesh.tensor_prods[0];
+    VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
+    int t_slice_num =span_num(dom_dim-1) * upsample_factor[dom_dim-1];
+    T dt= (block->core_maxs(dom_dim-1) - block->core_mins(dom_dim-1)) / (t_slice_num-1);
+    T p0t=block->core_mins(dom_dim-1);
+    std::vector<T> t_values(t_slice_num);
+    for(int j=0;j<t_slice_num;j++)
+    {
+        t_values[j]=p0t+T(j)*dt;
+    }
+
+    save_vector(t_values,file_name);
+
+    for(int i=0;i<t_slice_num;i++)
+    {
+        string slice_file_name = file_name + "_" + std::to_string(i) + ".bin";
+        save_bin_4d_slice(slice_file_name,block,dom_dim-1,pt_dim-1,upsample_factor,t_values[i]);
+    }
+}
+
+template<typename T>
+void save_bin(string& file_name, Block<real_t>* block, size_t dom_dim, size_t pt_dim,
 std::vector<int>& upsample_factor, std::vector<T>& shrink_range_raio)
 {
 
@@ -1675,7 +1830,17 @@ else
 {
     if(use_bin)
     {
-        save_bin(function_filename,b,dom_dim,pt_dim,upsample_factor,shrink_range_raio);
+        if(dom_dim==4)
+        {
+            string function_filename_4d = string(function_filename);
+            save_bin_4d(function_filename_4d,b,dom_dim,pt_dim,upsample_factor);
+     
+        }
+        else
+        {
+            string function_filename_3d = string(function_filename);
+            save_bin(function_filename_3d,b,dom_dim,pt_dim,upsample_factor,shrink_range_raio);
+        }
 
         // return;
     }

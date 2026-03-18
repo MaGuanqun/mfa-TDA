@@ -503,7 +503,7 @@ int main(int argc, char** argv)
             std::vector<VectorX<double>> my_degenerate_points;
             mpi_scatter_root_unique(degenerate_points, my_degenerate_points, dim, world_comm);
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
-            degenerate_case_tracing.tracing_from_all_degenerate_points(my_degenerate_points, my_traces, 0.1, d_max_square_);
+            degenerate_case_tracing.tracing_from_all_degenerate_points(my_degenerate_points, my_traces, 0.1, d_max_square_,0);
             mpi_gather_traces(my_traces, traces, world_comm);
             if (world_rank == 0) {
                 std::cout << "finish tracing (MPI)" << std::endl;
@@ -515,7 +515,7 @@ int main(int argc, char** argv)
             boundary_critical_point_tracking.find_trace(root_unique, traces);
 
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
-            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
+            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_,0);
         }
 
 
@@ -568,7 +568,7 @@ int main(int argc, char** argv)
         if(edge_type_file!="")
             critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type, static_cast<Block<double>*>(nullptr), &inr_model);
 
-        CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points,&critical_point_types, edge_type_file);
+        CP_Trace_fuc::convert_to_obj(cp_tracing_file,traces, degenerate_points, core_mins, local_domain_range, &critical_point_types, edge_type_file);
 
         critical_point_utility::accuracy(traces, degenerate_points, function_type,static_cast<Block<double>*>(nullptr), &inr_model);
     }
