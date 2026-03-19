@@ -91,14 +91,21 @@ max=[]
 # min.append([-0.207732, 0.350515 ])
 # max.append([-0.175773, 0.382474])
 
-min.append([-2,-2,-2])
-max.append([2,2,2])
+# min.append([-2,-2,-2])
+# max.append([2,2,2])
 
-min.append([6,6,6])
-max.append([10,10,10])
+# min.append([6,6,6])
+# max.append([10,10,10])
 
 
-name="quartic_potential_3d"
+min.append([0,0,0])
+max.append([127,127,127])
+
+min.append([267,267,267])
+max.append([394,394,394])
+
+name="vortex"
+# name="quartic_potential_3d"
 
 index=[0,1]
 
