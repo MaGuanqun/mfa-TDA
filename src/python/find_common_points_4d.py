@@ -8,7 +8,7 @@ For each point P in a VTP file (with point-data array "t"):
 4) If both exist, keep the closer one.
 
 Output one CSV containing extracted matched points with columns:
-  PositionX, PositionY, PositionZ, t, CriticalType
+  PositionX, PositionY, PositionZ, t, CriticalType, RegionId
 
 Memory-aware behavior:
 - CSV/KDTree data are loaded on demand and cached with LRU eviction.
@@ -44,10 +44,10 @@ def find_csv_coord_columns(fieldnames):
     )
 
 
-def read_vtp_points(vtp_path, t_array_name="t"):
+def read_vtp_points(vtp_path, t_array_name="t", region_array_name="RegionId"):
     """
     Read VTP points and per-point t value.
-    Returns list of dicts: {'x','y','z','t','point_id'}
+    Returns list of dicts: {'x','y','z','t','region_id','point_id'}
     """
     reader = vtk.vtkXMLPolyDataReader()
     reader.SetFileName(vtp_path)
@@ -63,11 +63,19 @@ def read_vtp_points(vtp_path, t_array_name="t"):
     if t_arr is None:
         raise ValueError(f"VTP point-data array '{t_array_name}' not found.")
 
+    region_arr = point_data.GetArray(region_array_name)
+    if region_arr is None:
+        raise ValueError(
+            f"VTP point-data array '{region_array_name}' not found. "
+            f"Compute it first (e.g. via 'assign_component_id_to_point.py')."
+        )
+
     out = []
     npts = pts.GetNumberOfPoints()
     for i in range(npts):
         x, y, z = pts.GetPoint(i)
         t_val = float(t_arr.GetComponent(i, 0))
+        region_id = int(region_arr.GetComponent(i, 0))
         out.append(
             {
                 "point_id": i,
@@ -75,6 +83,7 @@ def read_vtp_points(vtp_path, t_array_name="t"):
                 "y": float(y),
                 "z": float(z),
                 "t": t_val,
+                "region_id": region_id,
             }
         )
     return out
@@ -227,6 +236,8 @@ def match_points(points_vtp, cache, epsilon, gmin, gmax, gcount, log_matches=Tru
                 "PositionZ": float(matched_xyz[2]),
                 "t": float(gmin + chosen_idx * gstep),
                 "CriticalType": matched_type,
+                # RegionId comes from the VTP point, not from the matched CSV point.
+                "RegionId": int(p["region_id"]),
             }
         )
         if log_matches:
@@ -257,6 +268,7 @@ def write_single_csv(rows, output_csv):
                 "PositionZ",
                 "t",
                 "CriticalType",
+                "RegionId",
             ],
         )
         writer.writeheader()
@@ -288,6 +300,11 @@ def parse_args():
         help="Distance threshold for nearest neighbor acceptance",
     )
     parser.add_argument("--t-array", default="t", help="VTP point-data t array name")
+    parser.add_argument(
+        "--region-array",
+        default="RegionId",
+        help="VTP point-data RegionId array name (default: RegionId).",
+    )
     parser.add_argument("--grid-min", type=float, default=0.0, help="Grid min value")
     parser.add_argument("--grid-max", type=float, default=89.0, help="Grid max value")
     parser.add_argument("--grid-count", type=int, default=81, help="Number of grid points")
@@ -313,7 +330,9 @@ def main():
     if args.max_cached_indices < 1:
         raise ValueError("--max-cached-indices must be >= 1.")
 
-    points_vtp = read_vtp_points(args.input_vtp, t_array_name=args.t_array)
+    points_vtp = read_vtp_points(
+        args.input_vtp, t_array_name=args.t_array, region_array_name=args.region_array
+    )
     cache = IndexDataCache(args.csv_template, args.max_cached_indices)
     matched_rows = match_points(
         points_vtp,
