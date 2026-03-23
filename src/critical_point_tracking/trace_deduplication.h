@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -300,6 +301,52 @@ bool two_traces_are_equal(std::vector<CP_Trace<T>>& traces,
     return false;
 }
 
+template<typename T>
+bool points_are_close_in_space_time(const VectorX<T>& p, const VectorX<T>& q, T spatial_step_size, T time_step)
+{
+    const int dim = static_cast<int>(p.size());
+    if (std::abs(p[dim - 1] - q[dim - 1]) > time_step)
+    {
+        return false;
+    }
+    return (p.head(dim - 1) - q.head(dim - 1)).squaredNorm() <= spatial_step_size * spatial_step_size;
+}
+
+template<typename T>
+bool endpoint_close_to_any_point(const VectorX<T>& endpoint, const CP_Trace<T>& trace, T spatial_step_size, T time_step)
+{
+    if (trace.traces.empty())
+    {
+        return false;
+    }
+
+    const int dim = static_cast<int>(endpoint.size());
+    const T t0 = endpoint[dim - 1];
+
+    // Trace points are time-ordered; only inspect points in [t0-time_step, t0+time_step].
+    auto begin_it = std::lower_bound(
+        trace.traces.begin(),
+        trace.traces.end(),
+        t0 - time_step,
+        [](const VectorX<T>& p, T t) {
+            return p[p.size() - 1] < t;
+        });
+
+    for (auto it = begin_it; it != trace.traces.end(); ++it)
+    {
+        const T dt = (*it)[dim - 1] - t0;
+        if (dt > time_step)
+        {
+            break;
+        }
+        if (points_are_close_in_space_time(endpoint, *it, spatial_step_size, time_step))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ============================================================================
 // 3. Helper: compute candidate cell indices for one coordinate
 //    (central cell + possible neighbor cells if near boundary)
@@ -590,6 +637,114 @@ void deduplicate_traces(
         else
         {
             traces[i].duplicated = false;
+        }
+    }
+
+    // Second-round deduplication:
+    // Use time buckets to avoid O(N^2) all-pairs endpoint checks.
+    // Since each trace is time-ordered (small -> large), we compare start<->start
+    // and end<->end for the "one common end" condition.
+    std::unordered_map<long long, std::vector<size_t>> start_time_buckets;
+    std::unordered_map<long long, std::vector<size_t>> end_time_buckets;
+    const T bucket_size = (time_step > T(0)) ? time_step : T(1e-8);
+    auto time_bucket_id = [&](T t) -> long long {
+        return static_cast<long long>(std::floor((t-domain_min[domain_min.size()-1]) / bucket_size));
+    };
+
+    for (size_t k = 0; k < ordered_trace_id.size(); ++k)
+    {
+        const size_t i = ordered_trace_id[k];
+        if (traces[i].duplicated || traces[i].traces.empty())
+        {
+            continue;
+        }
+
+        const auto& a_start = traces[i].traces.front();
+        const auto& a_end = traces[i].traces.back();
+        const int dim = static_cast<int>(a_start.size());
+        const T a_start_t = a_start[dim - 1];
+        const T a_end_t = a_end[dim - 1];
+
+        std::unordered_set<size_t> candidate_js;
+        for (long long dt = -1; dt <= 1; ++dt)
+        {
+            const long long sb = time_bucket_id(a_start_t) + dt;
+            const long long eb = time_bucket_id(a_end_t) + dt;
+
+            auto it_s = start_time_buckets.find(sb);
+            if (it_s != start_time_buckets.end())
+            {
+                for (size_t j : it_s->second)
+                {
+                    candidate_js.insert(j);
+                }
+            }
+            auto it_e = end_time_buckets.find(eb);
+            if (it_e != end_time_buckets.end())
+            {
+                for (size_t j : it_e->second)
+                {
+                    candidate_js.insert(j);
+                }
+            }
+        }
+
+        for (size_t j : candidate_js)
+        {
+            if (traces[j].duplicated || traces[j].traces.empty())
+            {
+                continue;
+            }
+
+            const auto& b_start = traces[j].traces.front();
+            const auto& b_end = traces[j].traces.back();
+
+            const bool shared_start = points_are_close_in_space_time(a_start, b_start, spatial_step_size, time_step);
+            const bool shared_end = points_are_close_in_space_time(a_end, b_end, spatial_step_size, time_step);
+            const int shared_ends_of_a = static_cast<int>(shared_start) + static_cast<int>(shared_end);
+
+            if (shared_ends_of_a == 0)
+            {
+                continue;
+            }
+
+            const auto& other_end_of_a = shared_start ? a_end : a_start;
+            const auto& other_end_of_b = shared_start ? b_end : b_start;
+
+            const bool a_on_b = endpoint_close_to_any_point(other_end_of_a, traces[j], spatial_step_size, time_step);
+            const bool b_on_a = endpoint_close_to_any_point(other_end_of_b, traces[i], spatial_step_size, time_step);
+
+            // Keep only the "hanging branch" when exactly one common end exists.
+            // If both are on each other, use a deterministic tie-break (shorter trace removed;
+            // if equal length, remove current i).
+            if (a_on_b && b_on_a)
+            {
+                if (traces[i].traces.size() <= traces[j].traces.size())
+                {
+                    traces[i].duplicated = true;
+                    break;
+                }
+                else
+                {
+                    traces[j].duplicated = true;
+                }
+            }
+            else if (a_on_b)
+            {
+                traces[i].duplicated = true;
+                break;
+            }
+            else if (b_on_a)
+            {
+                traces[j].duplicated = true;
+            }
+        }
+
+        // Only keep non-duplicated traces as references for later traces.
+        if (!traces[i].duplicated)
+        {
+            start_time_buckets[time_bucket_id(a_start_t)].push_back(i);
+            end_time_buckets[time_bucket_id(a_end_t)].push_back(i);
         }
     }
 }

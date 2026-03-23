@@ -1445,7 +1445,7 @@ std::vector<int>& upsample_factor, T t_value)
     VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
     for(int i=0;i<dom_dim;i++)
     {
-        ori_ndom_pts(i) = upsample_factor[i] * span_num(i);
+        ori_ndom_pts(i) = upsample_factor[i] * span_num(i)+1;
     }
 
     VectorXi ndom_pts = ori_ndom_pts;
@@ -1569,7 +1569,7 @@ std::vector<int>& upsample_factor)
 {
     auto& tc = block->mfa->var(0).tmesh.tensor_prods[0];
     VectorXi span_num = tc.nctrl_pts-block->mfa->var(0).p;
-    int t_slice_num =span_num(dom_dim-1) * upsample_factor[dom_dim-1];
+    int t_slice_num =span_num(dom_dim-1) * upsample_factor[dom_dim-1]+1;
     T dt= (block->core_maxs(dom_dim-1) - block->core_mins(dom_dim-1)) / (t_slice_num-1);
     T p0t=block->core_mins(dom_dim-1);
     std::vector<T> t_values(t_slice_num);

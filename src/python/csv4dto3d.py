@@ -7,6 +7,7 @@ Input columns expected:
 
 Output columns:
   PositionX, PositionY, PositionZ, CriticalType (or CriticalTpe)
+  RegionId is included when present in the input.
 """
 
 import argparse
@@ -38,30 +39,33 @@ def convert_csv(input_csv, output_csv):
             raise ValueError(f"Missing required columns: {missing}")
 
         crit_col = get_critical_column(reader.fieldnames)
+        has_region_id = "RegionId" in reader.fieldnames
+
+        out_fields = ["PositionX", "PositionY", "PositionZ", crit_col]
+        if has_region_id:
+            out_fields.append("RegionId")
 
         with open(output_csv, "w", newline="") as fout:
-            writer = csv.DictWriter(
-                fout,
-                fieldnames=["PositionX", "PositionY", "PositionZ", crit_col],
-            )
+            writer = csv.DictWriter(fout, fieldnames=out_fields)
             writer.writeheader()
 
             for row in reader:
                 t_val = float(row["t"])
                 shift = 3.0 * t_val
-                writer.writerow(
-                    {
-                        "PositionX": float(row["PositionX"]) + shift,
-                        "PositionY": float(row["PositionY"]) + shift,
-                        "PositionZ": float(row["PositionZ"]) + shift,
-                        crit_col: row[crit_col],
-                    }
-                )
+                out_row = {
+                    "PositionX": float(row["PositionX"]) + shift,
+                    "PositionY": float(row["PositionY"]) + shift,
+                    "PositionZ": float(row["PositionZ"]) + shift,
+                    crit_col: row[crit_col],
+                }
+                if has_region_id:
+                    out_row["RegionId"] = row["RegionId"]
+                writer.writerow(out_row)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Add 3*t to XYZ and keep CriticalType."
+        description="Add 3*t to XYZ; keep CriticalType and RegionId (if present)."
     )
     parser.add_argument("-i", "--input-csv", required=True, help="Input CSV file")
     parser.add_argument("-o", "--output-csv", required=True, help="Output CSV file")

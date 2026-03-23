@@ -275,6 +275,8 @@ int main(int argc, char** argv)
     int num_procs = 8;  // number of processes for parallel root_finding (when run as single process)
     int initial_point_num_in_a_block = -1;
 
+    int directly_read_file = 0;
+
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -297,6 +299,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('c', "compute_boundary_start", compute_boundary_start, " compute_boundary_start");
     ops >> opts::Option('n', "num_procs", num_procs, " number of processes (when run without mpirun; default 8)");
     ops >> opts::Option('o', "initial_point_num_in_a_block", initial_point_num_in_a_block, " initial point number in a block");
+
+    ops >> opts::Option('d', "directly_read_file", directly_read_file, " directly read degenerate tracing file");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -503,7 +507,8 @@ int main(int argc, char** argv)
             std::vector<VectorX<double>> my_degenerate_points;
             mpi_scatter_root_unique(degenerate_points, my_degenerate_points, dim, world_comm);
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
-            degenerate_case_tracing.tracing_from_all_degenerate_points(my_degenerate_points, my_traces, 0.1, d_max_square_,0);
+            string degenerate_start = singular_point_file + "_start_";
+            degenerate_case_tracing.tracing_from_all_degenerate_points(my_degenerate_points, my_traces, 0.1, d_max_square_,directly_read_file,degenerate_start);
             mpi_gather_traces(my_traces, traces, world_comm);
             if (world_rank == 0) {
                 std::cout << "finish tracing (MPI)" << std::endl;
@@ -515,7 +520,8 @@ int main(int argc, char** argv)
             boundary_critical_point_tracking.find_trace(root_unique, traces);
 
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon, correction_max_itr, function_type, static_cast<Block<double>*>(nullptr), &inr_model);
-            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_,0);
+            string degenerate_start = singular_point_file + "_start_";
+            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_,directly_read_file,degenerate_start);
         }
 
 

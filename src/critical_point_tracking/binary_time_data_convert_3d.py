@@ -112,6 +112,6 @@ elif function =='vortex':
     min = np.array([0.0, 0.0, 0.0])
     max = np.array([127.0, 127.0, 127.0])
 
-size = args.step_size*dim
+size = args.step_size*dim + np.ones(3)
     
 convert_binary_file_to_vti(input_file, output_file,size,min,max,args)
