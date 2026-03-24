@@ -230,8 +230,8 @@ int main(int argc, char** argv)
 
         if(!degenerate_points.empty()){
             Degenerate_case_tracing degenerate_case_tracing(core_mins, core_maxs, point_num_in_block, &find_boundary_roots, step_size.back(), step_size[0], root_finding_grad_epsilon,correction_max_itr, function_type);
-            
-            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_);
+            string degenerate_start = singular_point_file + "_start_";
+            degenerate_case_tracing.tracing_from_all_degenerate_points(degenerate_points, traces, 0.1, d_max_square_, 0, degenerate_start);
         }
 
 
