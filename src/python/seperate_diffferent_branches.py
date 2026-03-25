@@ -11,6 +11,13 @@ Definition used here:
   that shared point with per-edge duplicated points (same coordinates and point
   data), so that the junction no longer glues multiple branches together.
 
+Pipeline order: junction split → explode ``POLY_LINE`` to ``LINE`` → break all
+**loops (cycles)** in the line graph until none remain: for each cycle, pick two
+anchor vertices by **min** and **max** of point array ``t`` (name configurable)
+when that array exists, otherwise by **min** and **max z**. Duplicate those
+vertices so the two arcs between the anchors become two disjoint open paths.
+Tie-breaking for ties on min/max uses the same RNG as ``ColorId`` (``--seed``).
+
 Output:
 - Preserves all existing point-data and cell-data arrays.
 - Adds:
@@ -27,8 +34,9 @@ from __future__ import annotations
 import argparse
 import os
 import random
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import vtk
 
@@ -47,7 +55,12 @@ def parse_args() -> argparse.Namespace:
         "--seed",
         type=int,
         default=0,
-        help="Random seed for ColorId mapping (default: 0, deterministic).",
+        help="Seed for all randomness (ColorId, tie-breaks when breaking loops; default: 0).",
+    )
+    p.add_argument(
+        "--t-array-name",
+        default="t",
+        help="Point-data array name for time/scalar when breaking loops (default: t). If missing, use z coordinate.",
     )
     p.add_argument(
         "--color-mod",
@@ -281,6 +294,423 @@ def split_high_degree_points(poly: vtk.vtkPolyData, degree_threshold: int = 2) -
     return out
 
 
+def _expand_line_segments(poly: vtk.vtkPolyData) -> List[Tuple[int, int, int]]:
+    """
+    Each consecutive pair in a LINE / POLY_LINE cell becomes one undirected segment.
+    Returns list of (cell_id, p, q) with p != q.
+    """
+    segs: List[Tuple[int, int, int]] = []
+    idlist = vtk.vtkIdList()
+    ncells = poly.GetNumberOfCells()
+    for cid in range(ncells):
+        ctype = poly.GetCellType(cid)
+        if not _is_edge_cell_type(ctype):
+            continue
+        poly.GetCellPoints(cid, idlist)
+        n = idlist.GetNumberOfIds()
+        if n < 2:
+            continue
+        for k in range(n - 1):
+            p = int(idlist.GetId(k))
+            q = int(idlist.GetId(k + 1))
+            if p != q:
+                segs.append((cid, p, q))
+    return segs
+
+
+def _edge_key(p: int, q: int) -> Tuple[int, int]:
+    return (p, q) if p < q else (q, p)
+
+
+def _seg_sig(cid: int, p: int, q: int) -> Tuple[int, int, int]:
+    """Canonical segment id for membership in sets (cell id + sorted endpoints)."""
+    if p <= q:
+        return (cid, p, q)
+    return (cid, q, p)
+
+
+def _append_vtk_cell(ctype: int, ids: List[int], va: vtk.vtkCellArray, la: vtk.vtkCellArray, pa: vtk.vtkCellArray, sa: vtk.vtkCellArray) -> None:
+    if ctype == vtk.VTK_VERTEX:
+        va.InsertNextCell(1)
+        va.InsertCellPoint(ids[0])
+    elif ctype == vtk.VTK_POLY_VERTEX:
+        va.InsertNextCell(len(ids))
+        for x in ids:
+            va.InsertCellPoint(x)
+    elif ctype == vtk.VTK_LINE:
+        if len(ids) != 2:
+            raise ValueError("LINE cell must have exactly 2 point ids")
+        la.InsertNextCell(2)
+        la.InsertCellPoint(ids[0])
+        la.InsertCellPoint(ids[1])
+    elif ctype == vtk.VTK_TRIANGLE:
+        pa.InsertNextCell(3)
+        for x in ids[:3]:
+            pa.InsertCellPoint(x)
+    elif ctype == vtk.VTK_QUAD:
+        pa.InsertNextCell(4)
+        for x in ids[:4]:
+            pa.InsertCellPoint(x)
+    elif ctype == vtk.VTK_POLYGON:
+        pa.InsertNextCell(len(ids))
+        for x in ids:
+            pa.InsertCellPoint(x)
+    elif ctype == vtk.VTK_TRIANGLE_STRIP:
+        sa.InsertNextCell(len(ids))
+        for x in ids:
+            sa.InsertCellPoint(x)
+    else:
+        pa.InsertNextCell(len(ids))
+        for x in ids:
+            pa.InsertCellPoint(x)
+
+
+def rebuild_explode_polylines(poly: vtk.vtkPolyData) -> vtk.vtkPolyData:
+    """
+    Turn each POLY_LINE into consecutive VTK_LINE cells (cell data duplicated).
+    Other cell types are preserved. Needed so cycle cuts never assign two
+    different copies of the same junction to one polyline cell.
+    """
+    idlist = vtk.vtkIdList()
+    ncells = poly.GetNumberOfCells()
+    rows: List[Tuple[int, List[int], int]] = []
+
+    for cid in range(ncells):
+        ctype = poly.GetCellType(cid)
+        poly.GetCellPoints(cid, idlist)
+        n = idlist.GetNumberOfIds()
+        ids = [int(idlist.GetId(i)) for i in range(n)]
+        if ctype == vtk.VTK_POLY_LINE and n >= 3:
+            for k in range(n - 1):
+                rows.append((vtk.VTK_LINE, [ids[k], ids[k + 1]], cid))
+        elif ctype == vtk.VTK_POLY_LINE and n == 2:
+            rows.append((vtk.VTK_LINE, ids, cid))
+        else:
+            rows.append((ctype, ids, cid))
+
+    src_cd = poly.GetCellData()
+    out = vtk.vtkPolyData()
+    out.SetPoints(poly.GetPoints())
+    out.GetPointData().ShallowCopy(poly.GetPointData())
+
+    va = vtk.vtkCellArray()
+    la = vtk.vtkCellArray()
+    pa = vtk.vtkCellArray()
+    sa = vtk.vtkCellArray()
+    out_cd = vtk.vtkCellData()
+    for ai in range(src_cd.GetNumberOfArrays()):
+        a = src_cd.GetArray(ai)
+        if a is None or a.GetName() is None:
+            continue
+        out_cd.AddArray(_new_like_array(a))
+
+    for ct, ids, src_cid in rows:
+        _append_vtk_cell(ct, ids, va, la, pa, sa)
+        _copy_cell_tuple(src_cd, out_cd, src_cid)
+
+    out.SetVerts(va)
+    out.SetLines(la)
+    out.SetPolys(pa)
+    out.SetStrips(sa)
+    out.GetCellData().ShallowCopy(out_cd)
+    out.BuildCells()
+    out.BuildLinks()
+    return out
+
+
+def _find_parallel_pair(segments: List[Tuple[int, int, int]]) -> Optional[Tuple[int, int]]:
+    """If two or more segments share the same undirected edge, return (u, v) with u < v."""
+    cnt: Dict[Tuple[int, int], int] = defaultdict(int)
+    for _, p, q in segments:
+        cnt[_edge_key(p, q)] += 1
+    for (u, v), c in cnt.items():
+        if c >= 2:
+            return (u, v)
+    return None
+
+
+def _find_cycle_dfs(
+    n: int,
+    adj: List[List[int]],
+) -> Optional[List[int]]:
+    """
+    Find one simple cycle; return vertex list [v0, v1, ..., vm] such that
+    consecutive pairs and (vm, v0) are edges (unique-edge graph).
+    """
+    color = [0] * n  # 0 white, 1 gray, 2 black
+    parent = [-1] * n
+
+    def dfs(u: int, pu: int) -> Optional[List[int]]:
+        color[u] = 1
+        for v in adj[u]:
+            if v == pu:
+                continue
+            if color[v] == 0:
+                parent[v] = u
+                cyc = dfs(v, u)
+                if cyc is not None:
+                    return cyc
+            elif color[v] == 1:
+                # Back edge (u, v); v is ancestor -> cycle along parent chain u -> ... -> v
+                path_uv: List[int] = []
+                x = u
+                while x != v and x != -1:
+                    path_uv.append(x)
+                    x = parent[x]
+                if x != v:
+                    continue
+                path_uv.append(v)
+                # Cyclic order: v ... u, closing edge (u, v)
+                return list(reversed(path_uv))
+        color[u] = 2
+        return None
+
+    for s in range(n):
+        if color[s] != 0:
+            continue
+        parent[s] = -1
+        cyc = dfs(s, -1)
+        if cyc is not None:
+            return cyc
+    return None
+
+
+def _cycle_edges_from_vertices(cycle_verts: List[int]) -> Set[Tuple[int, int]]:
+    """Undirected edge keys for a closed walk given ordered unique vertices on the cycle."""
+    L = len(cycle_verts)
+    if L < 2:
+        return set()
+    keys: Set[Tuple[int, int]] = set()
+    for i in range(L):
+        p = cycle_verts[i]
+        q = cycle_verts[(i + 1) % L]
+        keys.add(_edge_key(p, q))
+    return keys
+
+
+def _arc_edge_keys(cycle_verts: List[int], ia: int, ib: int) -> Set[Tuple[int, int]]:
+    """Edges on the forward walk from cycle_verts[ia] to cycle_verts[ib] (exclusive of wrapping past ib)."""
+    L = len(cycle_verts)
+    keys: Set[Tuple[int, int]] = set()
+    i = ia
+    while i != ib:
+        j = (i + 1) % L
+        keys.add(_edge_key(cycle_verts[i], cycle_verts[j]))
+        i = j
+    return keys
+
+
+def _pick_cycle_anchors(
+    cycle_verts: List[int],
+    poly: vtk.vtkPolyData,
+    t_arr: Optional[vtk.vtkDataArray],
+    rng: random.Random,
+) -> Tuple[int, int]:
+    """Distinct vertices a, b on the cycle for min/max scalar (t or z)."""
+    pts = poly.GetPoints()
+    uniq = list(dict.fromkeys(cycle_verts))  # preserve order, unique
+
+    def scalar_at(pid: int) -> float:
+        if t_arr is not None and 0 <= pid < t_arr.GetNumberOfTuples():
+            return float(t_arr.GetTuple1(pid))
+        x, y, z = pts.GetPoint(pid)
+        return float(z)
+
+    vals = {pid: scalar_at(pid) for pid in uniq}
+    mn = min(vals.values())
+    mx = max(vals.values())
+    cand_min = [p for p, v in vals.items() if v == mn]
+    cand_max = [p for p, v in vals.items() if v == mx]
+    a = int(rng.choice(cand_min))
+    b_choices = [p for p in cand_max if p != a]
+    if not b_choices:
+        b_choices = cand_max
+    b = int(rng.choice(b_choices))
+    if a == b and len(uniq) >= 2:
+        others = [p for p in uniq if p != a]
+        b = int(rng.choice(others))
+    return a, b
+
+
+def _duplicate_point(
+    poly: vtk.vtkPolyData,
+    old_pid: int,
+) -> int:
+    """Append a copy of point old_pid (coordinates + all point data); return new index."""
+    pts = poly.GetPoints()
+    pd = poly.GetPointData()
+    x, y, z = pts.GetPoint(old_pid)
+    new_id = pts.InsertNextPoint(float(x), float(y), float(z))
+    for ai in range(pd.GetNumberOfArrays()):
+        arr = pd.GetArray(ai)
+        if arr is None or arr.GetName() is None:
+            continue
+        ncomp = arr.GetNumberOfComponents()
+        tup = [0.0] * ncomp
+        arr.GetTuple(old_pid, tup)
+        arr.InsertNextTuple(tup)
+    return int(new_id)
+
+
+def _remap_segment_endpoints(
+    p: int,
+    q: int,
+    a: int,
+    b: int,
+    a0: int,
+    a1: int,
+    b0: int,
+    b1: int,
+    in_arc0: bool,
+    in_arc1: bool,
+) -> Tuple[int, int]:
+    def map_one(x: int, arc0: bool, arc1: bool) -> int:
+        if x == a:
+            if arc0:
+                return a0
+            if arc1:
+                return a1
+            return a0
+        if x == b:
+            if arc0:
+                return b0
+            if arc1:
+                return b1
+            return b0
+        return x
+
+    return map_one(p, in_arc0, in_arc1), map_one(q, in_arc0, in_arc1)
+
+
+def _replace_poly_cell_point_ids(poly: vtk.vtkPolyData, cell_id: int, new_ids: List[int]) -> None:
+    idl = vtk.vtkIdList()
+    idl.SetNumberOfIds(len(new_ids))
+    for i, pid in enumerate(new_ids):
+        idl.SetId(i, int(pid))
+    if hasattr(poly, "ReplaceCell"):
+        poly.ReplaceCell(cell_id, idl)
+        return
+    raise RuntimeError(
+        "This VTK build has no vtkPolyData.ReplaceCell; upgrade VTK or rebuild cells manually."
+    )
+
+
+def break_one_cycle(poly: vtk.vtkPolyData, rng: random.Random, t_array_name: str) -> bool:
+    """
+    If the line graph contains a cycle, break one cycle into two paths by
+    duplicating the min/max (t or z) vertices. Returns True if a cycle was broken.
+    """
+    n = poly.GetNumberOfPoints()
+    if n < 2:
+        return False
+
+    segments = _expand_line_segments(poly)
+    if not segments:
+        return False
+
+    par = _find_parallel_pair(segments)
+    cycle_verts: Optional[List[int]] = None
+    arc0_seg: Set[Tuple[int, int, int]] = set()
+    arc1_seg: Set[Tuple[int, int, int]] = set()
+    arc0_edges: Set[Tuple[int, int]] = set()
+    arc1_edges: Set[Tuple[int, int]] = set()
+
+    if par is not None:
+        u, v = par
+        cycle_verts = [u, v]
+        matching = sorted(
+            _seg_sig(cid, p, q) for cid, p, q in segments if _edge_key(p, q) == (u, v)
+        )
+        if len(matching) < 2:
+            return False
+        mid = len(matching) // 2
+        arc0_seg = set(matching[:mid])
+        arc1_seg = set(matching[mid:])
+    else:
+        adj_unique: List[List[int]] = [[] for _ in range(n)]
+        seen_e: Set[Tuple[int, int]] = set()
+        for _, p, q in segments:
+            ek = _edge_key(p, q)
+            if ek in seen_e:
+                continue
+            seen_e.add(ek)
+            adj_unique[p].append(q)
+            adj_unique[q].append(p)
+        cycle_verts = _find_cycle_dfs(n, adj_unique)
+
+    if cycle_verts is None or len(cycle_verts) < 2:
+        return False
+
+    L = len(cycle_verts)
+    if cycle_verts[0] == cycle_verts[-1]:
+        cycle_verts = cycle_verts[:-1]
+        L = len(cycle_verts)
+    if L < 2:
+        return False
+
+    pd = poly.GetPointData()
+    t_arr = pd.GetArray(t_array_name)
+    a, b = _pick_cycle_anchors(cycle_verts, poly, t_arr, rng)
+
+    if not arc0_seg and not arc1_seg:
+        ia = cycle_verts.index(a)
+        ib = cycle_verts.index(b)
+        arc0_edges = _arc_edge_keys(cycle_verts, ia, ib)
+        arc1_edges = _cycle_edges_from_vertices(cycle_verts) - arc0_edges
+
+    idlist = vtk.vtkIdList()
+    ncells = poly.GetNumberOfCells()
+    to_update: List[Tuple[int, int, int, bool, bool]] = []
+    for cid in range(ncells):
+        if poly.GetCellType(cid) != vtk.VTK_LINE:
+            continue
+        poly.GetCellPoints(cid, idlist)
+        if idlist.GetNumberOfIds() != 2:
+            continue
+        p = int(idlist.GetId(0))
+        q = int(idlist.GetId(1))
+        sig = _seg_sig(cid, p, q)
+        if arc0_seg or arc1_seg:
+            in0 = sig in arc0_seg
+            in1 = sig in arc1_seg
+        else:
+            ek = _edge_key(p, q)
+            in0 = ek in arc0_edges
+            in1 = ek in arc1_edges
+        if in0 or in1:
+            to_update.append((cid, p, q, in0, in1))
+
+    if not to_update:
+        return False
+
+    a0 = _duplicate_point(poly, a)
+    a1 = _duplicate_point(poly, a)
+    b0 = _duplicate_point(poly, b)
+    b1 = _duplicate_point(poly, b)
+
+    for cid, p, q, in0, in1 in to_update:
+        p2, q2 = _remap_segment_endpoints(p, q, a, b, a0, a1, b0, b1, in0, in1)
+        _replace_poly_cell_point_ids(poly, cid, [p2, q2])
+    poly.Modified()
+    poly.BuildCells()
+    poly.BuildLinks()
+    return True
+
+
+def break_all_loops(poly: vtk.vtkPolyData, rng: random.Random, t_array_name: str) -> vtk.vtkPolyData:
+    """Repeatedly break cycles until the line graph is acyclic (no parallel 2-cycles, no graph cycles)."""
+    out = vtk.vtkPolyData()
+    out.DeepCopy(poly)
+    out = rebuild_explode_polylines(out)
+    safety = 0
+    max_iter = max(1000, out.GetNumberOfCells() * 10)
+    while safety < max_iter:
+        safety += 1
+        if not break_one_cycle(out, rng, t_array_name):
+            break
+    return out
+
+
 def compute_connectivity_regions(poly: vtk.vtkPolyData, region_array_name: str) -> vtk.vtkPolyData:
     """
     Compute connected components (regions) on the polydata. Produces a RegionId
@@ -309,7 +739,7 @@ def add_random_color_ids(
     poly: vtk.vtkPolyData,
     region_array_name: str,
     color_array_name: str,
-    seed: int,
+    rng: random.Random,
     color_mod: int,
 ) -> None:
     """
@@ -323,8 +753,6 @@ def add_random_color_ids(
     """
     if color_mod <= 0:
         raise ValueError("--color-mod must be > 0.")
-
-    rng = random.Random(seed)
 
     pd = poly.GetPointData()
     cd = poly.GetCellData()
@@ -410,24 +838,30 @@ def main() -> None:
     if not os.path.exists(args.input_vtp):
         raise FileNotFoundError(f"Input VTP not found: {args.input_vtp}")
 
+    rng = random.Random(int(args.seed))
+    random.seed(int(args.seed))
+
     src = vtk_read_polydata(args.input_vtp)
 
     # 1) Split junction points (degree > 2 on edge cells).
     split = split_high_degree_points(src, degree_threshold=2)
 
-    # 2) Connected components on the split geometry.
-    labeled = compute_connectivity_regions(split, region_array_name=args.region_array_name)
+    # 2) Break all graph loops into two open trajectories (min/max t or z anchors).
+    no_loops = break_all_loops(split, rng, args.t_array_name)
 
-    # 3) Random ColorId per component (both points and cells).
+    # 3) Connected components on the split geometry.
+    labeled = compute_connectivity_regions(no_loops, region_array_name=args.region_array_name)
+
+    # 4) ColorId per component (both points and cells); all randomness uses rng / random.seed above.
     add_random_color_ids(
         labeled,
         region_array_name=args.region_array_name,
         color_array_name=args.color_array_name,
-        seed=int(args.seed),
+        rng=rng,
         color_mod=int(args.color_mod),
     )
 
-    # 4) Write.
+    # 5) Write.
     vtk_write_polydata(labeled, args.output_vtp, args.data_mode)
 
     print(f"Wrote: {args.output_vtp}")

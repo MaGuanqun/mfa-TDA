@@ -209,7 +209,7 @@ public:
 
     
     
-    void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T step_ratio,  T d_max_square, int directly_read_file, string degenerate_start = "")
+    void tracing_from_all_degenerate_points(std::vector<VectorX<T>>& degenerate_points, std::vector<CP_Trace<T>>& trace, T step_ratio,  T d_max_square, int directly_read_file, string degenerate_start = "", int world_rank=0)
     {
 
         std::vector<VectorX<T>> raw_start_points_up;
@@ -293,15 +293,31 @@ public:
 
         if (degenerate_start != "")
         {
-            string degenerate_start_up = degenerate_start + "_up";
+            string degenerate_start_up,degenerate_start_down;
+            if(world_rank!=0){
+                degenerate_start_up= degenerate_start + std::to_string(world_rank) + "_up";
+                degenerate_start_down = degenerate_start + std::to_string(world_rank) + "_down";
+            }
+            else
+            {
+                degenerate_start_up= degenerate_start + "_up";
+                degenerate_start_down = degenerate_start + "_down";
+            }
             tracking_utility::save_root(start_points_up, degenerate_start_up, 8);
-            string degenerate_start_down = degenerate_start + "_down";
             tracking_utility::save_root(start_points_down, degenerate_start_down, 8);
         }
 
     }else{
-        string degenerate_start_up = degenerate_start + "_up8.dat";
-        string degenerate_start_down = degenerate_start + "_down8.dat"; 
+        string degenerate_start_up,degenerate_start_down;
+        if(world_rank!=0){
+            degenerate_start_up = degenerate_start + std::to_string(world_rank) + "_up8.dat";
+            degenerate_start_down = degenerate_start + std::to_string(world_rank) + "_down8.dat"; 
+        }
+        else
+        {
+            degenerate_start_up = degenerate_start + "_up8.dat";
+            degenerate_start_down = degenerate_start + "_down8.dat"; 
+        }
 
         read_degenerate_point(degenerate_start_up,start_points_up);
         read_degenerate_point(degenerate_start_down,start_points_down);
