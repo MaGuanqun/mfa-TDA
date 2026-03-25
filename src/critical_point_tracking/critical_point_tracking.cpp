@@ -125,6 +125,8 @@ int main(int argc, char** argv)
 
     int directly_read_file = 0;
 
+    int compute_boundary_start=1;
+
     ops >> opts::Option('f', "infile",  infile,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
     ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
@@ -148,6 +150,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('j', "boundary_start", boundary_start, " boundary_start_file");
 
     ops >> opts::Option('d', "directly_read_file", directly_read_file, " directly read degenerate tracing file");
+
+    ops >> opts::Option('c', "compute_boundary_start", compute_boundary_start, " compute_boundary_start");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -197,6 +201,8 @@ int main(int argc, char** argv)
 
     std::vector<VectorX<double>> degenerate_points;
     Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
+
+    std::cout<<"read degenerate points "<<degenerate_points.size()<<std::endl;
 
 
     std::vector<CP_Trace<double>> traces;
@@ -277,12 +283,16 @@ int main(int argc, char** argv)
 
         Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,b->core_mins,b->core_maxs,point_num_in_block,span_num,same_root_epsilon,0,max_itr,point_itr_threshold,b);
 
+
+        
+        std::vector<VectorX<double>> root_unique;
+
+        if(compute_boundary_start==1){
         find_boundary_roots.root_finding(selected_span[0], root);
 
 
         std::cout<<"find root num before deduplicate between spans "<<root.size()<<std::endl;
 
-        std::vector<VectorX<double>> root_unique;
         spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique,same_root_epsilon[0],same_root_epsilon.back());
 
 
@@ -295,6 +305,14 @@ int main(int argc, char** argv)
 
 
         tracking_utility::save_root(root_unique, boundary_start, spatial_step_size);
+
+        }
+        else
+        {
+            string name  =  boundary_start  + std::to_string(int(spatial_step_size)) + ".dat";
+            Degenerate_case_tracing<double>::read_degenerate_point(name,root_unique);
+            std::cout<<"read boundary start "<<root_unique.size()<<std::endl;
+        }
         // tracking_utility::convert_to_obj(test_file,root_unique);
 
         // return 0;

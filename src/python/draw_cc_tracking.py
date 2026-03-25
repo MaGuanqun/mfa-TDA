@@ -413,7 +413,7 @@ def gradient_norm_fig():
     
 def closed_form_fig():
     
-    rotation_angle=40
+    rotation_angle=60
      # Contour data
     step_sizes = [20, 30, 40, 60, 80, 120, 160, 240, 320, 480, 640, 960]
     xlabel_contour = [rf"$r/{s}$" for s in step_sizes]
@@ -426,15 +426,13 @@ def closed_form_fig():
 
     # plt.rcParams.update({'font.size': 25})
     # Create subplots
-    fig, axes = plt.subplots(1, 2, figsize=(17, 5),gridspec_kw={'width_ratios': [8, 8]})  # 3 subplots in a row
- # Relative widths of the subplots
-
     
     potential_cc = [1,1,1,1,1,1,1,1,1,1,1,1]
        # Draw each plot
-    fig, axes = plt.subplots(1, 2, figsize=(17, 4),gridspec_kw={'width_ratios': [8, 8]})  # 3 subplots in a row
+    fig, axes = plt.subplots(1, 3, figsize=(17, 4),gridspec_kw={'width_ratios': [5, 5, 5]})  # 3 subplots in a row
     draw_function2(axes[0], xlabel_contour, xlabel_title_contour, potential_cc,'lower right', (1, 0.1), rotation_angle,0)
     draw_function2(axes[1], xlabel_contour, xlabel_title_contour, rotation_cc,'lower right', (1, 0.1), rotation_angle,0)
+    draw_function2(axes[2], xlabel_contour, xlabel_title_contour, potential_cc,'lower right', (1, 0.1), rotation_angle,0)
     fig.tight_layout(pad=0.1)
     fig.savefig(folder + 'closed_form_step_size.png', bbox_inches='tight', pad_inches=0)
     fig.savefig(folder + 'closd_form_step_size.pdf', bbox_inches='tight', pad_inches=0)
@@ -443,9 +441,9 @@ def closed_form_fig():
 
 # mfa_fig()
 # inr_fig()
-# closed_form_fig()
+closed_form_fig()
 # inr_matching_score_fig() 
 
-mfa_matching_score_fig()
+# mfa_matching_score_fig()
 
 # gradient_norm_fig()
