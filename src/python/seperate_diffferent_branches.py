@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Split branches in a VTP (points + edges) into separate connected components,
-then assign a random ColorId (0..59) per component.
+then assign ColorId per component: if fewer than 60 branches, a random
+permutation of 0..n-1; if 60 or more, random integers in 0..59 (may repeat).
 
 Definition used here:
 - An "edge" is a line-like cell (VTK_LINE / VTK_POLY_LINE).
@@ -14,7 +15,7 @@ Output:
 - Preserves all existing point-data and cell-data arrays.
 - Adds:
     - CellData:  ColorId (int, 0..59) on all cells
-    - PointData: ColorId (int, 0..59) on all points
+    - PointData: ColorId on all points
   based on connected components computed on the post-split geometry.
 
 Usage:
@@ -36,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
             "Split junction points (degree>2) so each branch becomes its own connected component, "
-            "then assign a random ColorId (0..59) per component and write a new VTP."
+            "then assign ColorId per branch (<60: random permutation of 0..n-1; >=60: random 0..59) and write a new VTP."
         )
     )
     p.add_argument("--input-vtp", "-i", required=True, help="Input .vtp (VTK PolyData) containing points and edges.")
@@ -315,8 +316,9 @@ def add_random_color_ids(
     Add ColorId arrays (point and cell) based on connected components.
 
     Policy:
-    - If number of components K < color_mod (default 60), assign sequential ColorId
-      0..K-1 (stable by sorted RegionId).
+    - If number of components K < color_mod (default 60), assign ColorId as a
+      random permutation of 0..K-1 (each branch gets a unique index; order depends
+      on --seed).
     - Else (K >= color_mod), assign random ColorId in [0, color_mod-1] per component.
     """
     if color_mod <= 0:
@@ -345,8 +347,10 @@ def add_random_color_ids(
     sorted_regions = sorted(region_ids)
     k = len(sorted_regions)
     if k < color_mod:
+        perm = list(range(k))
+        rng.shuffle(perm)
         for idx, rid in enumerate(sorted_regions):
-            reg_to_color[rid] = int(idx)
+            reg_to_color[rid] = int(perm[idx])
     else:
         for rid in sorted_regions:
             reg_to_color[rid] = rng.randrange(color_mod)
