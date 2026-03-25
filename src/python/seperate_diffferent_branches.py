@@ -312,8 +312,12 @@ def add_random_color_ids(
     color_mod: int,
 ) -> None:
     """
-    Add ColorId arrays (point and cell) by mapping each connected component id
-    (RegionId) -> random integer in [0, color_mod-1].
+    Add ColorId arrays (point and cell) based on connected components.
+
+    Policy:
+    - If number of components K < color_mod (default 60), assign sequential ColorId
+      0..K-1 (stable by sorted RegionId).
+    - Else (K >= color_mod), assign random ColorId in [0, color_mod-1] per component.
     """
     if color_mod <= 0:
         raise ValueError("--color-mod must be > 0.")
@@ -338,8 +342,14 @@ def add_random_color_ids(
             region_ids.add(int(region_points.GetTuple1(i)))
 
     reg_to_color: Dict[int, int] = {}
-    for rid in sorted(region_ids):
-        reg_to_color[rid] = rng.randrange(color_mod)
+    sorted_regions = sorted(region_ids)
+    k = len(sorted_regions)
+    if k < color_mod:
+        for idx, rid in enumerate(sorted_regions):
+            reg_to_color[rid] = int(idx)
+    else:
+        for rid in sorted_regions:
+            reg_to_color[rid] = rng.randrange(color_mod)
 
     # Remove any existing ColorId arrays to avoid duplicates.
     if pd.GetArray(color_array_name) is not None:
