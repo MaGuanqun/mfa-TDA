@@ -712,23 +712,7 @@ void deduplicate_traces(
             const auto& other_end_of_b = shared_start ? b_end : b_start;
 
             bool a_on_b = endpoint_close_to_any_point(other_end_of_a, traces[j], spatial_step_size, time_step);
-            if(a_on_b)
-            {
-                bool mid_a_on_b = endpoint_close_to_any_point(traces[i].traces[traces[i].traces.size()>>1], traces[j], spatial_step_size, time_step);
-                if(!mid_a_on_b)
-                {
-                    a_on_b = false;
-                }
-            }
             bool b_on_a = endpoint_close_to_any_point(other_end_of_b, traces[i], spatial_step_size, time_step);
-            if(b_on_a)
-            {
-                bool mid_b_on_a = endpoint_close_to_any_point(traces[j].traces[traces[j].traces.size()>>1], traces[i], spatial_step_size, time_step);
-                if(!mid_b_on_a)
-                {
-                    b_on_a = false;
-                }
-            }
             // Keep only the "hanging branch" when exactly one common end exists.
             // If both are on each other, use a deterministic tie-break (shorter trace removed;
             // if equal length, remove current i).

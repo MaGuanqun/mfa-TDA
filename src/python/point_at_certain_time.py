@@ -11,6 +11,7 @@ Treats cell 'type' as integer codes (0,1,2,...). Writes:
  - hitType    (int)  # 0=interior interpolation,1=exact vertex,2=co-planar endpoint
  - edge_type  (int)  # integer code if unique, otherwise -1 (ambiguous/multiple)
  - edge_types (string) # semicolon-separated list of types (present when multiple types aggregated)
+ - ColorId    (int)  # integer color id if unique, otherwise -1 (ambiguous/multiple)
 
 Usage:
   pvpython pv_find_plane_intersections_with_int_types.py --input in.vtp --output out.vtp --z 123.45 --type-array edge_type
@@ -28,6 +29,15 @@ def find_type_array_name(cell_data, requested_name=None):
         if arr:
             return requested_name, arr
     candidates = ["EdgeValues"]
+    for name in candidates:
+        arr = cell_data.GetArray(name)
+        if arr:
+            return name, arr
+    return None, None
+
+def find_colorid_array_name(cell_data):
+    """Return (name, vtkArray) for ColorId-like arrays if found, else (None, None)."""
+    candidates = ["ColorId", "colorId", "color_id"]
     for name in candidates:
         arr = cell_data.GetArray(name)
         if arr:
@@ -85,9 +95,12 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
             found_name, type_arr = find_type_array_name(cell_data, None)
             type_array_name = found_name
 
+    # Find ColorId array (optional)
+    colorid_array_name, colorid_arr = find_colorid_array_name(cell_data)
+
     # Collect raw intersections
     raw_points = []   # (x,y,z)
-    raw_meta = []     # dicts: {'cell':cid,'seg':i,'t':t,'hit':hit,'type_int':int_or_None}
+    raw_meta = []     # dicts: {'cell':cid,'seg':i,'t':t,'hit':hit,'type_int':int_or_None,'colorid_int':int_or_None}
 
     for cid in range(n_cells):
         cell = mesh.GetCell(cid)
@@ -99,6 +112,9 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
         type_int = None
         if type_arr is not None:
             type_int = variant_to_int_or_none(type_arr, cid)
+        colorid_int = None
+        if colorid_arr is not None:
+            colorid_int = variant_to_int_or_none(colorid_arr, cid)
 
         for i in range(npts_cell - 1):
             id0 = cell.GetPointId(i)
@@ -111,16 +127,16 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
             # vertex hit p0
             if abs(z0 - z_target) <= tol:
                 raw_points.append((x0,y0,z0))
-                raw_meta.append({'cell':cid,'seg':i,'t':0.0,'hit':1,'type_int':type_int})
+                raw_meta.append({'cell':cid,'seg':i,'t':0.0,'hit':1,'type_int':type_int,'colorid_int':colorid_int})
 
             # co-planar horizontal segment
             if abs(z1 - z0) <= tol:
                 if abs(z0 - z_target) <= tol:
                     # endpoints
                     raw_points.append((x0,y0,z0))
-                    raw_meta.append({'cell':cid,'seg':i,'t':0.0,'hit':2,'type_int':type_int})
+                    raw_meta.append({'cell':cid,'seg':i,'t':0.0,'hit':2,'type_int':type_int,'colorid_int':colorid_int})
                     raw_points.append((x1,y1,z1))
-                    raw_meta.append({'cell':cid,'seg':i,'t':1.0,'hit':2,'type_int':type_int})
+                    raw_meta.append({'cell':cid,'seg':i,'t':1.0,'hit':2,'type_int':type_int,'colorid_int':colorid_int})
                 continue
 
             # crossing test
@@ -137,7 +153,7 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
                 else:
                     hit = 0
                 raw_points.append((x,y,z))
-                raw_meta.append({'cell':cid,'seg':i,'t':t,'hit':hit,'type_int':type_int})
+                raw_meta.append({'cell':cid,'seg':i,'t':t,'hit':hit,'type_int':type_int,'colorid_int':colorid_int})
 
     # If no intersections
     if len(raw_points) == 0:
@@ -152,21 +168,25 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
 
     dedup_map = {}
     uniq_points = []
-    uniq_meta = []  # {'cell':first_cell, 'seg':first_seg, 't':first_t, 'hit':first_hit, 'types_set': set() }
+    uniq_meta = []  # {'cell':first_cell, 'seg':first_seg, 't':first_t, 'hit':first_hit, 'types_set': set(), 'colorids_set': set() }
 
     for pt,meta in zip(raw_points, raw_meta):
         k = key_for_point(*pt)
         if k not in dedup_map:
             dedup_map[k] = len(uniq_points)
             uniq_points.append(pt)
-            agg = {'cell': meta['cell'], 'seg': meta['seg'], 't': meta['t'], 'hit': meta['hit'], 'types_set': set()}
+            agg = {'cell': meta['cell'], 'seg': meta['seg'], 't': meta['t'], 'hit': meta['hit'], 'types_set': set(), 'colorids_set': set()}
             if meta.get('type_int') is not None:
                 agg['types_set'].add(int(meta['type_int']))
+            if meta.get('colorid_int') is not None:
+                agg['colorids_set'].add(int(meta['colorid_int']))
             uniq_meta.append(agg)
         else:
             idx = dedup_map[k]
             if meta.get('type_int') is not None:
                 uniq_meta[idx]['types_set'].add(int(meta['type_int']))
+            if meta.get('colorid_int') is not None:
+                uniq_meta[idx]['colorids_set'].add(int(meta['colorid_int']))
 
     # Build output polydata
     out_pts = vtk.vtkPoints()
@@ -176,6 +196,7 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
     arr_segIndex = vtk.vtkIntArray(); arr_segIndex.SetName("segIndex")
     arr_t = vtk.vtkDoubleArray(); arr_t.SetName("t")
     arr_hit = vtk.vtkIntArray(); arr_hit.SetName("hitType")
+    arr_colorid = vtk.vtkIntArray(); arr_colorid.SetName("ColorId")
 
     arr_edge_type = vtk.vtkIntArray(); arr_edge_type.SetName("edge_type")  # single int or -1 if multiple
     str_edge_types = vtk.vtkStringArray(); str_edge_types.SetName("edge_types")  # semicolon list for multiples or single
@@ -205,6 +226,14 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
         arr_edge_type.InsertNextValue(int(edge_type_val))
         str_edge_types.InsertNextValue(edge_types_str)
 
+        colorids_set = agg['colorids_set']
+        if len(colorids_set) == 1:
+            colorid_val = next(iter(colorids_set))
+        else:
+            # no ColorId found or ambiguous due to dedup across differently colored edges
+            colorid_val = -1
+        arr_colorid.InsertNextValue(int(colorid_val))
+
     out_poly = vtk.vtkPolyData()
     out_poly.SetPoints(out_pts)
     out_poly.SetVerts(out_verts)
@@ -212,6 +241,7 @@ def compute_plane_intersections_with_int_types(vtp_path, z_target, type_array_na
     out_poly.GetPointData().AddArray(arr_segIndex)
     out_poly.GetPointData().AddArray(arr_t)
     out_poly.GetPointData().AddArray(arr_hit)
+    out_poly.GetPointData().AddArray(arr_colorid)
     out_poly.GetPointData().AddArray(arr_edge_type)
     out_poly.GetPointData().AddArray(str_edge_types)
     out_poly.GetPointData().SetActiveScalars("t")
