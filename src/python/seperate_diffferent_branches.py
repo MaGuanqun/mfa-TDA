@@ -68,8 +68,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--color-mod",
         type=int,
-        default=60,
-        help="ColorId range is 0..color_mod-1 (default: 60).",
+        default=48,
+        help="ColorId range is 0..color_mod-1 (default: 48).",
     )
     p.add_argument(
         "--region-array-name",
