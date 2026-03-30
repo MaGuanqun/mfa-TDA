@@ -242,8 +242,6 @@ int main(int argc, char** argv)
         {
        
             root_unique.clear();
-            step_size[0] *=2;
-            step_size.back() *=2;
             spatial_hashing_spatial_temporal::find_all_unique_root(root[k], root_unique[k], step_size[0], step_size.back());
             root_matrix[0].resize(root_unique[k].size(),root_unique[k][0].size());
             for(int j=0;j<root_unique[k].size();j++)
@@ -253,6 +251,9 @@ int main(int argc, char** argv)
 
             degenerate_file_name = degenerate_point_file + std::to_string(i) + "_"+ std::to_string(-int(log10(J_threshold_list[k]))) + ".dat";
             utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+
+            step_size[0] *=2;
+            step_size.back() *=2;
 
         }
     }

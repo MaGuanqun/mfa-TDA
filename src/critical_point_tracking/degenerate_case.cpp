@@ -216,8 +216,6 @@ int main(int argc, char** argv)
         {
        
             root_unique.clear();
-            step_size[0] *=2;
-            step_size.back() *=2;
             spatial_hashing_spatial_temporal::find_all_unique_root(root, root_unique, step_size[0], step_size.back());
             root_matrix[0].resize(root_unique.size(),root_unique[0].size());
             for(int j=0;j<root_unique.size();j++)
@@ -227,6 +225,8 @@ int main(int argc, char** argv)
 
             degenerate_file_name = degenerate_point_file + std::to_string(i) + ".dat";
             utility::writeMatrixVector(degenerate_file_name.c_str(),root_matrix);
+            step_size[0] *=2;
+            step_size.back() *=2;
 
         }
 
