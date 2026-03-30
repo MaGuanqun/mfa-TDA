@@ -510,6 +510,8 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
         tbb::affinity_partitioner ap;
 
 
+        std::cout<<"start parallel for "<<num_block<<std::endl;
+
         tbb::parallel_for(tbb::blocked_range<size_t>(0,num_block), //
         [&](const tbb::blocked_range<size_t>& range)
         {
@@ -539,6 +541,8 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
                 }
                 // std::cout<<"initial_point_range "<<selected_span_index[i]<<" "<<initial_point_range[0][0]<<" "<<initial_point_range[0][1]<<std::endl;
                 degenerate_finding_single_block(block_root_list,initial_points,initial_point_range);
+
+                std::cout<<"block root list size "<<block_root_list.size()<<std::endl;
                 if(!block_root_list.empty())
                 {
                     root_thread.insert(root_thread.end(), block_root_list.begin(), block_root_list.end());
@@ -565,6 +569,8 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
         },ap               
         );
 
+        std::cout<<"local root size "<<local_root.size()<<std::endl;
+
 
 
         std::vector<std::vector<VectorX<T>>> combined_root_list;
@@ -586,7 +592,7 @@ void write_degenerate_point(std::vector<std::vector<VectorX<T>>>& to_record_root
         }
 
 
-        // std::cout<<"every thread root size "<<root[0].size()<<std::endl;
+        std::cout<<"every thread root size "<<root[0].size()<<std::endl;
 
     }
    
