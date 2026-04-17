@@ -3,3 +3,5 @@
 *.btr
 /.vscode
 *.run
+*.log
+*.sh
