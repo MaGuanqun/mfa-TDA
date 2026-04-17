@@ -1,6 +1,6 @@
 #!/usr/bin/env pvpython
 """
-Combine a range of trajectory .vtp files into a single .vtp.
+Combine trajectory .vtp files into a single .vtp.
 
 Each input .vtp is assumed to be a VTK PolyData containing both:
   - points (Verts/Points)
@@ -9,12 +9,18 @@ Each input .vtp is assumed to be a VTK PolyData containing both:
 We preserve all point/cell attribute arrays by concatenating the PolyData
 objects without cleaning/merging points.
 
-Example:
+Examples:
   pvpython src/python/combine_trajectory.py \
     --dir /path/to/vtps \
     --start 0 --end 1 \
     --pattern "trajectory_index{i}.vtp" \
     --output /path/to/vtps/trajectory_combined.vtp
+
+  pvpython src/python/combine_trajectory.py \
+    --dir /path/to/vtps \
+    --indices "0,2,5-8,10" \
+    --pattern "trajectory_index{i}.vtp" \
+    --output /path/to/vtps/trajectory_selected.vtp
 """
 
 from __future__ import annotations
@@ -33,6 +39,46 @@ def build_input_paths(input_dir: str, pattern: str, start: int, end: int) -> Lis
         fname = pattern.format(i=i)
         paths.append(os.path.join(input_dir, fname))
     return paths
+
+
+def parse_indices_string(indices: str) -> List[int]:
+    """
+    Parse a comma-separated index specification into an ordered list of integers.
+
+    Supported tokens:
+      - single index: "4"
+      - ascending range: "2-6" -> 2,3,4,5,6
+      - descending range: "6-2" -> 6,5,4,3,2
+    """
+    if not indices or not indices.strip():
+        raise ValueError("--indices cannot be empty.")
+
+    parsed: List[int] = []
+    for raw_token in indices.split(","):
+        token = raw_token.strip()
+        if not token:
+            raise ValueError(f"Invalid empty token in --indices: {indices!r}")
+
+        if "-" in token:
+            parts = token.split("-")
+            if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+                raise ValueError(
+                    f"Invalid range token {token!r} in --indices. Use forms like 3-7."
+                )
+            start = int(parts[0].strip())
+            end = int(parts[1].strip())
+            step = 1 if end >= start else -1
+            parsed.extend(range(start, end + step, step))
+        else:
+            parsed.append(int(token))
+
+    return parsed
+
+
+def build_input_paths_from_indices(input_dir: str, pattern: str, indices: List[int]) -> List[str]:
+    if not indices:
+        raise ValueError("No indices provided to build input paths.")
+    return [os.path.join(input_dir, pattern.format(i=i)) for i in indices]
 
 
 def read_polydata(vtp_path: str) -> vtk.vtkPolyData:
@@ -159,15 +205,22 @@ def write_vtp(polydata: vtk.vtkPolyData, output_path: str, data_mode: str) -> No
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Combine trajectory_index{i}.vtp files into one VTP.")
     p.add_argument("--dir", required=True, help="Directory containing the trajectory .vtp files.")
-    p.add_argument(
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
+        "--indices",
+        type=str,
+        help=(
+            'Comma-separated indices/ranges, e.g. "0,2,5-8,10". '
+            "Use this to directly choose files."
+        ),
+    )
+    mode.add_argument(
         "--start",
-        required=True,
         type=int,
         help="Start index (inclusive), e.g. 0 for trajectory_index0.vtp.",
     )
     p.add_argument(
         "--end",
-        required=True,
         type=int,
         help="End index (inclusive), e.g. 1 for trajectory_index1.vtp.",
     )
@@ -198,7 +251,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    input_paths = build_input_paths(args.dir, args.pattern, args.start, args.end)
+    if args.indices is not None:
+        indices = parse_indices_string(args.indices)
+        input_paths = build_input_paths_from_indices(args.dir, args.pattern, indices)
+    else:
+        if args.end is None:
+            raise ValueError("--end is required when using --start/--end mode.")
+        input_paths = build_input_paths(args.dir, args.pattern, args.start, args.end)
+
     missing = [p for p in input_paths if not os.path.exists(p)]
     if missing:
         raise FileNotFoundError(f"Missing input VTP file(s): {missing}")

@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
 """
 For each point P in a VTP file (with point-data array "t"):
-1) Find the two neighboring regular-grid indices A/B on [grid_min, grid_max]
-   with grid_count points.
-2) Load CSV files for indices A and B (3D points + CriticalType).
-3) In each CSV, find the nearest point to P within epsilon.
-4) If both exist, keep the closer one.
+1) Choose candidate slice indices from the regular grid on [grid_min, grid_max]
+   with grid_count points: by default the two bracketing neighbors of P's `t`; if
+   --t-slice-tol is set, every slice whose grid time is within that tolerance of
+   P's `t` is included (useful when many time levels may contain the same feature).
+2) Load CSV files for each candidate index (3D points + CriticalType).
+3) In each CSV, find CSV point(s) in **3D** (PositionX/Y/Z vs VTP x,y,z) within distance
+   <= epsilon (same role as --distance in find_common_points.py).
+4) Default --match-mode nearest: among all candidate slices, output the single closest
+   CSV point. With --match-mode all_within_epsilon: output every CSV row within epsilon
+   on every candidate slice (multiple rows per VTP point when many neighbors exist).
+
+The "4D" workflow is **time via slice choice**, not via a 4D distance: epsilon is
+**spatial only**; time enters only through which slice CSV(s) are searched (--t-slice-tol
+or bracketing).
 
 Output one CSV containing extracted matched points with columns:
-  PositionX, PositionY, PositionZ, t, CriticalType, RegionId
+  VtpPointId, SliceIndex, PositionX, PositionY, PositionZ, t, CriticalType, ColorId
+  RegionId is copied from the VTP only if point-data --region-array exists; otherwise
+  the column is omitted. Use --without-region-id to omit it even when present.
+
+ColorId is taken from the VTP point closest in 3D to each output row's position
+(same nearest-neighbor idea as assigning VTP fields to CSV points elsewhere).
 
 Memory-aware behavior:
 - CSV/KDTree data are loaded on demand and cached with LRU eviction.
@@ -44,10 +58,19 @@ def find_csv_coord_columns(fieldnames):
     )
 
 
-def read_vtp_points(vtp_path, t_array_name="t", region_array_name="RegionId"):
+def read_vtp_points(
+    vtp_path,
+    t_array_name="t",
+    region_array_name="RegionId",
+    color_array_name="ColorId",
+    force_omit_region_id=False,
+):
     """
     Read VTP points and per-point t value.
-    Returns list of dicts: {'x','y','z','t','region_id','point_id'}
+
+    Returns (points, copy_region_to_csv) where points are dicts with optional 'region_id'
+    if the VTP has region_array_name (unless force_omit_region_id is True).
+    copy_region_to_csv is True iff output rows should include RegionId.
     """
     reader = vtk.vtkXMLPolyDataReader()
     reader.SetFileName(vtp_path)
@@ -56,18 +79,22 @@ def read_vtp_points(vtp_path, t_array_name="t", region_array_name="RegionId"):
 
     pts = poly.GetPoints()
     if pts is None:
-        return []
+        return [], False
 
     point_data = poly.GetPointData()
     t_arr = point_data.GetArray(t_array_name)
     if t_arr is None:
         raise ValueError(f"VTP point-data array '{t_array_name}' not found.")
 
-    region_arr = point_data.GetArray(region_array_name)
-    if region_arr is None:
+    region_arr = None
+    if not force_omit_region_id:
+        region_arr = point_data.GetArray(region_array_name)
+
+    color_arr = point_data.GetArray(color_array_name)
+    if color_arr is None:
         raise ValueError(
-            f"VTP point-data array '{region_array_name}' not found. "
-            f"Compute it first (e.g. via 'assign_component_id_to_point.py')."
+            f"VTP point-data array '{color_array_name}' not found. "
+            f"Compute it first (e.g. branch coloring / 'seperate_diffferent_branches.py')."
         )
 
     out = []
@@ -75,18 +102,21 @@ def read_vtp_points(vtp_path, t_array_name="t", region_array_name="RegionId"):
     for i in range(npts):
         x, y, z = pts.GetPoint(i)
         t_val = float(t_arr.GetComponent(i, 0))
-        region_id = int(region_arr.GetComponent(i, 0))
-        out.append(
-            {
-                "point_id": i,
-                "x": float(x),
-                "y": float(y),
-                "z": float(z),
-                "t": t_val,
-                "region_id": region_id,
-            }
-        )
-    return out
+        color_id = int(color_arr.GetComponent(i, 0))
+        rec = {
+            "point_id": i,
+            "x": float(x),
+            "y": float(y),
+            "z": float(z),
+            "t": t_val,
+            "color_id": color_id,
+        }
+        if region_arr is not None:
+            rec["region_id"] = int(region_arr.GetComponent(i, 0))
+        out.append(rec)
+
+    copy_region = region_arr is not None
+    return out, copy_region
 
 
 def load_csv_index_data(csv_path):
@@ -142,6 +172,38 @@ def bracket_indices(t_val, gmin, gmax, gstep, gcount):
     return left, right
 
 
+def grid_time_for_index(idx, gmin, gstep):
+    return float(gmin + float(idx) * gstep)
+
+
+def candidate_slice_indices(t_val, gmin, gmax, gstep, gcount, t_slice_tol=None):
+    """
+    Indices into the CSV template to query for a VTP time `t_val`.
+
+    Default (t_slice_tol is None or negative): bracketing pair (or one index if
+    at endpoint / degenerate).
+
+    With t_slice_tol >= 0: all k with |grid_time(k) - t_val| <= t_slice_tol.
+    If that set is empty, fall back to bracketing (same as default).
+    """
+    a, b = bracket_indices(t_val, gmin, gmax, gstep, gcount)
+    if t_slice_tol is None or t_slice_tol < 0:
+        if a == b:
+            return [a]
+        return sorted({a, b})
+
+    in_tol = [
+        k
+        for k in range(gcount)
+        if abs(grid_time_for_index(k, gmin, gstep) - float(t_val)) <= t_slice_tol
+    ]
+    if not in_tol:
+        if a == b:
+            return [a]
+        return sorted({a, b})
+    return sorted(set(in_tol))
+
+
 class IndexDataCache:
     """LRU cache for per-index CSV KDTree data."""
 
@@ -173,7 +235,11 @@ class IndexDataCache:
 
 
 def nearest_within_eps(index_data, point_xyz, epsilon):
-    """Return (distance, matched_xyz, matched_critical_type) or None."""
+    """
+    Return (distance, matched_xyz, matched_critical_type) or None.
+    `epsilon` is the cKDTree `distance_upper_bound`: max **3D** Euclidean distance
+    from `point_xyz` to CSV coordinates (same idea as find_common_points.py --distance).
+    """
     if index_data is None or index_data["tree"] is None:
         return None
 
@@ -188,96 +254,155 @@ def nearest_within_eps(index_data, point_xyz, epsilon):
     return float(dist), matched_xyz, matched_type
 
 
-def match_points(points_vtp, cache, epsilon, gmin, gmax, gcount, log_matches=True):
+def all_within_eps(index_data, point_xyz, epsilon):
     """
-    For each VTP point, query bracketing grid indices A/B and keep the closer
-    valid nearest match (within epsilon). Returns output rows.
+    Return a list of (distance, matched_xyz, matched_critical_type) for every CSV
+    point within **3D** Euclidean distance <= epsilon (empty list if none).
+    """
+    if index_data is None or index_data["tree"] is None:
+        return []
+    tree = index_data["tree"]
+    coords = index_data["coords"]
+    crit = index_data["crit"]
+    q = np.asarray(point_xyz, dtype=float)
+    idxs = tree.query_ball_point(q, r=float(epsilon), p=2)
+    idxs = np.atleast_1d(np.asarray(idxs, dtype=np.intp))
+    out = []
+    eps = float(epsilon)
+    for j in idxs:
+        j = int(j)
+        if j < 0 or j >= coords.shape[0]:
+            continue
+        d = float(np.linalg.norm(coords[j] - q))
+        if d <= eps + 1e-12:
+            out.append((d, coords[j].copy(), int(crit[j])))
+    out.sort(key=lambda x: x[0])
+    return out
+
+
+def match_points(
+    points_vtp,
+    cache,
+    epsilon,
+    gmin,
+    gmax,
+    gcount,
+    log_matches=True,
+    include_region_id=True,
+    t_slice_tol=None,
+    match_mode="nearest",
+):
+    """
+    For each VTP point, query one or more slice CSVs (bracketing and/or --t-slice-tol).
+
+    match_mode 'nearest': one output row — smallest 3D distance among all slices.
+    match_mode 'all_within_epsilon': one row per CSV point within epsilon on each slice.
+
+    Each row's ColorId is the ColorId of the VTP vertex nearest in 3D to the
+    matched (PositionX, PositionY, PositionZ); RegionId comes from the driving VTP point.
     """
     rows = []
     gstep = grid_step(gmin, gmax, gcount)
+    all_mode = match_mode == "all_within_epsilon"
+
+    if points_vtp:
+        vtp_xyz = np.array([[p["x"], p["y"], p["z"]] for p in points_vtp], dtype=float)
+        vtp_color = np.array([p["color_id"] for p in points_vtp], dtype=int)
+        vtp_tree = cKDTree(vtp_xyz)
+    else:
+        vtp_tree = None
+
+    def _emit_row(matched_xyz, matched_type, slice_idx, vtp_id, p):
+        _, nn_vtp = vtp_tree.query(matched_xyz)
+        color_id_out = int(vtp_color[int(nn_vtp)])
+        row = {
+            "VtpPointId": int(vtp_id),
+            "SliceIndex": int(slice_idx),
+            "PositionX": float(matched_xyz[0]),
+            "PositionY": float(matched_xyz[1]),
+            "PositionZ": float(matched_xyz[2]),
+            "t": float(grid_time_for_index(slice_idx, gmin, gstep)),
+            "CriticalType": matched_type,
+            "ColorId": color_id_out,
+        }
+        if include_region_id:
+            row["RegionId"] = int(p["region_id"])
+        rows.append(row)
+        if log_matches:
+            print(
+                "Matched "
+                f"vtp_id={vtp_id} "
+                f"slice={slice_idx} "
+                f"pos=({matched_xyz[0]:.6f},{matched_xyz[1]:.6f},{matched_xyz[2]:.6f}) "
+                f"t={grid_time_for_index(slice_idx, gmin, gstep):.6f} "
+                f"CriticalType={matched_type} "
+                f"ColorId={color_id_out}",
+                flush=True,
+            )
 
     for p in points_vtp:
         pxyz = [p["x"], p["y"], p["z"]]
-        a_idx, b_idx = bracket_indices(p["t"], gmin, gmax, gstep, gcount)
+        cand = candidate_slice_indices(p["t"], gmin, gmax, gstep, gcount, t_slice_tol)
+        vtp_id = p["point_id"]
 
-        a_data = cache.get(a_idx)
-        a_match = nearest_within_eps(a_data, pxyz, epsilon)
-
-        if b_idx == a_idx:
-            b_match = None
-        else:
-            b_data = cache.get(b_idx)
-            b_match = nearest_within_eps(b_data, pxyz, epsilon)
+        if all_mode:
+            for k in cand:
+                data = cache.get(k)
+                for dist, matched_xyz, matched_type in all_within_eps(data, pxyz, epsilon):
+                    _emit_row(matched_xyz, matched_type, k, vtp_id, p)
+            continue
 
         chosen = None
         chosen_idx = None
-        if a_match is not None and b_match is not None:
-            if a_match[0] <= b_match[0]:
-                chosen = a_match
-                chosen_idx = a_idx
-            else:
-                chosen = b_match
-                chosen_idx = b_idx
-        elif a_match is not None:
-            chosen = a_match
-            chosen_idx = a_idx
-        elif b_match is not None:
-            chosen = b_match
-            chosen_idx = b_idx
+        for k in cand:
+            data = cache.get(k)
+            m = nearest_within_eps(data, pxyz, epsilon)
+            if m is None:
+                continue
+            if chosen is None or m[0] < chosen[0]:
+                chosen = m
+                chosen_idx = k
 
         if chosen is None:
             continue
 
         _, matched_xyz, matched_type = chosen
-        rows.append(
-            {
-                "PositionX": float(matched_xyz[0]),
-                "PositionY": float(matched_xyz[1]),
-                "PositionZ": float(matched_xyz[2]),
-                "t": float(gmin + chosen_idx * gstep),
-                "CriticalType": matched_type,
-                # RegionId comes from the VTP point, not from the matched CSV point.
-                "RegionId": int(p["region_id"]),
-            }
-        )
-        if log_matches:
-            print(
-                "Matched "
-                f"vtp_id={p['point_id']} "
-                f"grid_idx={chosen_idx} "
-                f"pos=({matched_xyz[0]:.6f},{matched_xyz[1]:.6f},{matched_xyz[2]:.6f}) "
-                f"t={gmin + chosen_idx * gstep:.6f} "
-                f"CriticalType={matched_type}",
-                flush=True,
-            )
+        _emit_row(matched_xyz, matched_type, chosen_idx, vtp_id, p)
 
     return rows
 
 
-def write_single_csv(rows, output_csv):
+def write_single_csv(rows, output_csv, include_region_id=True):
     out_dir = os.path.dirname(output_csv)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
+    fieldnames = [
+        "VtpPointId",
+        "SliceIndex",
+        "PositionX",
+        "PositionY",
+        "PositionZ",
+        "t",
+        "CriticalType",
+    ]
+    if include_region_id:
+        fieldnames.append("RegionId")
+    fieldnames.append("ColorId")
+
     with open(output_csv, "w", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "PositionX",
-                "PositionY",
-                "PositionZ",
-                "t",
-                "CriticalType",
-                "RegionId",
-            ],
-        )
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="4D matching: for each VTP point, query bracketing grid-index CSVs and save closest match."
+        description=(
+            "4D pipeline matching: VTP point `t` selects time-slice CSVs; within each slice, "
+            "find CSV point(s) within 3D distance <= epsilon. Default: single closest match "
+            "across slices; optional: emit every neighbor within epsilon per slice."
+        )
     )
     parser.add_argument("-i", "--input-vtp", required=True, help="Input VTP file")
     parser.add_argument(
@@ -297,17 +422,53 @@ def parse_args():
         "--epsilon",
         type=float,
         required=True,
-        help="Distance threshold for nearest neighbor acceptance",
+        help=(
+            "Max 3D Euclidean distance (VTP x,y,z vs CSV PositionX/Y/Z) for a match on each "
+            "candidate time slice; same meaning as --distance in find_common_points.py. "
+            "With --match-mode all_within_epsilon, every CSV point within this radius is output."
+        ),
+    )
+    parser.add_argument(
+        "--match-mode",
+        choices=("nearest", "all_within_epsilon"),
+        default="nearest",
+        help=(
+            "nearest: one CSV row per VTP point (closest match over candidate slices). "
+            "all_within_epsilon: all CSV rows within --epsilon on each candidate slice "
+            "(multiple rows per VTP point possible)."
+        ),
     )
     parser.add_argument("--t-array", default="t", help="VTP point-data t array name")
     parser.add_argument(
         "--region-array",
         default="RegionId",
-        help="VTP point-data RegionId array name (default: RegionId).",
+        help="VTP point-data RegionId array name when present (default: RegionId).",
+    )
+    parser.add_argument(
+        "--without-region-id",
+        action="store_true",
+        help="Omit RegionId from the output even if the VTP has --region-array.",
+    )
+    parser.add_argument(
+        "--color-array",
+        default="ColorId",
+        help="VTP point-data ColorId array name (default: ColorId).",
     )
     parser.add_argument("--grid-min", type=float, default=0.0, help="Grid min value")
     parser.add_argument("--grid-max", type=float, default=89.0, help="Grid max value")
     parser.add_argument("--grid-count", type=int, default=81, help="Number of grid points")
+    parser.add_argument(
+        "--t-slice-tol",
+        type=float,
+        default=None,
+        help=(
+            "If set (>=0), query every slice index whose grid time is within this "
+            "distance of the VTP point's t (same units as grid_min/max). "
+            "With nearest match-mode, the smallest 3D distance among those slices wins; "
+            "with all_within_epsilon, every in-radius CSV point on every such slice is emitted. "
+            "If no slice falls in the window, fall back to bracketing neighbors only."
+        ),
+    )
     parser.add_argument(
         "--max-cached-indices",
         type=int,
@@ -329,9 +490,17 @@ def main():
         raise ValueError("--epsilon must be non-negative.")
     if args.max_cached_indices < 1:
         raise ValueError("--max-cached-indices must be >= 1.")
+    if args.t_slice_tol is not None and args.t_slice_tol < 0:
+        raise ValueError("--t-slice-tol must be non-negative if set.")
 
-    points_vtp = read_vtp_points(
-        args.input_vtp, t_array_name=args.t_array, region_array_name=args.region_array
+    match_mode = args.match_mode
+
+    points_vtp, include_region = read_vtp_points(
+        args.input_vtp,
+        t_array_name=args.t_array,
+        region_array_name=args.region_array,
+        color_array_name=args.color_array,
+        force_omit_region_id=args.without_region_id,
     )
     cache = IndexDataCache(args.csv_template, args.max_cached_indices)
     matched_rows = match_points(
@@ -342,8 +511,11 @@ def main():
         args.grid_max,
         args.grid_count,
         log_matches=(not args.no_match_log),
+        include_region_id=include_region,
+        t_slice_tol=args.t_slice_tol,
+        match_mode=match_mode,
     )
-    write_single_csv(matched_rows, args.output_csv)
+    write_single_csv(matched_rows, args.output_csv, include_region_id=include_region)
 
     total = len(matched_rows)
     print(f"VTP points: {len(points_vtp)}")

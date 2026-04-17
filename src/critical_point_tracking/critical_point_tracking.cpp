@@ -287,7 +287,8 @@ int main(int argc, char** argv)
         
         std::vector<VectorX<double>> root_unique;
 
-        if(compute_boundary_start==1){
+        if(compute_boundary_start==1)
+        {
         find_boundary_roots.root_finding(selected_span[0], root);
 
 
@@ -301,10 +302,16 @@ int main(int argc, char** argv)
         root.clear();
         root.shrink_to_fit();
 
+
+
         string test_file=cp_tracing_file+"_test.obj";
+
+        boundary_start = boundary_start +"_" + std::to_string(-int(log10(root_finding_grad_epsilon))) + "_";
 
 
         tracking_utility::save_root(root_unique, boundary_start, spatial_step_size);
+
+
 
         }
         else
@@ -390,6 +397,8 @@ int trace_size=0;
 
     });
 
+
+    return 0;
     
 
 }

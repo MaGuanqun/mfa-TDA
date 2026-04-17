@@ -150,8 +150,15 @@ def main() -> None:
             assigned_region[far] = -1
 
     out_df = df.copy()
-    out_df["RegionId"] = assigned_region
-    out_df["NearestDist3D"] = dists
+
+    # Always refresh these columns with the latest computation, even if they
+    # already exist in the input CSV.
+    region_col = "RegionId"
+    dist_col = "NearestDist3D"
+    region_preexists = region_col in out_df.columns
+    dist_preexists = dist_col in out_df.columns
+    out_df[region_col] = assigned_region
+    out_df[dist_col] = dists
 
     out_dir = os.path.dirname(args.output_csv)
     if out_dir:
@@ -170,6 +177,13 @@ def main() -> None:
     if unmatched_count > 0:
         print("Unmatched rows detail (RegionId == -1):")
         print(out_df.loc[unmatched_mask].to_string(index=False))
+    if region_preexists or dist_preexists:
+        print(
+            "Updated existing output columns:"
+            f" {region_col if region_preexists else ''}"
+            f"{' and ' if region_preexists and dist_preexists else ''}"
+            f"{dist_col if dist_preexists else ''}"
+        )
     print(f"Output CSV:     {args.output_csv}")
 
 

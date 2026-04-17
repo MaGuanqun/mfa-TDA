@@ -75,71 +75,74 @@ def read_vtp_points(vtp_path):
 
 def read_csv_points(csv_path):
     """
-    Read CSV points with required CriticalType.
-    Returns list of dicts: {'x','y','z','critical_type','row_id'}
+    Read CSV points with optional CriticalType.
+    Returns:
+      - list of dicts with parsed coordinates and original row payload
+      - original CSV fieldnames (in source order)
     """
     points = []
     with open(csv_path, "r", newline="") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError("CSV file has no header.")
-
-        if "CriticalType" not in reader.fieldnames:
-            raise ValueError("CSV must contain a 'CriticalType' column.")
+        csv_fieldnames = list(reader.fieldnames)
 
         x_col, y_col, z_col = find_csv_coord_columns(reader.fieldnames)
 
         for idx, row in enumerate(reader):
+            critical_type = None
+            if "CriticalType" in row and row["CriticalType"] not in (None, ""):
+                critical_type = int(float(row["CriticalType"]))
+
             points.append(
                 {
                     "row_id": idx,
                     "x": float(row[x_col]),
                     "y": float(row[y_col]),
                     "z": float(row[z_col]),
-                    "critical_type": int(float(row["CriticalType"])),
+                    "critical_type": critical_type,
+                    "original_row": dict(row),
                 }
             )
-    return points
+    return points, csv_fieldnames
 
 
-def match_points(points_a, points_b, threshold):
+def match_points(points_a, points_b, threshold, z_k=None, z_eps=1e-6):
     """
-    For each point in A, find one nearest point in B within threshold.
+    For each point in B, find whether it is within `threshold` of any point in A.
     Matching is distance-only; no CriticalType filter is applied.
-    Output keeps unique matched B points (deduplicated by B row_id).
+    If `z_k` is provided, points in B are additionally filtered to those whose
+    `z` coordinate is within `z_eps` of `z_k`.
+
+    Output includes all matched B points. Since we iterate B exactly once, each
+    B row_id appears at most once in the output.
     """
-    if not points_b:
+    if not points_a or not points_b:
         return []
 
-    b_coords = np.array([[pb["x"], pb["y"], pb["z"]] for pb in points_b], dtype=float)
-    tree = cKDTree(b_coords)
+    a_coords = np.array([[pa["x"], pa["y"], pa["z"]] for pa in points_a], dtype=float)
+    tree = cKDTree(a_coords)
     matches = []
-    seen_b_ids = set()
 
-    for pa in points_a:
-        dist, idx = tree.query([pa["x"], pa["y"], pa["z"]], distance_upper_bound=threshold)
-        if not np.isfinite(dist) or idx >= len(points_b):
-            continue
+    for pb in points_b:
+        if z_k is not None:
+            if abs(pb["z"] - z_k) > z_eps:
+                continue
 
-        found = points_b[int(idx)]
-        if found["row_id"] in seen_b_ids:
-            continue
-        seen_b_ids.add(found["row_id"])
-
-        matches.append(
-            {
-                "RowId": found["row_id"],
-                "PositionX": found["x"],
-                "PositionY": found["y"],
-                "PositionZ": found["z"],
-                "CriticalType": found["critical_type"],
-            }
+        dist, idx = tree.query(
+            [pb["x"], pb["y"], pb["z"]], distance_upper_bound=threshold
         )
+        # `cKDTree.query(..., distance_upper_bound=...)` returns `idx` even when
+        # out of bounds; we explicitly require a finite distance.
+        if not np.isfinite(dist) or idx >= len(points_a):
+            continue
+
+        matches.append({"RowId": pb["row_id"], **pb["original_row"]})
 
     return matches
 
 
-def write_single_csv(rows, output_csv):
+def write_single_csv(rows, output_csv, csv_fieldnames):
     out_dir = os.path.dirname(output_csv)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
@@ -147,13 +150,7 @@ def write_single_csv(rows, output_csv):
     with open(output_csv, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=[
-                "RowId",
-                "PositionX",
-                "PositionY",
-                "PositionZ",
-                "CriticalType",
-            ],
+            fieldnames=["RowId"] + [name for name in csv_fieldnames if name != "RowId"],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -161,12 +158,24 @@ def write_single_csv(rows, output_csv):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Find points in VTP close to points in CSV and save matches per CriticalType."
+        description="Find points in VTP close to points in CSV."
     )
     parser.add_argument("-a", "--input-vtp", required=True, help="Input VTP file A")
     parser.add_argument("-b", "--input-csv", required=True, help="Input CSV file B")
     parser.add_argument(
         "-d", "--distance", type=float, required=True, help="Distance threshold"
+    )
+    parser.add_argument(
+        "--k",
+        type=float,
+        default=None,
+        help="Optional Z (PositionZ) value; only keep CSV points with z ~= k",
+    )
+    parser.add_argument(
+        "--k-eps",
+        type=float,
+        default=1e-3,
+        help="Epsilon for Z filtering when --k is set (absolute tolerance)",
     )
     parser.add_argument(
         "-o",
@@ -182,11 +191,15 @@ def main():
 
     if args.distance < 0:
         raise ValueError("--distance must be non-negative.")
+    if args.k_eps < 0:
+        raise ValueError("--k-eps must be non-negative.")
 
     points_a = read_vtp_points(args.input_vtp)
-    points_b = read_csv_points(args.input_csv)
-    matched_rows = match_points(points_a, points_b, args.distance)
-    write_single_csv(matched_rows, args.output_csv)
+    points_b, csv_fieldnames = read_csv_points(args.input_csv)
+    matched_rows = match_points(
+        points_a, points_b, args.distance, z_k=args.k, z_eps=args.k_eps
+    )
+    write_single_csv(matched_rows, args.output_csv, csv_fieldnames)
 
     total = len(matched_rows)
     print(f"A points: {len(points_a)}")

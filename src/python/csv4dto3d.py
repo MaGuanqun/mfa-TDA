@@ -6,8 +6,8 @@ Input columns expected:
   PositionX, PositionY, PositionZ, t, CriticalType (or CriticalTpe)
 
 Output columns:
-  PositionX, PositionY, PositionZ, CriticalType (or CriticalTpe)
-  RegionId is included when present in the input.
+  PositionX, PositionY, PositionZ, t, CriticalType (or CriticalTpe)
+  RegionId and ColorId are included when present in the input.
 """
 
 import argparse
@@ -40,10 +40,13 @@ def convert_csv(input_csv, output_csv):
 
         crit_col = get_critical_column(reader.fieldnames)
         has_region_id = "RegionId" in reader.fieldnames
+        has_color_id = "ColorId" in reader.fieldnames
 
-        out_fields = ["PositionX", "PositionY", "PositionZ", crit_col]
+        out_fields = ["PositionX", "PositionY", "PositionZ", "t", crit_col]
         if has_region_id:
             out_fields.append("RegionId")
+        if has_color_id:
+            out_fields.append("ColorId")
 
         with open(output_csv, "w", newline="") as fout:
             writer = csv.DictWriter(fout, fieldnames=out_fields)
@@ -56,16 +59,19 @@ def convert_csv(input_csv, output_csv):
                     "PositionX": float(row["PositionX"]) + shift,
                     "PositionY": float(row["PositionY"]) + shift,
                     "PositionZ": float(row["PositionZ"]) + shift,
+                    "t": t_val,
                     crit_col: row[crit_col],
                 }
                 if has_region_id:
                     out_row["RegionId"] = row["RegionId"]
+                if has_color_id:
+                    out_row["ColorId"] = row["ColorId"]
                 writer.writerow(out_row)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Add 3*t to XYZ; keep CriticalType and RegionId (if present)."
+        description="Add 3*t to XYZ; keep t, CriticalType, RegionId, ColorId (if present)."
     )
     parser.add_argument("-i", "--input-csv", required=True, help="Input CSV file")
     parser.add_argument("-o", "--output-csv", required=True, help="Output CSV file")

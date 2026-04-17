@@ -149,10 +149,7 @@ def _copy_point_tuple(src_pd: vtk.vtkPointData, dst_pd: vtk.vtkPointData, src_pi
         dst_arr = dst_pd.GetArray(src_arr.GetName())
         if dst_arr is None:
             raise RuntimeError(f"Missing destination point array '{src_arr.GetName()}'.")
-        ncomp = src_arr.GetNumberOfComponents()
-        tup = [0.0] * ncomp
-        src_arr.GetTuple(src_pid, tup)
-        dst_arr.InsertNextTuple(tup)
+        dst_arr.InsertNextTuple(src_arr.GetTuple(src_pid))
 
 
 def _copy_cell_tuple(src_cd: vtk.vtkCellData, dst_cd: vtk.vtkCellData, src_cid: int) -> None:
@@ -164,10 +161,7 @@ def _copy_cell_tuple(src_cd: vtk.vtkCellData, dst_cd: vtk.vtkCellData, src_cid: 
         dst_arr = dst_cd.GetArray(src_arr.GetName())
         if dst_arr is None:
             raise RuntimeError(f"Missing destination cell array '{src_arr.GetName()}'.")
-        ncomp = src_arr.GetNumberOfComponents()
-        tup = [0.0] * ncomp
-        src_arr.GetTuple(src_cid, tup)
-        dst_arr.InsertNextTuple(tup)
+        dst_arr.InsertNextTuple(src_arr.GetTuple(src_cid))
 
 
 @dataclass(frozen=True)
@@ -176,12 +170,19 @@ class _PointOcc:
     local_index: int  # index within the cell's point-id list
 
 
-def split_high_degree_points(poly: vtk.vtkPolyData, degree_threshold: int = 2) -> vtk.vtkPolyData:
+def split_high_degree_points(
+    poly: vtk.vtkPolyData,
+    degree_threshold: int = 2,
+    force_split_points: Optional[Set[int]] = None,
+) -> vtk.vtkPolyData:
     """
     For any point with edge-degree > degree_threshold, duplicate that point per
     incident cell occurrence and rewrite cell connectivity to use the duplicates.
 
     This removes junction sharing, so branches become separate components.
+
+    If `force_split_points` is provided, those point ids are also duplicated
+    (even if their degree is <= degree_threshold).
     """
     npts = poly.GetNumberOfPoints()
     if npts == 0:
@@ -191,6 +192,11 @@ def split_high_degree_points(poly: vtk.vtkPolyData, degree_threshold: int = 2) -
 
     deg = compute_point_edge_degree(poly)
     to_split = [d > degree_threshold for d in deg]
+    if force_split_points:
+        for pid in force_split_points:
+            if 0 <= pid < npts:
+                to_split[pid] = True
+
     if not any(to_split):
         out = vtk.vtkPolyData()
         out.DeepCopy(poly)
@@ -661,17 +667,10 @@ def break_one_cycle(poly: vtk.vtkPolyData, rng: random.Random, t_array_name: str
         arc0_edges = _arc_edge_keys(cycle_verts, ia, ib)
         arc1_edges = _cycle_edges_from_vertices(cycle_verts) - arc0_edges
 
-    idlist = vtk.vtkIdList()
-    ncells = poly.GetNumberOfCells()
     to_update: List[Tuple[int, int, int, bool, bool]] = []
-    for cid in range(ncells):
-        if poly.GetCellType(cid) != vtk.VTK_LINE:
-            continue
-        poly.GetCellPoints(cid, idlist)
-        if idlist.GetNumberOfIds() != 2:
-            continue
-        p = int(idlist.GetId(0))
-        q = int(idlist.GetId(1))
+    # Reuse already expanded line segments instead of re-scanning all VTK cells.
+    # This is a significant hotspot when break_all_loops() performs many iterations.
+    for cid, p, q in segments:
         sig = _seg_sig(cid, p, q)
         if arc0_seg or arc1_seg:
             in0 = sig in arc0_seg
@@ -714,27 +713,262 @@ def break_all_loops(poly: vtk.vtkPolyData, rng: random.Random, t_array_name: str
     return out
 
 
+def _build_point_adjacency_from_line_cells(poly: vtk.vtkPolyData) -> Tuple[List[Set[int]], List[int]]:
+    """
+    Build an undirected adjacency graph using only VTK line edges.
+
+    Returns:
+      (adj, degree) where adj[pid] is the set of neighboring point ids.
+    """
+    npts = poly.GetNumberOfPoints()
+    adj: List[Set[int]] = [set() for _ in range(npts)]
+    for _, p, q in _expand_line_segments(poly):
+        if p == q:
+            continue
+        adj[p].add(q)
+        adj[q].add(p)
+    deg = [len(s) for s in adj]
+    return adj, deg
+
+
+def _compute_components_from_point_adjacency(
+    adj: List[Set[int]],
+    deg: List[int],
+) -> List[List[int]]:
+    """Connected components over the point adjacency graph (ignores isolated nodes)."""
+    npts = len(adj)
+    seen = [False] * npts
+    comps: List[List[int]] = []
+    for pid in range(npts):
+        if deg[pid] == 0 or seen[pid]:
+            continue
+        stack = [pid]
+        seen[pid] = True
+        comp: List[int] = []
+        while stack:
+            u = stack.pop()
+            comp.append(u)
+            for v in adj[u]:
+                if not seen[v]:
+                    seen[v] = True
+                    stack.append(v)
+        comps.append(comp)
+    return comps
+
+
+def _traverse_simple_path_order(
+    start: int,
+    comp_set: Set[int],
+    adj: List[Set[int]],
+) -> List[int]:
+    """
+    Traverse a component as a simple path starting at `start`.
+
+    Assumes no branching at internal nodes (degree <= 2). If traversal hits a branch/cycle,
+    it stops early.
+    """
+    order: List[int] = []
+    prev = -1
+    curr = start
+    visited: Set[int] = set()
+    while True:
+        order.append(curr)
+        visited.add(curr)
+        # Next neighbors within this component, excluding the edge we came from.
+        nxts = [v for v in adj[curr] if v != prev and v in comp_set]
+        if not nxts:
+            break
+        if len(nxts) > 1:
+            # Branch/crossing; we cannot linearize reliably.
+            break
+        nxt = nxts[0]
+        if nxt in visited:
+            # Cycle (shouldn't happen after break_all_loops), stop.
+            break
+        prev, curr = curr, nxt
+    return order
+
+
+def enforce_monopoly_in_trajectories(
+    poly: vtk.vtkPolyData,
+    t_array_name: str,
+    max_iter: int = 10,
+    eps: float = 1e-12,
+) -> vtk.vtkPolyData:
+    """
+    Enforce that each trajectory (connected component over line edges) is monotonic
+    along its chosen scalar:
+      - use point-data array `t_array_name` if it exists and is finite at a point
+      - otherwise fall back to the point's `z` coordinate
+
+    If a component's scalar reverses direction along the path, we duplicate the
+    vertex right before the reversal so the component splits into monotonic sub-components.
+    """
+    out = vtk.vtkPolyData()
+    out.DeepCopy(poly)
+
+    for _ in range(max_iter):
+        # Important: after we split (duplicate points), the polydata changes.
+        # Re-fetch point arrays from the current `out` every iteration.
+        pts = out.GetPoints()
+        pd = out.GetPointData()
+        t_arr = pd.GetArray(t_array_name)
+
+        def scalar(pid: int, cache: Dict[int, float]) -> float:
+            if pid in cache:
+                return cache[pid]
+            if t_arr is not None and 0 <= pid < t_arr.GetNumberOfTuples():
+                v = float(t_arr.GetTuple1(pid))
+                # NaN check: NaN is the only float != itself.
+                if v == v:
+                    cache[pid] = v
+                    return v
+            _, _, z = pts.GetPoint(pid)
+            v = float(z)
+            cache[pid] = v
+            return v
+
+        adj, deg = _build_point_adjacency_from_line_cells(out)
+        comps = _compute_components_from_point_adjacency(adj, deg)
+
+        cache: Dict[int, float] = {}
+        cut_points: Set[int] = set()
+
+        for comp in comps:
+            if len(comp) < 2:
+                continue
+            comp_set = set(comp)
+
+            # If something is still branching after earlier splitting, split those vertices too.
+            hi = [pid for pid in comp if deg[pid] > 2]
+            if hi:
+                cut_points.update(hi)
+                continue
+
+            endpoints = [pid for pid in comp if deg[pid] == 1]
+            if not endpoints:
+                # Cycle or degenerate component; pick one vertex to break it into a path.
+                cut_points.add(comp[0])
+                continue
+
+            # Prefer starting at an endpoint (degree==1).
+            start = endpoints[0]
+            order = _traverse_simple_path_order(start, comp_set, adj)
+            if len(order) < 2:
+                continue
+
+            direction: Optional[int] = None  # +1 increasing, -1 decreasing
+            for i in range(1, len(order)):
+                a = order[i - 1]
+                b = order[i]
+                d = scalar(b, cache) - scalar(a, cache)
+                if abs(d) <= eps:
+                    continue
+                sgn = 1 if d > 0 else -1
+                if direction is None:
+                    direction = sgn
+                    continue
+                if sgn != direction:
+                    # The reversal occurs *between* (a->b). Cutting at `a` disconnects
+                    # the two monotonic segments after duplication.
+                    cut_points.add(a)
+                    direction = sgn
+
+        if not cut_points:
+            break
+
+        out = split_high_degree_points(out, degree_threshold=2, force_split_points=cut_points)
+
+    return out
+
+
 def compute_connectivity_regions(poly: vtk.vtkPolyData, region_array_name: str) -> vtk.vtkPolyData:
     """
-    Compute connected components (regions) on the polydata. Produces a RegionId
-    array (int) in both CellData and PointData.
+    Compute connected components directly on the current polydata topology and
+    append RegionId arrays (int) to both PointData and CellData.
+
+    This keeps the geometry/cells and all existing point/cell arrays unchanged.
     """
-    conn = vtk.vtkConnectivityFilter()
-    conn.SetInputData(poly)
-    conn.SetExtractionModeToAllRegions()
-    conn.ColorRegionsOn()
-    conn.Update()
-
     out = vtk.vtkPolyData()
-    out.ShallowCopy(conn.GetOutput())
+    out.DeepCopy(poly)
 
-    # vtkConnectivityFilter uses "RegionId" as the default name.
-    # If user asked for a different name, rename in both point/cell data.
-    if region_array_name != "RegionId":
-        for data_obj in (out.GetPointData(), out.GetCellData()):
-            arr = data_obj.GetArray("RegionId")
-            if arr is not None:
-                arr.SetName(region_array_name)
+    npts = out.GetNumberOfPoints()
+    ncells = out.GetNumberOfCells()
+
+    # Disjoint-set union (union-find) on points.
+    parent = list(range(npts))
+    rank = [0] * npts
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra = find(a)
+        rb = find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            parent[ra] = rb
+        elif rank[ra] > rank[rb]:
+            parent[rb] = ra
+        else:
+            parent[rb] = ra
+            rank[ra] += 1
+
+    idlist = vtk.vtkIdList()
+    for cid in range(ncells):
+        out.GetCellPoints(cid, idlist)
+        m = idlist.GetNumberOfIds()
+        if m <= 1:
+            continue
+        base = int(idlist.GetId(0))
+        for j in range(1, m):
+            union(base, int(idlist.GetId(j)))
+
+    # Build compact region ids (0..K-1) in deterministic order.
+    root_to_region: Dict[int, int] = {}
+    next_region = 0
+    point_region = [0] * npts
+    for pid in range(npts):
+        root = find(pid)
+        rid = root_to_region.get(root)
+        if rid is None:
+            rid = next_region
+            root_to_region[root] = rid
+            next_region += 1
+        point_region[pid] = rid
+
+    pd = out.GetPointData()
+    cd = out.GetCellData()
+    if pd.GetArray(region_array_name) is not None:
+        pd.RemoveArray(region_array_name)
+    if cd.GetArray(region_array_name) is not None:
+        cd.RemoveArray(region_array_name)
+
+    reg_p = vtk.vtkIntArray()
+    reg_p.SetName(region_array_name)
+    reg_p.SetNumberOfComponents(1)
+    reg_p.SetNumberOfTuples(npts)
+    for pid, rid in enumerate(point_region):
+        reg_p.SetValue(pid, int(rid))
+
+    reg_c = vtk.vtkIntArray()
+    reg_c.SetName(region_array_name)
+    reg_c.SetNumberOfComponents(1)
+    reg_c.SetNumberOfTuples(ncells)
+    for cid in range(ncells):
+        out.GetCellPoints(cid, idlist)
+        if idlist.GetNumberOfIds() > 0:
+            pid0 = int(idlist.GetId(0))
+            reg_c.SetValue(cid, int(point_region[pid0]))
+        else:
+            reg_c.SetValue(cid, -1)
+
+    pd.AddArray(reg_p)
+    cd.AddArray(reg_c)
     return out
 
 
@@ -851,8 +1085,11 @@ def main() -> None:
     # 2) Break all graph loops into two open trajectories (min/max t or z anchors).
     no_loops = break_all_loops(split, rng, args.t_array_name)
 
-    # 3) Connected components on the split geometry.
-    labeled = compute_connectivity_regions(no_loops, region_array_name=args.region_array_name)
+    # 3) Enforce monotonic "t monopoly" per trajectory (split vertices that violate it).
+    monopoly = enforce_monopoly_in_trajectories(no_loops, t_array_name=args.t_array_name)
+
+    # 4) Connected components on the final geometry.
+    labeled = compute_connectivity_regions(monopoly, region_array_name=args.region_array_name)
 
     # 4) ColorId per component (both points and cells); all randomness uses rng / random.seed above.
     add_random_color_ids(
