@@ -23,6 +23,10 @@ namespace closed_form_function
         {
             return 4;
         }
+        if(function_name=="ellipsoid")
+        {
+            return 5;
+        }
         std::cout<<"error: invalid function name"<<std::endl;
         exit(0);
         return -1;
@@ -48,6 +52,9 @@ namespace closed_form_function
             result.resize(4);
             result << -2.0,-2.0,-2.0,0.0;
             break;
+        case 5:
+            result << -2.0,-2.0,-2.0;
+            break;
         default:
             break;
         }
@@ -71,6 +78,9 @@ namespace closed_form_function
         case 4:
             result.resize(4);
             result << 2.0,2.0,2.0,4.0;
+            break;
+        case 5:
+            result << 2.0,2.0,2.0;
             break;
         default:
             break;
@@ -96,6 +106,9 @@ namespace closed_form_function
             result.resize(4);
             result << 10,10,10,10;
             break;
+        case 5:
+            result << 10,10,10;
+            break;
         default:
             break;
         }
@@ -120,6 +133,9 @@ namespace closed_form_function
         case 4:
             result.resize(4);
             result << 4,4,4,4;
+            break;
+        case 5:
+            result << 5,5,5;
             break;
         default:
             break;
@@ -230,6 +246,63 @@ namespace closed_form_function
 
         std::cout<<"Error: the order of derivative is larger than 3, which is not supported!"<<std::endl;
         exit(0);
+    }
+
+    template<typename T>
+    void ellipsoid(const VectorX<T>&   point,VectorX<T>&         result,const VectorXi&     derivs = VectorXi())
+    {
+        result.resize(1);
+        T a = 1.0;
+        T b = 2.0;
+        T c = 3.0;
+        if(derivs.size()==0)
+        {
+            result(0)=pow(point(0)/a,2)+pow(point(1)/b,2)+pow(point(2)/c,2);
+            return;
+        }
+        if(derivs.sum()==1)
+        {
+            if(derivs(0)==1)
+            {
+                result(0)=2.0*point(0)/a/a;
+                return;
+            }
+            if(derivs(1)==1)
+            {
+                result(0)=2.0*point(1)/b/b;
+                return;
+            }
+            if(derivs(2)==1)
+            {
+                result(0)=2.0*point(2)/c/c;
+                return;
+            }
+            std::cout<<"Error: the order of derivative is larger than 1, which is not supported!"<<std::endl;
+            exit(0);
+        }
+        if(derivs.sum()==2)
+        {
+            if(derivs(0)==2)
+            {
+                result(0)=2.0/a/a;
+                return;
+            }
+            if(derivs(1)==2)
+            {
+                result(0)=2.0/b/b;
+                return;
+            }
+            if(derivs(2)==2)
+            {
+                result(0)=2.0/c/c;
+                return;
+            }
+            result(0)=0.0;
+            return;
+            std::cout<<"Error: the order of derivative is larger than 2, which is not supported!"<<std::endl;
+            exit(0);
+        }
+        return;
     }
 
 //$$f(x,y,t)=\frac{x^4}{4}+\frac{1-t}{2}\,x^2+\frac{y^4}{4}+\frac{\cos t}{2}y^2$$

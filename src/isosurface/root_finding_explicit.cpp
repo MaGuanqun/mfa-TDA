@@ -23,6 +23,8 @@
 
 #include "save_control_data.hpp"
 #include "find_initial_root.h"
+#include "tracking_utility.h"
+#include "closed_form_function.h"
 // #include "find_isocontour.h"
 // #include"span_filter.h"
 // #include "find_root.h"
@@ -65,8 +67,6 @@ int main(int argc, char** argv)
     double shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
     // string input_sample_point_number = "100-100";
 
-    string cp_tracing_file = "cp_tracing.dat";
-
 
 
     std::vector<double> same_root_epsilon; // same_root_epsilon
@@ -85,31 +85,29 @@ int main(int argc, char** argv)
     string input_shrink_ratio = "0-1-0-1-0-1";
     real_t dxy_dt_gradient_epsilon = 1e-10;
 
-    string singular_point_file = "";
+    string root_file = "root.dat";
 
     int max_itr=50;
 
-    real_t point_itr_threshold = 0.5;
 
     double  spatial_step_size = 1.0;
 
-    string edge_type_file = "";
+    double root_finding_epsilon = 1e-8;
+
+    double function_value = 0.0;
 
     ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
     ops >> opts::Option('h', "help",    help,    " show help");
-    ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
-    ops >> opts::Option('z', "time_step",    time_step,       " time step size");
     ops >> opts::Option('g', "spatial_step_size",    spatial_step_size,       " spatial step size");
 
-    ops >> opts::Option('x', "root_finding_grad_epsilon",    root_finding_grad_epsilon,       "first root finding epsilon");
+    ops >> opts::Option('x', "root_finding_epsilon",    root_finding_epsilon,       "root finding epsilon");
 
     ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
     ops >> opts::Option('m', "max_itr", max_itr, " max iteration");
-    ops >> opts::Option('s', "singular_point_file", singular_point_file, " singular point file name");
+    ops >> opts::Option('s', "root_file", root_file, " save obtained root");
+    ops >> opts::Option('v', "function_value", function_value, " function value");
 
-    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
 
-    ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -140,10 +138,27 @@ int main(int argc, char** argv)
 
     VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
 
-    double d_max_square_= Span_size.head(Span_size.size()-1).squaredNorm();
 
-    std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
-    step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
+    double step_size = Span_size.minCoeff()/spatial_step_size;
+    
+    std::cout<<"span_size " <<Span_size.transpose()<< "step size "<<step_size<<std::endl;
+
+    VectorXi num_of_initial_point = closed_form_function::point_num_in_block(function_type);
+    for (int i = 0; i < num_of_initial_point.size(); ++i)
+        num_of_initial_point[i] *= span_num[i];
+   
+    Find_initial_root<double> find_initial_root(core_mins, core_maxs, step_size, root_finding_epsilon, max_itr, function_type, nullptr, nullptr, num_of_initial_point);
 
 
+    std::vector<VectorX<double>> root;
+    
+    find_initial_root.root_finding(root, function_value);
+
+    std::cout<<"root num "<<root.size()<<std::endl;
+
+    find_initial_root.test_function_value(root);
+    
+     tracking_utility::save_root(root, root_file, static_cast<int>(spatial_step_size));
+
+    return 0;
 }

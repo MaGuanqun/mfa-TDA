@@ -16,14 +16,13 @@
 #include "query_function.h"
 #include "INRModel.h"
 
-#include"find_unique_root.h"
+#include "../critical_point/find_unique_root.h"
 
 template<typename T>
-class find_initial_root
+class Find_initial_root
 {   
     
     private:
-
     const Block<T>* b;
     const int function_type;
     const VectorX<T> domain_min;
@@ -33,20 +32,16 @@ class find_initial_root
     T root_finding_epsilon;
     int max_itr;
 
-    std::vector<T> same_root_epsilon;
+    T same_root_epsilon;
+    VectorXi num_of_initial_point;
 
     public:
     
-    Tracking_degenerate_case(const VectorX<T>& core_mins_, const VectorX<T>& core_maxs_, T degenerate_finding_epsilon_, T gradient_epsilon_,std::vector<T> same_root_epsilon_, int max_itr_=50,  const int function_type_=0, const Block<T>* b_=nullptr, INRModel<T>* inr_model_=nullptr)
-    : domain_min(core_mins_), domain_max(core_maxs_), b(b_), function_type(function_type_), degenerate_finding_epsilon(degenerate_finding_epsilon_), gradient_epsilon(gradient_epsilon_), max_itr(max_itr_), same_root_epsilon(same_root_epsilon_), inr_model(inr_model_)
-    {
-        std::cout<<"degenerate case tracking initialized "<<std::endl;
-        std::cout<<"domain min "<<domain_min.transpose()<<std::endl;
-        std::cout<<"domain max "<<domain_max.transpose()<<std::endl;
-    }
-    ~Tracking_degenerate_case(){}
+    Find_initial_root(const VectorX<T>& core_mins_, const VectorX<T>& core_maxs_,T same_root_epsilon_, T root_finding_epsilon_, int max_itr_=50,  const int function_type_=0, const Block<T>* b_=nullptr, INRModel<T>* inr_model_=nullptr, const VectorXi& num_of_initial_point_=VectorXi())
+    : domain_min(core_mins_), domain_max(core_maxs_), b(b_), function_type(function_type_), root_finding_epsilon(root_finding_epsilon_), max_itr(max_itr_), same_root_epsilon(same_root_epsilon_), inr_model(inr_model_), num_of_initial_point(num_of_initial_point_) {}
+    ~Find_initial_root(){}
 
-    template<typename T>
+
     void compute_gradient(VectorX<T>& p, VectorX<T>& grad)
     {
         grad.resize(p.size());
@@ -56,18 +51,14 @@ class find_initial_root
         {
             deriv[i]=1;
             query_function::query_function(p, f_vector, function_type, b, deriv, inr_model);
-            // mfa_extend::recover_mfa_selected(mfa,mfa_data,span_index, p,deriv,weights,f_vector,domain_min,domain_range);
             grad[i] = f_vector[0];///local_domain_range[i];
             deriv[i]=0;
         }
     }
 
-    template<typename T>
     //point_func_value: the value of the point we want to extract
     bool gradient_descent(VectorX<T>& result, VectorX<T>& p, int max_itr,
-                //std::vector<std::vector<T>>& span_range,
-                //T d_max_square, //VectorX<T>& center,
-                T root_finding_epsilon, VectorX<T>& function_value, T point_func_value)
+    T root_finding_epsilon, VectorX<T>& function_value, T point_func_value)
     {
 
         query_function::query_function(p, function_value, function_type, b, VectorXi(), inr_model);
@@ -114,46 +105,86 @@ class find_initial_root
 
     }
 
-    template<typename T>
-    bool root_finding(std::vector<VectorX<T>>& root,
-        T root_finding_grad_epsilon, std::vector<T>& function_value, T point_func_value, T same_root_epsilon) { 
-
-        if(b==nullptr)
+    void test_function_value(std::vector<VectorX<T>>& root)
+    {
+        T min_value = std::numeric_limits<T>::max();
+        T max_value = std::numeric_limits<T>::min();
+        T mean_value = 0.0;
+        for(int i=0;i<root.size();i++)
         {
+            VectorX<T> func_value;
+            query_function::query_function(root[i], func_value, function_type, b, VectorXi(), inr_model);
+            if(func_value[0]<min_value)
+            {
+                min_value = func_value[0];
+            }
+            if(func_value[0]>max_value)
+            {
+                max_value = func_value[0];
+            }
+            mean_value += func_value[0];
+        }
+        mean_value /= root.size();
+        std::cout<<"min_value "<<min_value<<std::endl;
+        std::cout<<"max_value "<<max_value<<std::endl;
+        std::cout<<"mean_value "<<mean_value<<std::endl;
+    }
+
+
+    bool root_finding(std::vector<VectorX<T>>& root, T point_func_value, std::vector<VectorXi>* span_index=nullptr) { 
+
+        if(b!=nullptr)
+        {
+            std::vector<VectorX<T>> root_all;
+            for(int i=0;i<span_index->size();i++)
+            {
+                VectorXi span_index_local = (*span_index)[i]+b->mfa->var(0).p;
+
+                std::vector<VectorX<T>> root_local; 
+
+                root_finding_mfa(span_index_local, root_local,point_func_value);
+
+                root_all.insert(root_all.end(), root_local.begin(), root_local.end());
+
+
+            }
+
+            spatial_hashing::find_all_unique_root(root_all, root,same_root_epsilon);
             
         }
         else
         {
+            std::cout<<"explicit root_finding_for_entire_domain"<<std::endl;
             //compute initial points all at once.
-            root_finding_for_entire_domain(root, num_of_initial_point, root_finding_epsilon, function_value, point_func_value, same_root_epsilon);
+            return root_finding_for_entire_domain(root, num_of_initial_point, point_func_value);
+
+            
 
         }
+
+        return false;
 
 
     }
 
 
        // Function to find the roots of the polynomial using Newton's method
-       template<typename T>
-       bool root_finding_for_entire_domain(std::vector<VectorX<T>>& root, VectorXi& num_of_initial_point,
-           T root_finding_epsilon, std::vector<T>& function_value, T point_func_value, T same_root_epsilon) { 
+       bool root_finding_for_entire_domain(std::vector<VectorX<T>>& root, VectorXi& num_of_initial_point, T point_func_value) 
+       { 
    
-           function_value.clear();
            root.clear();
            
            VectorXi one = VectorXi::Ones(domain_min.size());
            // int deg = (mfa_data->p-one).prod();
-   
-           int maxIter=30;
    
    
            std::vector<VectorX<T>> root_in_original_domain;
            
            // std::cout<<"max_iteration--"<<maxIter<<std::endl;
    
-           std::vector<std::vector<T>> span_range(span_index.size());
-           
            std::vector<std::vector<T>> domain_range(num_of_initial_point.size());
+
+           std::cout<<"num_of_initial_point "<<num_of_initial_point.transpose()<<std::endl;
 
            for(int i=0;i<num_of_initial_point.size();i++)
            {
@@ -165,66 +196,72 @@ class find_initial_root
    
            utility::compute_initial_points2(initial_point,num_of_initial_point,domain_range);
 
+
    
            VectorXi num_initial_point_every_domain(initial_point.size());
            for(int i=0;i<num_initial_point_every_domain.size();i++)
            {
                num_initial_point_every_domain[i]=initial_point[i].size();
            }
-   
+
+           std::cout<<"initial_point size "<<num_initial_point_every_domain.transpose()<<std::endl;
+
+            std::cout<<"same_root_epsilon "<<same_root_epsilon<<std::endl;
+
+
            int num_initial_point = num_initial_point_every_domain.prod();
    
-           VectorX<T> next_root; 
    
    
 
            VectorXi number_in_every_domain;
-           VectorX<T> current_initial_point(initial_point.size());
            utility::obtain_number_in_every_domain(num_initial_point_every_domain,number_in_every_domain);
    
 
 
 
         //    for(int i=0;i<num_initial_point;++i)
-           tbb::enumerable_thread_specific<std::vector<VectorX<T>>> local_root;
-           tbb::affinity_partitioner ap;
+           struct RootSlot {
+               bool found = false;
+               VectorX<T> position;
+           };
+           std::vector<RootSlot> root_per_initial_point(static_cast<size_t>(num_initial_point));
+
            tbb::parallel_for(tbb::blocked_range<size_t>(0,num_initial_point), //
            [&](const tbb::blocked_range<size_t>& range)
            {
+                VectorX<T> current_initial_point(initial_point.size());
+                VectorX<T> next_root;
+                VectorX<T> func_value;
+                VectorXi domain_index;
+                for(size_t i=range.begin();i!=range.end();++i)
+                {
+                    utility::obtainDomainIndex(i,domain_index,number_in_every_domain);
+                    for(int j=0;j<current_initial_point.size();j++)
+                    {
+                        current_initial_point[j]=initial_point[j][domain_index[j]];
+                    }
+                    if(gradient_descent(next_root, current_initial_point,max_itr,root_finding_epsilon,func_value,point_func_value))
+                    {
+                        root_per_initial_point[i].found = true;
+                        root_per_initial_point[i].position = next_root;
+                    }
+                }
+           });
 
-            auto& root_thread = local_root.local();
-            VectorX<T> func_value;
-            VectorXi domain_index;
-            std::vector<VectorX<T>> temp_root;
-            for(size_t i=range.begin();i!=range.end();++i)
-            {
-               utility::obtainDomainIndex(i,domain_index,number_in_every_domain);
-               for(int j=0;j<current_initial_point.size();j++)
+           std::vector<VectorX<T>> combined_root;
+           combined_root.reserve(static_cast<size_t>(num_initial_point));
+           for(size_t i=0;i<root_per_initial_point.size();++i)
+           {
+               if(root_per_initial_point[i].found)
                {
-                   current_initial_point[j]=initial_point[j][domain_index[j]];
-               }        
+                   combined_root.emplace_back(std::move(root_per_initial_point[i].position));
+               }
+           }
+           root_per_initial_point.clear();
+           root_per_initial_point.shrink_to_fit();
 
-   
-               if(gradient_descent(next_root, current_initial_point,maxIter,root_finding_epsilon,func_value,point_func_value))
-               {
-
-                    temp_root.emplace_back(next_root);
-                   // std::cout<<"is a new root "<<std::endl;                
-               }    
-            }         
-                      
-            
-            spatial_hashing::find_all_unique_root(temp_root, root_thread,same_root_epsilon);
-            temp_root.clear();
-            temp_root.shrink_to_fit();
-
-           },ap               
-        );
-
-        std::vector<VectorX<T>> combined_root;
-        for (const auto& thread_vec : local_root) {
-            combined_root.insert(combined_root.end(), thread_vec.begin(), thread_vec.end());
-        }
+      
         spatial_hashing::find_all_unique_root(combined_root, root,same_root_epsilon);
         combined_root.clear();
         combined_root.shrink_to_fit();
@@ -236,17 +273,12 @@ class find_initial_root
 
 
     // Function to find the roots of the polynomial using Newton's method
-    template<typename T>
-    bool root_finding(VectorXi& span_index, std::vector<VectorX<T>>& root,
-        T root_finding_grad_epsilon, std::vector<T>& function_value, T point_func_value, T same_root_epsilon) { 
+    bool root_finding_mfa(VectorXi& span_index, std::vector<VectorX<T>>& root,T point_func_value) { 
 
-        function_value.clear();
         root.clear();
         
         VectorXi one = VectorXi::Ones(domain_min.size());
-        // int deg = (mfa_data->p-one).prod();
-
-        int maxIter=30;
+        // int deg = (mfa_data->p-one).prod()
 
 
         std::vector<VectorX<T>> root_in_original_domain;
@@ -297,13 +329,8 @@ class find_initial_root
             {
                 current_initial_point[j]=initial_point[j][domain_index[j]];
             }        
-            // current_initial_point=ini_p;
-
-
-            // std::cout<<"intial point "<< current_initial_point.transpose()<<std::endl;
-            // std::cout<< "initial_point "<<i<<" "<<  current_initial_point.transpose()<<std::endl;
-
-            if(gradient_descent(b, next_root, current_initial_point,maxIter,span_range,root_finding_grad_epsilon,func_value,point_func_value))
+                
+            if(gradient_descent(next_root, current_initial_point,max_itr,root_finding_epsilon,func_value,point_func_value))
             {
                 bool duplicate = false;
                 for(auto i=root.begin();i!=root.end();++i)
@@ -327,27 +354,4 @@ class find_initial_root
 
     }
 
-
-
-    template<typename T>
-    bool root_finding(std::vector<std::vector<VectorXi>>& span_index, 
-    std::vector<VectorX<T>>& root,//std::vector<int>& multi_of_root,
-        //MatrixX<T>&             ctrl_pts,   //control points of first derivative
-        int current_index,
-        T root_finding_epsilon, std::vector<T>& function_value, T point_func_value,T same_root_epsilon) //2^n+1 initial points) 
-    {
-
-        for(auto i=0;i<block->mfa->nvars();++i)
-        {
-            VectorXi span_index_local = span_index[i][current_index]+block->mfa->var(0).p;
-
-            if(root_finding(block,span_index_local, root,
-            root_finding_epsilon,function_value,point_func_value,same_root_epsilon))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-}
+};

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cmath>
 #include <string>
+#include <sstream>
 
 #include <diy/master.hpp>
 #include <diy/reduce-operations.hpp>
@@ -12,105 +13,58 @@
 #include <diy/io/block.hpp>
 
 #include <chrono>
-
-
 #include <tbb/tbb.h>
-#include <atomic>
 
 #include "opts.h"
-
 #include "block.hpp"
+#include "closed_form_function.h"
+#include "marching_triangles.h"
+#include "../critical_point_tracking/degenerate_case_tracing.h"
 
-#include "critical_point/span_filter.hpp"
-#include "save_control_data.hpp"
-
-// #include "find_isocontour.h"
-// #include"span_filter.h"
-// #include "find_root.h"
-// #include "../critical_point/find_all_root.h"
-// #include "ridge_valley_graph.h"
-// #include "find_root_h.h"
-
-// #include "connect_rv_graph.h"
-
-// #include "transfer_data.h"
 #include <fstream>
-#include <iostream>
 #include <Eigen/Dense>
-
-
 
 using namespace std;
 
-
-// namespace {
-//     tbb::global_control globalControl(tbb::global_control::max_allowed_parallelism, 1);
-// }
-
 int main(int argc, char** argv)
 {
+    diy::mpi::environment env(argc, argv);
+    diy::mpi::communicator world;
 
-    diy::mpi::environment  env(argc, argv);     // equivalent of MPI_Init(argc, argv)/MPI_Finalize()
-    diy::mpi::communicator world;               // equivalent of MPI_COMM_WORLD
-
-    string input_function_name = "quartic_potential";               // diy input file
-
-
-    // default command line arguments
-    //int  deriv     = 1;                         // which derivative to take (1st, 2nd, ...)
-    //int  partial   = -1;                        // limit derivatives to one partial in this dimension
-    bool help;                                  // show help
-    // get command line arguments
+    string input_function_name = "ellipsoid";
+    bool help = false;
     opts::Options ops;
 
-    double shrink_factor = 0.5; // shrink factor for RKF45 as the minimum shrink factor
-    // string input_sample_point_number = "100-100";
-
-    string cp_tracing_file = "cp_tracing.dat";
-
-
-
-    std::vector<double> same_root_epsilon; // same_root_epsilon
-    double time_step = 1e-3;
-    
-    double grad_threshold = 1e-5;
-
-    int correction_max_itr = 30;
-
-
-
-
-    real_t initial_point_finding_hessian_threshold = 1e-20;
-    real_t root_finding_grad_epsilon = 1e-8;
-
-    string input_shrink_ratio = "0-1-0-1-0-1";
-    real_t dxy_dt_gradient_epsilon = 1e-10;
-
+    string root_filename = "root.dat";
     string singular_point_file = "";
+    string output_mesh_prefix = "isosurface_sheet";
+    string input_shrink_ratio = "0-1-0-1-0-1";
 
-    int max_itr=50;
+    double spatial_step_size = 1.0;
+    double function_value = 0.0;
+    double root_finding_epsilon = 1e-8;
+    double same_vertex_epsilon = -1.0;
+    double hessian_rank_threshold = 1e-10;
+    double stop_curve_distance = 0.05;
+    double d_min_ratio = 0.1;
+    int max_projection_itr = 50;
+    int max_sheets = 100;
+    bool enable_crack_closing = true;
 
-    real_t point_itr_threshold = 0.5;
-
-    double  spatial_step_size = 1.0;
-
-    string edge_type_file = "";
-
-    ops >> opts::Option('f', "input_function_name",  input_function_name,  " diy input file name");
-    ops >> opts::Option('h', "help",    help,    " show help");
-    ops >> opts::Option('b', "cp_tracing_file", cp_tracing_file, " file name of cp_tracing");
-    ops >> opts::Option('z', "time_step",    time_step,       " time step size");
-    ops >> opts::Option('g', "spatial_step_size",    spatial_step_size,       " spatial step size");
-
-    ops >> opts::Option('x', "root_finding_grad_epsilon",    root_finding_grad_epsilon,       "first root finding epsilon");
-
-    ops >> opts::Option('k', "shrink range",    input_shrink_ratio,       " shrink the range of the pointset, by \"x1-x2-y1-y2-...\"");
-    ops >> opts::Option('m', "max_itr", max_itr, " max iteration");
-    ops >> opts::Option('s', "singular_point_file", singular_point_file, " singular point file name");
-
-    ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
-
-    ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
+    ops >> opts::Option('f', "input_function_name", input_function_name, "closed-form function name");
+    ops >> opts::Option('h', "help", help, "show help");
+    ops >> opts::Option('g', "spatial_step_size", spatial_step_size, "spatial step size (used in root filename)");
+    ops >> opts::Option('s', "root_file", root_filename, "root file from root_finding");
+    ops >> opts::Option('d', "singular_point_file", singular_point_file, "degenerate curve points (optional)");
+    ops >> opts::Option('o', "output_mesh_prefix", output_mesh_prefix, "output OBJ prefix per sheet");
+    ops >> opts::Option('v', "function_value", function_value, "isovalue");
+    ops >> opts::Option('x', "root_finding_epsilon", root_finding_epsilon, "surface projection tolerance");
+    ops >> opts::Option('H', "hessian_rank_threshold", hessian_rank_threshold, "min |eigenvalue| for full-rank seed");
+    ops >> opts::Option('c', "stop_curve_distance", stop_curve_distance, "stop growth near degenerate points");
+    ops >> opts::Option('n', "d_min_ratio", d_min_ratio, "minimum marching step ratio of normal step size");
+    ops >> opts::Option('m', "max_projection_itr", max_projection_itr, "max surface projection iterations");
+    ops >> opts::Option('k', "shrink range", input_shrink_ratio, "unused, kept for CLI compatibility");
+    ops >> opts::Option('r', "enable_crack_closing", enable_crack_closing, "run Akkouche crack-fixing after growth");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -119,93 +73,60 @@ int main(int argc, char** argv)
         return 1;
     }
 
-
-    std::istringstream iss(input_shrink_ratio);
-    std::vector<double> shrink_ratio;
-    double number;
-    std::string token;
-    while (std::getline(iss, token, '-')) {
-        std::istringstream tokenStream(token);
-        if (tokenStream >> number) {
-            shrink_ratio.push_back(number);
-        }
-    }  
-
     int function_type = closed_form_function::initial_func_type(input_function_name);
-
-    Eigen::VectorXd local_domain_range=closed_form_function::domain_max(function_type)-closed_form_function::domain_min(function_type);
     VectorXd core_maxs = closed_form_function::domain_max(function_type);
     VectorXd core_mins = closed_form_function::domain_min(function_type);
-
     VectorXi span_num = closed_form_function::block_num(function_type);
-
-    VectorXd Span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
-
-    double d_max_square_= Span_size.head(Span_size.size()-1).squaredNorm();
-
-    std::vector<double> step_size(Span_size.size(),Span_size.head(Span_size.size()-1).minCoeff()/spatial_step_size);
-    step_size.back() = Span_size[Span_size.size()-1]/time_step; // the last dimension is time
+    VectorXd local_domain_range = core_maxs - core_mins;
+    VectorXd span_size = local_domain_range.cwiseQuotient(span_num.cast<double>());
+    double step_size = span_size.minCoeff() / spatial_step_size;
 
 
-    std::vector<VectorX<double>> degenerate_points;
-    if(singular_point_file!="")
-        Degenerate_case_tracing<double>::read_degenerate_point(singular_point_file,degenerate_points);
 
 
-    std::vector<CP_Trace<double>> traces;
-   
-    same_root_epsilon = step_size; // same_root_epsilon
+    std::vector<VectorX<double>> seed_roots;
 
-    std::cout<<Span_size.transpose()<<std::endl;
-    std::cout<<"spatial step size "<<step_size[0]<<" "<<"time step " <<step_size.back()<<std::endl;
+    Degenerate_case_tracing<double>::read_degenerate_point(root_filename,seed_roots);
 
+    std::cout << "loaded " << seed_roots.size() << " roots from " << root_filename << std::endl;
 
-     auto cpt_extract_start_time = std::chrono::high_resolution_clock::now();
-
-        int spanned_block_num =span_num.prod();
-
-        VectorXi number_in_every_domain; //span
-        utility::obtain_number_in_every_domain(span_num,number_in_every_domain);
-
-
-        std::vector<VectorX<real_t>> root; //the inner vector store the root in a span
-
-        std::vector<VectorXi> selected_span;
-        span_filter::compute_boundary_span(span_num,selected_span,false);
-        std::cout<<"valid span num "<<selected_span.size()<<std::endl;
-        // std::vector<VectorXi> selected_span;
-
-       
-
-
-        VectorXi point_num_in_block = closed_form_function::point_num_in_block(function_type); //number of point_num_in_block
-
-
-    int trace_size=0;
-
-    trace_size=0;
-    for(auto& trace:traces)
+    if (seed_roots.empty())
     {
-        if((!trace.duplicated))
-        {            
-            trace_size++;
-        }
+        std::cerr << "No roots found. Run root_finding_explicit first." << std::endl;
+        return 1;
     }
-    std::cout<<"traces after deduplication "<<trace_size<<std::endl;
 
+    double d_min = step_size * d_min_ratio;
 
-    auto cpt_extract_end_time = std::chrono::high_resolution_clock::now();
+    if (same_vertex_epsilon < 0)
+        same_vertex_epsilon = d_min * 0.25;
 
+    marching_triangles::MarchingTriangles<double> mesher(
+        core_mins, core_maxs, function_type, function_value,
+        root_finding_epsilon, max_projection_itr, same_vertex_epsilon,
+        hessian_rank_threshold, stop_curve_distance, d_min,step_size,
+        1.5, nullptr, nullptr, enable_crack_closing);
 
-    std::vector<int> critical_point_types;
+    // mesher.set_degenerate_points(degenerate_points);
 
-    if(edge_type_file!="")
-        critical_point_utility::compute_critical_point_type(traces, degenerate_points, critical_point_types,function_type);
-    string tracing_file=cp_tracing_file+".obj";
-    CP_Trace_fuc::convert_to_obj(tracing_file,traces,degenerate_points, core_mins, local_domain_range, &critical_point_types, edge_type_file);
+    std::vector<std::vector<VectorX<double>>> sheet_vertices;
+    std::vector<std::vector<marching_triangles::Triangle<double>>> sheet_triangles;
 
-    critical_point_utility::accuracy(traces, degenerate_points, function_type);
+    if (!mesher.extract_all_sheets(seed_roots, sheet_vertices, sheet_triangles))
+    {
+        std::cerr << "Marching triangles produced no sheets." << std::endl;
+        return 1;
+    }
 
-    std::cout<<"time consuming "<<std::chrono::duration_cast<std::chrono::microseconds>(cpt_extract_end_time - cpt_extract_start_time).count()/1000<<std::endl;
+    int written = 0;
+    for (size_t s = 0; s < sheet_vertices.size() && written < max_sheets; ++s)
+    {
+        const std::string out_name = output_mesh_prefix + std::to_string(s) + ".obj";
+        marching_triangles::MarchingTriangles<double>::save_mesh_obj(
+            out_name, sheet_vertices[s], sheet_triangles[s]);
+        std::cout << "wrote " << out_name << std::endl;
+        ++written;
+    }
 
+    return 0;
 }
