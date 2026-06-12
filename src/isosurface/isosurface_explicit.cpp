@@ -49,7 +49,7 @@ int main(int argc, char** argv)
     double d_min_ratio = 0.1;
     int max_projection_itr = 50;
     int max_sheets = 100;
-    bool enable_crack_closing = true;
+    bool enable_crack_closing = false;
 
     ops >> opts::Option('f', "input_function_name", input_function_name, "closed-form function name");
     ops >> opts::Option('h', "help", help, "show help");
@@ -99,7 +99,7 @@ int main(int argc, char** argv)
     double d_min = step_size * d_min_ratio;
 
     if (same_vertex_epsilon < 0)
-        same_vertex_epsilon = d_min * 0.25;
+        same_vertex_epsilon = d_min;
 
     marching_triangles::MarchingTriangles<double> mesher(
         core_mins, core_maxs, function_type, function_value,
@@ -110,7 +110,7 @@ int main(int argc, char** argv)
     // mesher.set_degenerate_points(degenerate_points);
 
     std::vector<std::vector<VectorX<double>>> sheet_vertices;
-    std::vector<std::vector<marching_triangles::Triangle<double>>> sheet_triangles;
+    std::vector<std::vector<marching_triangles::Triangle>> sheet_triangles;
 
     if (!mesher.extract_all_sheets(seed_roots, sheet_vertices, sheet_triangles))
     {

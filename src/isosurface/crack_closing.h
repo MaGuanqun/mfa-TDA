@@ -5,20 +5,15 @@
 #include <limits>
 #include <algorithm>
 #include <iostream>
+#include <unordered_set>
+#include <cstdint>
 
 #include <Eigen/Dense>
-
-namespace marching_triangles
-{
-template<typename T>
-struct Triangle;
-}
 
 namespace crack_closing
 {
 
-template<typename T>
-using Triangle = marching_triangles::Triangle<T>;
+using Triangle = marching_triangles::Triangle;
 
 /// Ordered vertex ring; consecutive vertices form boundary edges (closed if is_closed).
 template<typename T>
@@ -34,13 +29,17 @@ class CrackCloser
 public:
     static constexpr int kSmallContourMaxEdges = 6;
 
-    CrackCloser(T same_vertex_epsilon_ = static_cast<T>(1e-6))
+    CrackCloser(T same_vertex_epsilon_, T max_edge_length_, const std::vector<Triangle>& existing_triangles)
         : same_vertex_epsilon(same_vertex_epsilon_)
-    {}
+        , max_edge_length(max_edge_length_)
+        , max_edge_length_sq(max_edge_length_ * max_edge_length_)
+    {
+        marching_triangles::seed_triangle_keys(existing_triangles, triangle_keys_);
+    }
 
     /// Original Akkouche crack-fixing: contour splitting + contour meshing on boundary Le.
     void close_cracks(const std::vector<Eigen::VectorX<T>>& vertices,
-                      std::vector<Triangle<T>>& triangles,
+                      std::vector<Triangle>& triangles,
                       const std::vector<int>& boundary_verts,
                       bool boundary_is_closed) const
     {
@@ -66,6 +65,38 @@ public:
 
 private:
     T same_vertex_epsilon;
+    T max_edge_length;
+    T max_edge_length_sq;
+    mutable std::unordered_set<uint64_t> triangle_keys_;
+
+    bool triangle_edges_within_limit(const std::vector<Eigen::VectorX<T>>& vertices,
+                                     int a, int b, int c) const
+    {
+        return (vertices[a] - vertices[b]).squaredNorm() <= max_edge_length_sq
+            && (vertices[b] - vertices[c]).squaredNorm() <= max_edge_length_sq
+            && (vertices[c] - vertices[a]).squaredNorm() <= max_edge_length_sq;
+    }
+
+    int fan_apex_index(const std::vector<Eigen::VectorX<T>>& vertices, const Contour<T>& contour) const
+    {
+        Eigen::Matrix<T, 3, 1> centroid = Eigen::Matrix<T, 3, 1>::Zero();
+        for (int vid : contour.verts)
+            centroid += to3(vertices[vid]);
+        centroid /= static_cast<T>(contour.verts.size());
+
+        int best = contour.verts[0];
+        T best_d2 = std::numeric_limits<T>::max();
+        for (int vid : contour.verts)
+        {
+            const T d2 = (to3(vertices[vid]) - centroid).squaredNorm();
+            if (d2 < best_d2)
+            {
+                best_d2 = d2;
+                best = vid;
+            }
+        }
+        return best;
+    }
 
     int num_edges(const Contour<T>& c) const
     {
@@ -108,7 +139,7 @@ private:
     }
 
     /// Prefer the growth triangle (third vertex not on the crack contour).
-    bool find_adjacent_triangle(const std::vector<Triangle<T>>& triangles,
+    bool find_adjacent_triangle(const std::vector<Triangle>& triangles,
                                 int a,
                                 int b,
                                 const std::vector<int>& contour_vertex_set,
@@ -121,12 +152,11 @@ private:
         for (int t = 0; t < static_cast<int>(triangles.size()); ++t)
         {
             const auto& tri = triangles[t];
-            const int v[3] = {tri.v0, tri.v1, tri.v2};
             for (int i = 0; i < 3; ++i)
             {
-                const int v0 = v[i];
-                const int v1 = v[(i + 1) % 3];
-                const int v2 = v[(i + 2) % 3];
+                const int v0 = tri[i];
+                const int v1 = tri[(i + 1) % 3];
+                const int v2 = tri[(i + 2) % 3];
                 bool is_ab = false;
                 bool on_edge = false;
                 if (v0 == a && v1 == b)
@@ -181,14 +211,14 @@ private:
     }
 
     Eigen::Matrix<T, 3, 1> triangle_normal_at(const std::vector<Eigen::VectorX<T>>& vertices,
-                                              const Triangle<T>& tri) const
+                                              const Triangle& tri) const
     {
-        return (to3(vertices[tri.v1]) - to3(vertices[tri.v0]))
-            .cross(to3(vertices[tri.v2]) - to3(vertices[tri.v0]));
+        return (to3(vertices[tri[1]]) - to3(vertices[tri[0]]))
+            .cross(to3(vertices[tri[2]]) - to3(vertices[tri[0]]));
     }
 
     bool faces_open_edge(const std::vector<Eigen::VectorX<T>>& vertices,
-                         const std::vector<Triangle<T>>& triangles,
+                         const std::vector<Triangle>& triangles,
                          const Contour<T>& contour,
                          const std::vector<int>& contour_vertex_set,
                          int edge_k,
@@ -239,7 +269,7 @@ private:
     }
 
     int find_splitting_vertex(const std::vector<Eigen::VectorX<T>>& vertices,
-                              const std::vector<Triangle<T>>& triangles,
+                              const std::vector<Triangle>& triangles,
                               const Contour<T>& contour,
                               const std::vector<int>& contour_vertex_set,
                               int edge_k) const
@@ -266,6 +296,10 @@ private:
                 continue;
 
             const T d = dist_point_segment(to3(vertices[xs]), a, b);
+            if (d > max_edge_length)
+                continue;
+            if (!triangle_edges_within_limit(vertices, vk, vk1, xs))
+                continue;
             if (d < best_dist)
             {
                 best_dist = d;
@@ -309,7 +343,7 @@ private:
     }
 
     bool triangle_orientation_ok(const std::vector<Eigen::VectorX<T>>& vertices,
-                                 const std::vector<Triangle<T>>& triangles,
+                                 const std::vector<Triangle>& triangles,
                                  const std::vector<int>& contour_vertex_set,
                                  int v0,
                                  int v1,
@@ -331,7 +365,7 @@ private:
     }
 
     void fan_triangulate(const std::vector<Eigen::VectorX<T>>& vertices,
-                         std::vector<Triangle<T>>& triangles,
+                         std::vector<Triangle>& triangles,
                          const Contour<T>& contour,
                          const std::vector<int>& contour_vertex_set) const
     {
@@ -339,20 +373,26 @@ private:
         if (m < 3)
             return;
 
-        const int v0 = contour.verts[0];
-        for (int i = 1; i < m - 1; ++i)
+        const int apex = fan_apex_index(vertices, contour);
+        for (int i = 0; i < m; ++i)
         {
-            const int v1 = contour.verts[i];
-            const int v2 = contour.verts[i + 1];
-            if (!triangle_orientation_ok(vertices, triangles, contour_vertex_set, v0, v1, v2))
+            if (contour.verts[i] == apex)
                 continue;
-            triangles.push_back({v0, v1, v2});
+            const int v1 = contour.verts[i];
+            const int v2 = contour.verts[(i + 1) % m];
+            if (v1 == apex || v2 == apex)
+                continue;
+            if (!triangle_edges_within_limit(vertices, apex, v1, v2))
+                continue;
+            if (!triangle_orientation_ok(vertices, triangles, contour_vertex_set, apex, v1, v2))
+                continue;
+            marching_triangles::add_triangle_unique(triangles, triangle_keys_, apex, v1, v2);
         }
     }
 
     /// Recursive divide-and-conquer split (paper §3.2.2). Leaf contours (|L_e| < 6 or unsplittable) go to out_leaves.
     void contour_splitting(const std::vector<Eigen::VectorX<T>>& vertices,
-                           std::vector<Triangle<T>>& triangles,
+                           std::vector<Triangle>& triangles,
                            const Contour<T>& contour,
                            std::vector<Contour<T>>& out_leaves,
                            int edge_start = 0) const
@@ -391,7 +431,7 @@ private:
             if (!split_contour(contour, k, split_idx, sub_a, sub_b))
                 continue;
 
-            triangles.push_back({vk, vk1, vs});
+            marching_triangles::add_triangle_unique(triangles, triangle_keys_, vk, vk1, vs);
 
             contour_splitting(vertices, triangles, sub_a, out_leaves, 0);
             contour_splitting(vertices, triangles, sub_b, out_leaves, 0);
@@ -402,7 +442,7 @@ private:
     }
 
     void split_all_contours(const std::vector<Eigen::VectorX<T>>& vertices,
-                            std::vector<Triangle<T>>& triangles,
+                            std::vector<Triangle>& triangles,
                             std::vector<Contour<T>>& contours) const
     {
         std::vector<Contour<T>> leaves;
@@ -458,7 +498,7 @@ private:
     }
 
     bool try_merge_pair(const std::vector<Eigen::VectorX<T>>& vertices,
-                        std::vector<Triangle<T>>& triangles,
+                        std::vector<Triangle>& triangles,
                         const Contour<T>& c1,
                         const Contour<T>& c2,
                         int i,
@@ -491,19 +531,19 @@ private:
             const int c2v = c2.verts[jp1];
             if (!triangle_orientation_ok(vertices, triangles, merge_vertex_set, a2, b2, c2v))
                 return false;
-            triangles.push_back({a2, b2, c2v});
+            marching_triangles::add_triangle_unique(triangles, triangle_keys_, a2, b2, c2v);
             merged_out = merge_contours(c2, j, c1, i);
             return true;
         }
 
-        triangles.push_back({a, b, c});
+        marching_triangles::add_triangle_unique(triangles, triangle_keys_, a, b, c);
         merged_out = merge_contours(c1, i, c2, j);
         return true;
     }
 
     /// Mesh small holes, then merge remaining contour pairs with fixing triangles.
     void contour_meshing(const std::vector<Eigen::VectorX<T>>& vertices,
-                         std::vector<Triangle<T>>& triangles,
+                         std::vector<Triangle>& triangles,
                          std::vector<Contour<T>>& contours) const
     {
         // Phase 1: mesh simple holes (six or fewer boundary edges, paper §3.2.2).
