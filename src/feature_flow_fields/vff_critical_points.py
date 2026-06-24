@@ -1,357 +1,267 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Extract critical points (zeros) of the discrete gradient vector field stored in a
-.vff file, slice by slice in time, and write them as seeds for the Feature Flow
-Fields tracker (feature_flow_fields).
+Compute critical points of every 2-D slice of a 3-D vector field stored in a
+``.vff`` file (produced by ``src/convert/write_gradient.cpp::save_vff``), using
+TTK's TopologicalSkeleton (discrete vector field topology), and collect all
+slice critical points into a single CSV.
 
-Why not TTK/ParaView?
-    TTK's critical-point machinery is for *scalar* fields (PL Morse theory); it has
-    no native "zero of a vector field" filter. To stay self-consistent with FFF we
-    must extract zeros of the *same* multilinearly-interpolated vector field v that
-    FFF integrates -- so we do per-cell zero finding directly on the .vff field.
-    (A TTK-only approximation would be ScalarFieldCriticalPoints on |v|^2 keeping
-    minima with value ~0, but that only snaps to grid vertices and is less
-    accurate; see --help notes.)
+Pipeline (per slice along the last/"z" axis):
+  1. Extract the 2-D (x, y) slice of the vector field. We keep only the in-plane
+     gradient components (vx, vy) and zero the third one, so TTK sees a planar
+     vector field whose zeros are the spatial critical points at that z.
+  2. Build a 2-D vtkImageData placed at z = 0 in memory (fed to TTK directly via
+     a TrivialProducer, so no per-slice .vti is written/read).
+  3. Run TTKTopologicalSkeleton on the vector field; output port 0 is the set of
+     critical points (see the TTK example:
+     https://topology-tool-kit.github.io/examples/discreteVectorFieldTopology/).
+  4. The critical points come out with z = 0; set z to the real coordinate of
+     this slice so the points are lifted back into 3-D.
 
-Method:
-    For each requested time slice t_i, find the zeros of the spatial vector field
-    v(.,t_i) reconstructed by (bi/tri)linear interpolation inside each grid cell.
-      * C == 2 (2D spatial): closed-form bilinear solve (up to 2 roots per cell),
-        fully vectorized.
-      * C  > 2 (e.g. 3D spatial): sign-change prefilter + Newton per candidate cell.
+All slices' critical points are concatenated and written to one CSV.
 
-Output CSV (one row per critical point), with a header line:
-    x,y,t,type            (D==3, C==2)
-    x,y,z,t,type          (D==4, C==3)
-where `type` is a numeric class code (gradient field => symmetric Jacobian):
-    0 = minimum (source), 1 = saddle, 2 = maximum (sink), -1 = degenerate.
-The FFF tracker only reads the first D columns; `type` is informational.
+.vff layout (little-endian):
+  "VFF1", uint32 dtype(0=f64), uint32 D, uint32 C, uint32 n[D],
+  float64 dmin[D], float64 dmax[D], then C*prod(n) float64 values,
+  AoS (components innermost): offset = (i0 + n0*(i1 + n1*(...)))*C + c.
 
-Usage:
-    python3 vff_critical_points.py -i field.vff -o seeds.csv [--t-stride 1] [--tol 1e-9]
+Run with pvpython (ParaView's python, which provides paraview.simple + TTK):
+  pvpython src/feature_flow_fields/vff_critical_points.py \
+      -i tracking_result_16.vff \
+      -o tracking_result_16_cpt.csv
 """
+
+from __future__ import annotations
 
 import argparse
-import sys
+import csv
+import os
+import struct
 
 import numpy as np
-
-from vff_io import load_vff
-
-
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-def axis_resolution(vec):
-    """vec shape (n[D-1],...,n[0],C) -> n in axis order [n_x, n_y, ..., n_t]."""
-    return list(vec.shape[:-1])[::-1]
-
-
-def spacing_of(dmin, dmax, n_axis):
-    n = np.asarray(n_axis, dtype=float)
-    return (np.asarray(dmax) - np.asarray(dmin)) / np.maximum(n - 1.0, 1.0)
+import vtk
+import vtk.util.numpy_support as VN
+from paraview import servermanager as sm
+from paraview.simple import (
+    Delete,
+    OutputPort,
+    TrivialProducer,
+    TTKTopologicalSkeleton,
+)
 
 
-def classify_2d(jxx, jxy, jyx, jyy):
-    """Classify a 2D critical point from its Jacobian (sign-only, robust to scale)."""
-    det = jxx * jyy - jxy * jyx
-    tr = jxx + jyy
-    out = np.full(det.shape, -1, dtype=np.int32)            # degenerate
-    out[det < 0] = 1                                        # saddle
-    pos = det > 0
-    out[pos & (tr > 0)] = 0                                 # minimum / source
-    out[pos & (tr < 0)] = 2                                 # maximum / sink
-    return out
+# def plugin_log(is_server: int) -> None:
+#     """Load the TTK ParaView plugin (mirrors extract_all_critical_points.py)."""
+#     from paraview.simple import LoadPlugin
+
+#     if is_server == 0:
+#         plugin = (
+#             "/home/guanqunma/ParaView-5.11.2-MPI-Linux-Python3.9-x86_64/"
+#             "lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so"
+#         )
+#     else:
+#         plugin = (
+#             "/home/u1435513-gma/apps/"
+#             "ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/"
+#             "lib/paraview-5.11/plugins/TopologyToolKit/TopologyToolKit.so"
+#         )
+#     try:
+#         LoadPlugin(plugin, remote=False, ns=globals())
+#     except Exception as exc:  # noqa: BLE001 - plugin may already be available
+#         print(f"Warning: could not load TTK plugin ({plugin}): {exc}")
 
 
-# ---------------------------------------------------------------------------
-# 2D bilinear closed-form extraction (C == 2)
-# ---------------------------------------------------------------------------
-def extract_slice_bilinear(slc, dmin, spacing, t_value, eps):
-    """
-    slc      : (ny, nx, 2) vector field on one time slice
-    returns list of (x, y, t, type)
-    a is the x-parameter in [0,1], b is the y-parameter in [0,1].
-    bilinear:  f(a,b) = c0 + c1 a + c2 b + c3 a b
-    """
-    Fx = slc[:, :, 0]
-    Fy = slc[:, :, 1]
-
-    # cell corners: index [j, i] = (y=j, x=i)
-    def corners(F):
-        return F[:-1, :-1], F[:-1, 1:], F[1:, :-1], F[1:, 1:]   # 00,10,01,11
-
-    fx00, fx10, fx01, fx11 = corners(Fx)
-    fy00, fy10, fy01, fy11 = corners(Fy)
-
-    # necessary condition: both components must change sign over the 4 corners
-    fx_lo = np.minimum.reduce([fx00, fx10, fx01, fx11])
-    fx_hi = np.maximum.reduce([fx00, fx10, fx01, fx11])
-    fy_lo = np.minimum.reduce([fy00, fy10, fy01, fy11])
-    fy_hi = np.maximum.reduce([fy00, fy10, fy01, fy11])
-    cand = (fx_lo <= 0) & (fx_hi >= 0) & (fy_lo <= 0) & (fy_hi >= 0)
-    if not cand.any():
-        return []
-
-    jj, ii = np.nonzero(cand)            # cell (j=y, i=x) indices
-
-    k0 = fx00[jj, ii]
-    k1 = fx10[jj, ii] - k0
-    k2 = fx01[jj, ii] - k0
-    k3 = fx00[jj, ii] - fx10[jj, ii] - fx01[jj, ii] + fx11[jj, ii]
-
-    l0 = fy00[jj, ii]
-    l1 = fy10[jj, ii] - l0
-    l2 = fy01[jj, ii] - l0
-    l3 = fy00[jj, ii] - fy10[jj, ii] - fy01[jj, ii] + fy11[jj, ii]
-
-    # quadratic in b:  A b^2 + B b + C = 0
-    A = l2 * k3 - k2 * l3
-    B = (l0 * k3 + l2 * k1) - (k0 * l3 + k2 * l1)
-    Cc = l0 * k1 - k0 * l1
-
-    results = []
-
-    def add_roots(b):
-        """given candidate b (same shape as ii), recover a and emit valid points."""
-        valid = np.isfinite(b) & (b >= -eps) & (b <= 1 + eps)
-        if not valid.any():
-            return
-        bb = np.clip(b[valid], 0.0, 1.0)
-        denom = k1[valid] + k3[valid] * bb
-        num = -(k0[valid] + k2[valid] * bb)
-        ok = np.abs(denom) > eps
-        if not ok.any():
-            return
-        aa = np.full_like(bb, np.nan)
-        aa[ok] = num[ok] / denom[ok]
-        good = np.isfinite(aa) & (aa >= -eps) & (aa <= 1 + eps)
-        if not good.any():
-            return
-        aa = np.clip(aa[good], 0.0, 1.0)
-        bbg = bb[good]
-        idx = np.nonzero(valid)[0][good]          # back to candidate-cell index
-
-        ig = ii[idx]
-        jg = jj[idx]
-        x = dmin[0] + (ig + aa) * spacing[0]
-        y = dmin[1] + (jg + bbg) * spacing[1]
-
-        # Jacobian for classification (scaled, sign preserved)
-        jxx = (k1[idx] + k3[idx] * bbg) / spacing[0]
-        jxy = (k2[idx] + k3[idx] * aa) / spacing[1]
-        jyx = (l1[idx] + l3[idx] * bbg) / spacing[0]
-        jyy = (l2[idx] + l3[idx] * aa) / spacing[1]
-        typ = classify_2d(jxx, jxy, jyx, jyy)
-
-        for xi, yi, ti in zip(x, y, typ):
-            results.append((xi, yi, t_value, int(ti)))
-
-    quad = np.abs(A) > eps
-    disc = B * B - 4 * A * Cc
-    if quad.any():
-        with np.errstate(invalid="ignore"):
-            sq = np.where(disc >= 0, np.sqrt(np.abs(disc)), np.nan)
-        for sign in (+1.0, -1.0):
-            b = np.full_like(B, np.nan)
-            b[quad] = (-B[quad] + sign * sq[quad]) / (2 * A[quad])
-            add_roots(b)
-
-    lin = (~quad) & (np.abs(B) > eps)
-    if lin.any():
-        b = np.full_like(B, np.nan)
-        b[lin] = -Cc[lin] / B[lin]
-        add_roots(b)
-
-    return results
+def read_vff(path: str):
+    """Read a .vff file. Returns (data, n, dmin, dmax) with data shaped
+    (..., n[1], n[0], C) in C-order (x fastest, components innermost)."""
+    with open(path, "rb") as f:
+        magic = f.read(4)
+        if magic != b"VFF1":
+            raise ValueError(f"{path}: not a .vff file (bad magic {magic!r})")
+        dtype, D, C = struct.unpack("<III", f.read(12))
+        if dtype != 0:
+            raise ValueError(f"{path}: unsupported dtype {dtype} (only 0=float64)")
+        n = list(struct.unpack("<" + "I" * D, f.read(4 * D)))
+        dmin = list(struct.unpack("<" + "d" * D, f.read(8 * D)))
+        dmax = list(struct.unpack("<" + "d" * D, f.read(8 * D)))
+        count = C * int(np.prod(n))
+        data = np.fromfile(f, dtype="<f8", count=count)
+    if data.size != count:
+        raise ValueError(
+            f"{path}: expected {count} float64 values, read {data.size}"
+        )
+    # AoS, x fastest, components innermost -> reshape to (n[D-1], ..., n[1], n[0], C)
+    shape = list(reversed(n)) + [C]
+    data = data.reshape(shape)
+    return data, n, dmin, dmax
 
 
-# ---------------------------------------------------------------------------
-# generic N-d multilinear extraction via Newton (C >= 3)
-# ---------------------------------------------------------------------------
-def _multilinear_value_jac(u, corner_vals, C):
-    """
-    u           : (C,) local coords in [0,1]^C
-    corner_vals : (2^C, C) vector at each corner; corner k bit d selects u_d vs 1-u_d
-    returns f (C,) and J (C, C) = df/du
-    """
-    ncorner = corner_vals.shape[0]
-    f = np.zeros(C)
-    J = np.zeros((C, C))
-    for k in range(ncorner):
-        bits = [(k >> d) & 1 for d in range(C)]
-        w = 1.0
-        for d in range(C):
-            w *= u[d] if bits[d] else (1.0 - u[d])
-        f += w * corner_vals[k]
-        for d in range(C):
-            dw = 1.0
-            for e in range(C):
-                if e == d:
-                    dw *= 1.0 if bits[e] else -1.0
-                else:
-                    dw *= u[e] if bits[e] else (1.0 - u[e])
-            J[:, d] += dw * corner_vals[k]
-    return f, J
+def axis_spacing(dmin: float, dmax: float, n: int) -> float:
+    return (dmax - dmin) / (n - 1) if n > 1 else 0.0
 
 
-def extract_slice_newton(slc, dmin, spacing, t_value, eps, C, max_iter=30):
-    """
-    slc shape (n_{C-1}, ..., n_0, C). Spatial axes only (time already fixed).
-    Generic per-cell sign-change prefilter + Newton. dmin/spacing are length C
-    (spatial axes only).
-    """
-    spatial_shape = slc.shape[:-1]                 # (n_{C-1}, ..., n_0)  slow..fast
-    # cell grid: each axis has n-1 cells
-    cell_counts = [s - 1 for s in spatial_shape]
-    if any(c <= 0 for c in cell_counts):
-        return []
+def build_slice_image(slice_data: np.ndarray, nx: int, ny: int,
+                      xmin: float, ymin: float, dx: float, dy: float) -> vtk.vtkImageData:
+    """Build a 2-D vtkImageData (z = 0) with a 3-component "VectorField" point
+    array holding (vx, vy, 0). slice_data is shaped (ny, nx, C)."""
+    image = vtk.vtkImageData()
+    image.SetDimensions(nx, ny, 1)
+    image.SetOrigin(xmin, ymin, 0.0)
+    image.SetSpacing(dx if dx != 0.0 else 1.0, dy if dy != 0.0 else 1.0, 1.0)
 
-    # build the 2^C corner offset list in array-index (slow..fast) order
-    ncorner = 1 << C
-    # axis order in array is reversed vs. "x first"; map local dim d (x=0) to array axis
-    # array axis for spatial dim d (x-first) is (C-1-d)
-    results = []
+    # (ny, nx, C) -> (ny*nx, C) keeps x fastest, matching VTK image point order.
+    flat = slice_data.reshape(ny * nx, slice_data.shape[-1])
+    vecs = np.zeros((ny * nx, 3), dtype=np.float64)
+    vecs[:, 0] = flat[:, 0]
+    vecs[:, 1] = flat[:, 1]
+    # third (out-of-plane / temporal) component zeroed: planar field for TTK.
 
-    # iterate cells with nested ranges; prefilter via sign change is done per cell
-    # (use np.ndindex over cell grid in array order)
-    import itertools
-
-    ranges = [range(c) for c in cell_counts]       # array-order (slow..fast)
-    for cell in itertools.product(*ranges):
-        # gather 2^C corners
-        corner_vals = np.empty((ncorner, C))
-        all_pos = np.ones(C, dtype=bool)
-        all_neg = np.ones(C, dtype=bool)
-        for k in range(ncorner):
-            # bit b (x-first) selects +1 along x-first dim b
-            idx = []
-            for ax, base in enumerate(cell):       # ax in array order slow..fast
-                d = C - 1 - ax                     # x-first dim
-                bit = (k >> d) & 1
-                idx.append(base + bit)
-            v = slc[tuple(idx)]
-            corner_vals[k] = v
-            all_pos &= v > 0
-            all_neg &= v < 0
-        if all_pos.any() or all_neg.any():
-            continue                               # some component never changes sign
-
-        # Newton from center
-        u = np.full(C, 0.5)
-        converged = False
-        for _ in range(max_iter):
-            f, J = _multilinear_value_jac(u, corner_vals, C)
-            try:
-                du = np.linalg.solve(J, -f)
-            except np.linalg.LinAlgError:
-                break
-            u = u + du
-            if not np.all(np.isfinite(u)):
-                break
-            u = np.clip(u, -0.25, 1.25)
-            if np.linalg.norm(du) < 1e-10:
-                converged = True
-                break
-        if not converged:
-            continue
-        if np.any(u < -eps) or np.any(u > 1 + eps):
-            continue
-        u = np.clip(u, 0.0, 1.0)
-
-        # physical position (x-first dims)
-        coords = []
-        for d in range(C):
-            ax = C - 1 - d
-            base = cell[ax]
-            coords.append(dmin[d] + (base + u[d]) * spacing[d])
-
-        _, J = _multilinear_value_jac(u, corner_vals, C)
-        det = np.linalg.det(J)
-        typ = 1 if det < 0 else (-1 if abs(det) < eps else 0)
-        results.append(tuple(coords) + (t_value, int(typ)))
-
-    return results
+    arr = VN.numpy_to_vtk(vecs, deep=True)
+    arr.SetName("VectorField")
+    image.GetPointData().AddArray(arr)
+    image.GetPointData().SetActiveVectors("VectorField")
+    return image
 
 
-# ---------------------------------------------------------------------------
-# driver
-# ---------------------------------------------------------------------------
-def extract_all(vec, dmin, dmax, t_stride, eps, dedup_tol):
-    D = vec.ndim - 1
-    C = vec.shape[-1]
-    n_axis = axis_resolution(vec)                  # [n_x, n_y, ..., n_t]
-    spacing = spacing_of(dmin, dmax, n_axis)
-    if C != D - 1:
-        print(f"[warn] C ({C}) != D-1 ({D-1}); treating last axis as time, "
-              f"first {C} axes as spatial.", file=sys.stderr)
+def critical_points_for_image(image: vtk.vtkImageData, simplification_threshold: float):
+    """Run TTKTopologicalSkeleton on an in-memory vtkImageData (fed via a
+    TrivialProducer, no disk I/O) and return (positions Nx3, types N) for the
+    critical points (output port 0)."""
+    producer = TrivialProducer()
+    producer.GetClientSideObject().SetOutput(image)
+    producer.UpdatePipeline()
 
-    nt = n_axis[-1]
-    t_dmin = dmin[-1]
-    t_spacing = spacing[-1]
-    spatial_dmin = np.asarray(dmin[:C], dtype=float)
-    spatial_spacing = np.asarray(spacing[:C], dtype=float)
+    skeleton = TTKTopologicalSkeleton(Input=producer)
+    skeleton.VectorField = ["POINTS", "VectorField"]
+    if simplification_threshold > 0.0:
+        skeleton.RunSimplification = 1
+        skeleton.SimplificationThreshold = simplification_threshold
+    else:
+        skeleton.RunSimplification = 0
+    skeleton.UpdatePipeline()
 
-    all_rows = []
-    for it in range(0, nt, t_stride):
-        t_value = t_dmin + it * t_spacing
-        slc = vec[it]                              # shape (..., y, x, C); time removed
-        if C == 2:
-            rows = extract_slice_bilinear(slc, spatial_dmin, spatial_spacing,
-                                          t_value, eps)
+    cp = sm.Fetch(OutputPort(skeleton, 0))
+    if cp is None or cp.GetNumberOfPoints() == 0:
+        positions, types = np.empty((0, 3)), np.empty((0,))
+    else:
+        positions = VN.vtk_to_numpy(cp.GetPoints().GetData()).astype(np.float64)
+        type_arr = cp.GetPointData().GetArray("CriticalType")
+        if type_arr is not None:
+            types = VN.vtk_to_numpy(type_arr).astype(np.float64).ravel()
         else:
-            rows = extract_slice_newton(slc, spatial_dmin, spatial_spacing,
-                                        t_value, eps, C)
-        all_rows.extend(rows)
-        print(f"  t-slice {it:4d} (t={t_value:.6g}): {len(rows)} critical points")
+            types = np.full(positions.shape[0], np.nan)
 
-    # dedup within rounding tolerance (cells sharing edges may double-report)
-    if dedup_tol > 0 and all_rows:
-        seen = set()
-        uniq = []
-        for r in all_rows:
-            key = tuple(int(round(c / dedup_tol)) for c in r[:-1])
-            if key in seen:
-                continue
-            seen.add(key)
-            uniq.append(r)
-        print(f"[dedup] {len(all_rows)} -> {len(uniq)} critical points")
-        all_rows = uniq
+        keep = ~boundary_mask(cp, positions, image)
+        positions, types = positions[keep], types[keep]
 
-    return all_rows, D, C
+    # Drop the per-slice pipeline objects so they don't accumulate over slices.
+    Delete(skeleton)
+    Delete(producer)
+    return positions, types
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-i", "--input", required=True, help="input .vff file")
-    ap.add_argument("-o", "--output", required=True, help="output seeds .csv file")
-    ap.add_argument("--t-stride", type=int, default=1,
-                    help="seed from every Nth grid time level "
-                         "(default 1 = all grid time levels)")
-    ap.add_argument("--tol", type=float, default=1e-9,
-                    help="numerical tolerance for solves / membership (default 1e-9)")
-    ap.add_argument("--dedup-tol", type=float, default=1e-6,
-                    help="merge points closer than this (per axis); 0 disables")
-    args = ap.parse_args()
+def boundary_mask(cp, positions: np.ndarray, image: vtk.vtkImageData,
+                  tol: float = 1e-8) -> np.ndarray:
+    """True for critical points on the slice boundary. Prefer TTK's
+    "IsOnBoundary" array; fall back to the (x, y) extent of the slice."""
+    bnd = cp.GetPointData().GetArray("IsOnBoundary")
+    if bnd is not None:
+        return VN.vtk_to_numpy(bnd).ravel() == 1
 
-    vec, dmin, dmax = load_vff(args.input)
-    D = vec.ndim - 1
-    C = vec.shape[-1]
-    print(f"[load] {args.input}: D={D} C={C} shape={vec.shape} "
-          f"dmin={dmin} dmax={dmax}")
+    xmin, xmax, ymin, ymax, _, _ = image.GetBounds()
+    return (
+        (np.abs(positions[:, 0] - xmin) <= tol)
+        | (np.abs(positions[:, 0] - xmax) <= tol)
+        | (np.abs(positions[:, 1] - ymin) <= tol)
+        | (np.abs(positions[:, 1] - ymax) <= tol)
+    )
 
-    rows, D, C = extract_all(vec, dmin, dmax, args.t_stride, args.tol, args.dedup_tol)
 
-    # header: spatial axis names + time + type
-    axis_names = ["x", "y", "z", "w"][:C]
-    header = ",".join(axis_names + ["t", "type"])
-    with open(args.output, "w") as f:
-        f.write(header + "\n")
-        for r in rows:
-            f.write(",".join(f"{v:.10g}" for v in r[:-1]) + f",{r[-1]}\n")
-    print(f"[write] {args.output}: {len(rows)} critical points "
-          f"({len(axis_names)+1} coord cols + type)")
+def compute_all_slices(vff_path: str, output_csv: str, t_stride: int,
+                       simplification_threshold: float) -> None:
+    data, n, dmin, dmax = read_vff(vff_path)
+    D = len(n)
+    if D != 3:
+        raise ValueError(
+            f"{vff_path}: expected a 3-D vector field (D=3), got D={D}. "
+            "Slicing is defined along the last (z) axis of a 3-D field."
+        )
+    C = data.shape[-1]
+    if C < 2:
+        raise ValueError(f"{vff_path}: need >=2 vector components, got C={C}")
+
+    nx, ny, nz = n[0], n[1], n[2]
+    dx = axis_spacing(dmin[0], dmax[0], nx)
+    dy = axis_spacing(dmin[1], dmax[1], ny)
+    dz = axis_spacing(dmin[2], dmax[2], nz)
+
+    print(f"Loaded {vff_path}: grid n={n}, C={C}")
+    print(f"  dmin={dmin}  dmax={dmax}")
+    print(f"  spacing dx={dx} dy={dy} dz={dz}  slicing along z ({nz} slices)")
+
+    all_pos = np.empty((0, 3))
+    all_types = np.empty((0,))
+    all_slice = np.empty((0,))
+
+    slice_indices = range(0, nz, max(1, t_stride))
+    for k in slice_indices:
+        slice_z = dmin[2] + k * dz
+        slice_data = data[k]  # (ny, nx, C)
+
+        image = build_slice_image(slice_data, nx, ny, dmin[0], dmin[1], dx, dy)
+        positions, types = critical_points_for_image(image, simplification_threshold)
+        if positions.shape[0] > 0:
+            positions[:, 2] = slice_z  # lift critical points back to 3-D
+            all_pos = np.concatenate((all_pos, positions), axis=0)
+            all_types = np.concatenate((all_types, types), axis=0)
+            all_slice = np.concatenate(
+                (all_slice, np.full(positions.shape[0], k)), axis=0
+            )
+
+        print(f"  slice {k:5d} (z={slice_z:.6g}): {positions.shape[0]} critical points")
+
+    with open(output_csv, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["PositionX", "PositionY", "PositionZ", "CriticalType", "SliceIndex"])
+        for i in range(all_pos.shape[0]):
+            ctype = all_types[i]
+            writer.writerow([
+                all_pos[i, 0],
+                all_pos[i, 1],
+                all_pos[i, 2],
+                "" if np.isnan(ctype) else int(ctype),
+                int(all_slice[i]),
+            ])
+
+    print(f"Wrote {all_pos.shape[0]} critical points from "
+          f"{len(list(slice_indices))} slices to {output_csv}")
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Per-slice critical points of a 3-D .vff vector field via TTK."
+    )
+    p.add_argument("-i", "--input_name", required=True, help="input .vff file")
+    p.add_argument("-o", "--output_name", required=True, help="output .csv file")
+    p.add_argument("--t-stride", type=int, default=1,
+                   help="process every Nth slice along z (default: 1 = all).")
+    p.add_argument("--simplification-threshold", type=float, default=0.0,
+                   help="TTK VectorSimplification threshold; 0 disables (default).")
+    # p.add_argument("-s", "--server", type=int, default=0,
+    #                help="0 = local PC, 1 = remote server (for TTK plugin path).")
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if not os.path.exists(args.input_name):
+        raise FileNotFoundError(f"Input .vff not found: {args.input_name}")
+    # plugin_log(is_server=args.server)
+    compute_all_slices(
+        vff_path=args.input_name,
+        output_csv=args.output_name,
+        t_stride=int(args.t_stride),
+        simplification_threshold=float(args.simplification_threshold),
+    )
 
 
 if __name__ == "__main__":

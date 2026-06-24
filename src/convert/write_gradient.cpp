@@ -1588,12 +1588,12 @@ std::vector<int>& upsample_factor)
 }
 
 // ---------------------------------------------------------------------------
-// Write the spatial-gradient vector field v = grad_space(s) on a regular
-// space-time grid in the .vff format consumed by
+// Write the full gradient vector field v = grad(s) on a regular space-time
+// grid in the .vff format consumed by
 // src/critical_point_tracking/feature_flow_fields (the Feature Flow Fields
 // tracker). The grid matches save_bin (ndom_pts[i] = upsample_factor[i]*span,
-// x fastest, last axis = time). Only the spatial gradient components are
-// stored (C = dom_dim - 1); the time partial is dropped.
+// x fastest, last axis = time). All gradient components are stored
+// (C = dom_dim), i.e. both the spatial partials and the time partial.
 //
 // .vff layout (little-endian): "VFF1", uint32 dtype(0=f64), uint32 D, uint32 C,
 //   uint32 n[D], float64 dmin[D], float64 dmax[D], then C*prod(n) float64 values,
@@ -1609,9 +1609,7 @@ std::vector<int>& upsample_factor)
     VectorXi ndom_pts(dom_dim);
     for (int i = 0; i < (int)dom_dim; i++)
         ndom_pts(i) = upsample_factor[i] * span_num(i);     // same grid as save_bin
-    long long npts = ndom_pts.prod();
-
-    const int C = (int)dom_dim - 1;                          // spatial gradient components
+    long long npts = ndom_pts.prod();                        // spatial gradient components
 
     VectorX<T> d(dom_dim), p0(dom_dim);
     for (int i = 0; i < (int)dom_dim; i++)
@@ -1620,7 +1618,7 @@ std::vector<int>& upsample_factor)
         p0(i) = block->core_mins(i);
     }
 
-    std::cout << "save_vff grid (D=" << dom_dim << " C=" << C << "): "
+    std::cout << "save_vff grid (D=" << dom_dim << "): "
               << ndom_pts.transpose() << std::endl;
 
     std::vector<std::vector<T>> vertex_domain(dom_dim);
@@ -1635,7 +1633,7 @@ std::vector<int>& upsample_factor)
     utility::obtain_number_in_every_domain(ndom_pts, number_in_every_domain);
 
     // node-major AoS buffer: npts nodes, C components each (components innermost)
-    std::vector<double> data(static_cast<size_t>(npts) * C);
+    std::vector<double> data(static_cast<size_t>(npts) * dom_dim);
 
     tbb::affinity_partitioner ap;
     tbb::parallel_for((tbb::blocked_range<size_t>(0, (size_t)npts)),
@@ -1658,8 +1656,8 @@ std::vector<int>& upsample_factor)
             VectorX<T> grad(dom_dim);
             ridge_valley_graph::compute_gradient(coordinate, block, grad);
 
-            for (int c = 0; c < C; c++)                     // keep spatial components only
-                data[j * C + c] = static_cast<double>(grad[c]);
+            for (int c = 0; c < dom_dim; c++)                     // all components (spatial + temporal)
+                data[j * dom_dim + c] = static_cast<double>(grad[c]);
         }
     }, ap);
 
@@ -1673,10 +1671,10 @@ std::vector<int>& upsample_factor)
     out.write("VFF1", 4);
     std::uint32_t dtype = 0;                                 // float64
     std::uint32_t D = (std::uint32_t)dom_dim;
-    std::uint32_t Cc = (std::uint32_t)C;
+    std::uint32_t C = (std::uint32_t)dom_dim;                // all gradient components (spatial + temporal)
     out.write(reinterpret_cast<const char*>(&dtype), sizeof(dtype));
     out.write(reinterpret_cast<const char*>(&D), sizeof(D));
-    out.write(reinterpret_cast<const char*>(&Cc), sizeof(Cc));
+    out.write(reinterpret_cast<const char*>(&C), sizeof(C));
     std::vector<std::uint32_t> nn(dom_dim);
     for (int a = 0; a < (int)dom_dim; a++) nn[a] = (std::uint32_t)ndom_pts(a);
     out.write(reinterpret_cast<const char*>(nn.data()), sizeof(std::uint32_t) * dom_dim);
@@ -1685,8 +1683,8 @@ std::vector<int>& upsample_factor)
     out.write(reinterpret_cast<const char*>(mn.data()), sizeof(double) * dom_dim);
     out.write(reinterpret_cast<const char*>(mx.data()), sizeof(double) * dom_dim);
     out.write(reinterpret_cast<const char*>(data.data()), sizeof(double) * data.size());
-    std::cout << "save_vff: wrote " << file_name << " (" << npts << " nodes, " << C
-              << " components)" << std::endl;
+    std::cout << "save_vff: wrote " << file_name << " (" << npts << " nodes, "
+              << dom_dim << " components)" << std::endl;
 }
 
 
