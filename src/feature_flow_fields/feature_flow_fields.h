@@ -36,13 +36,16 @@
 #include <algorithm>
 #include <unordered_set>
 
-#include <Eigen/Dense>
-
+// mfa/types.hpp defines the global-namespace VectorX/MatrixX alias templates
+// that this header (and CP_Trace.h below) rely on; it also pulls in Eigen.
+// Include it here so this header is self-contained regardless of include order.
+//
 // NOTE: do NOT `using namespace Eigen;` here. mfa (types.hpp) defines its own
 // global-namespace VectorX/MatrixX alias templates, and Eigen 3.4 also defines
 // Eigen::VectorX/MatrixX. Bringing Eigen's into the global namespace makes every
 // unqualified VectorX/MatrixX ambiguous (even inside mfa's own headers). We rely
-// on mfa's global typedefs instead, so mfa headers must be included first.
+// on mfa's global typedefs instead.
+#include <mfa/types.hpp>
 
 #include "CP_Trace.h"
 
@@ -160,18 +163,27 @@ struct VectorFieldGrid
     }
 
     // Feature flow field direction at p (un-normalized). Returns false if outside.
+    //
+    // FFF needs the gradients of the (D-1) SPATIAL components of v stacked into a
+    // square (D-1)x(D-1) minor per axis. The .vff may store either exactly the
+    // spatial gradient (C == D-1) or the full space-time gradient (C == D, with
+    // the temporal derivative in the last component). In both cases the spatial
+    // components are the first (D-1) rows of A, so we only use those -- otherwise
+    // the minor M is non-square and Eigen's determinant() takes the general LU
+    // path and aborts with std::bad_alloc.
     bool fff_direction(const VectorX<T>& p, VectorX<T>& f) const
     {
         MatrixX<T> A;
         if (!sample(p, &A, nullptr)) return false;
 
+        const int Csp = D - 1;                 // spatial-gradient rows actually used
         f.resize(D);
-        MatrixX<T> M(C, D - 1);
+        MatrixX<T> M(Csp, D - 1);
         for (int k = 0; k < D; ++k)
         {
             int col = 0;
             for (int j = 0; j < D; ++j)
-                if (j != k) M.col(col++) = A.col(j);
+                if (j != k) M.col(col++) = A.topRows(Csp).col(j);
             T det = M.determinant();
             f[k] = ((k & 1) ? T(-1) : T(1)) * det;
         }
@@ -258,9 +270,22 @@ namespace vff_io
             return false;
         }
 
-        if (g.C != g.D - 1)
-            std::cerr << "vff_io::load: warning, C(" << g.C << ") != D-1(" << g.D - 1
-                      << ") -- expected a spatial-gradient field." << std::endl;
+        // FFF only needs the D-1 spatial-gradient components (the first D-1
+        // components, in axis order). Accept either a spatial-gradient field
+        // (C == D-1) or a full space-time gradient field (C == D, where the
+        // last component is the temporal derivative and is simply ignored).
+        if (g.C == g.D)
+        {
+            std::cout << "vff_io::load: full gradient field (C=" << g.C
+                      << "); using the first " << g.D - 1
+                      << " spatial components for FFF." << std::endl;
+        }
+        else if (g.C < g.D - 1)
+        {
+            std::cerr << "vff_io::load: error, C(" << g.C << ") < D-1(" << g.D - 1
+                      << ") -- not enough gradient components for FFF." << std::endl;
+            return false;
+        }
         return true;
     }
 

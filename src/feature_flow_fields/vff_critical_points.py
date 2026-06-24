@@ -221,16 +221,15 @@ def compute_all_slices(vff_path: str, output_csv: str, t_stride: int,
 
     with open(output_csv, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["PositionX", "PositionY", "PositionZ", "CriticalType", "SliceIndex"])
+        writer.writerow(["PositionX", "PositionY", "PositionZ"])#, "CriticalType", "SliceIndex"
         for i in range(all_pos.shape[0]):
             ctype = all_types[i]
             writer.writerow([
                 all_pos[i, 0],
                 all_pos[i, 1],
-                all_pos[i, 2],
-                "" if np.isnan(ctype) else int(ctype),
-                int(all_slice[i]),
-            ])
+                all_pos[i, 2]
+            ]) #                "" if np.isnan(ctype) else int(ctype),
+                #int(all_slice[i]),
 
     print(f"Wrote {all_pos.shape[0]} critical points from "
           f"{len(list(slice_indices))} slices to {output_csv}")

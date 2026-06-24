@@ -25,7 +25,6 @@
 // VectorX/MatrixX alias templates that feature_flow_fields.h relies on. It must
 // be included BEFORE feature_flow_fields.h (which no longer does
 // `using namespace Eigen;`) so those names resolve unambiguously.
-#include "degenerate_case_tracing.h"
 #include "feature_flow_fields.h"
 
 using namespace std;
@@ -46,7 +45,7 @@ int main(int argc, char** argv)
 
     opts::Options ops;
     ops >> opts::Option('f', "vff",        vff_file,    " input .vff vector field (gradient field)");
-    ops >> opts::Option('s', "seeds",      seed_file,   " input seed critical-point .dat");
+    ops >> opts::Option('s', "seeds",      seed_file,   " input seed critical-point .csv");
     ops >> opts::Option('b', "out",        out_base,    " output base name (writes <base>.obj)");
     ops >> opts::Option('l', "step",       step,        " RK4 arc-length step (default: min spatial spacing)");
     ops >> opts::Option('m', "max_steps",  max_steps,   " max RK4 steps per direction");
@@ -80,9 +79,8 @@ int main(int argc, char** argv)
               << " spatial_eps=" << spatial_eps << " temporal_eps=" << temporal_eps << std::endl;
 
     std::vector<VectorX<T>> seeds;
-    // if (!fff::read_seeds_csv(seed_file, grid.D, seeds))
-    //     return 1;
-    Degenerate_case_tracing<double>::read_degenerate_point(seed_file,seeds);
+    if (!fff::read_seeds_csv(seed_file, grid.D, seeds))
+        return 1;
     std::cout << "read " << seeds.size() << " seed critical points from " << seed_file << std::endl;
     if (seeds.empty())
     {
