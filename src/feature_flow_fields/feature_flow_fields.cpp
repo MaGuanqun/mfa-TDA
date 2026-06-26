@@ -41,6 +41,8 @@ int main(int argc, char** argv)
     int    max_steps   = 5000;
     double spatial_eps = -1.0;   // <0 => derive from grid spacing
     double temporal_eps = -1.0;  // <0 => derive from grid spacing
+    double loop_eps    = -1.0;   // loop-closure threshold; <0 => derive from step (0 disables)
+    int    self_skip   = -1;     // trailing window (steps) for spiral/self-revisit detection; <0 => derive (0 disables)
     bool   help        = false;
 
     opts::Options ops;
@@ -51,6 +53,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('m', "max_steps",  max_steps,   " max RK4 steps per direction");
     ops >> opts::Option('e', "spatial_eps", spatial_eps, " spatial epsilon for covered-seed test (default: spatial spacing)");
     ops >> opts::Option('t', "temporal_eps", temporal_eps, " temporal epsilon for covered-seed test (default: time spacing)");
+    ops >> opts::Option('p', "loop_eps",   loop_eps,    " loop-closure threshold; stop+close when a trace returns within this of its seed (default: step; 0 disables)");
+    ops >> opts::Option('w', "self_skip",  self_skip,   " trailing window (steps) for spiral self-revisit detection; stop when a trace re-enters an earlier-visited cell (default: derived; 0 disables)");
     ops >> opts::Option('h', "help",       help,        " show help");
 
     if (!ops.parse(argc, argv) || help)
@@ -74,9 +78,20 @@ int main(int argc, char** argv)
     if (step        < 0) step        = min_spatial;
     if (spatial_eps < 0) spatial_eps = min_spatial;
     if (temporal_eps < 0) temporal_eps = time_space;
+    if (loop_eps    < 0) loop_eps    = step;          // closed-loop detection on by default
+    if (self_skip   < 0)                               // spiral self-revisit detection on by default
+    {
+        // Exclude enough of the trailing path that the locally-adjacent points
+        // (which sit within ~1 occupancy cell of the head) cannot self-match;
+        // a few cell widths of arc length is sufficient.
+        double cell = std::max(spatial_eps, temporal_eps);
+        self_skip = std::max(4, static_cast<int>(std::ceil(3.0 * cell / step)));
+    }
 
     std::cout << "step=" << step << " max_steps=" << max_steps
-              << " spatial_eps=" << spatial_eps << " temporal_eps=" << temporal_eps << std::endl;
+              << " spatial_eps=" << spatial_eps << " temporal_eps=" << temporal_eps
+              << " loop_eps=" << loop_eps << (loop_eps > 0 ? "" : " (seed-return detection disabled)")
+              << " self_skip=" << self_skip << (self_skip > 0 ? "" : " (spiral detection disabled)") << std::endl;
 
     std::vector<VectorX<T>> seeds;
     if (!fff::read_seeds_csv(seed_file, grid.D, seeds))
@@ -92,7 +107,8 @@ int main(int argc, char** argv)
 
     std::vector<CP_Trace<T>> traces;
     fff::track_all(grid, seeds, static_cast<T>(step), max_steps,
-                   static_cast<T>(spatial_eps), static_cast<T>(temporal_eps), traces);
+                   static_cast<T>(spatial_eps), static_cast<T>(temporal_eps),
+                   static_cast<T>(loop_eps), self_skip, traces);
 
     auto t1 = std::chrono::high_resolution_clock::now();
     std::cout << "tracking time (ms): "

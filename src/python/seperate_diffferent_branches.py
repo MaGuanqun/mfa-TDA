@@ -449,36 +449,46 @@ def _find_cycle_dfs(
     color = [0] * n  # 0 white, 1 gray, 2 black
     parent = [-1] * n
 
-    def dfs(u: int, pu: int) -> Optional[List[int]]:
-        color[u] = 1
-        for v in adj[u]:
-            if v == pu:
-                continue
-            if color[v] == 0:
-                parent[v] = u
-                cyc = dfs(v, u)
-                if cyc is not None:
-                    return cyc
-            elif color[v] == 1:
-                # Back edge (u, v); v is ancestor -> cycle along parent chain u -> ... -> v
-                path_uv: List[int] = []
-                x = u
-                while x != v and x != -1:
-                    path_uv.append(x)
-                    x = parent[x]
-                if x != v:
+    def dfs(start: int) -> Optional[List[int]]:
+        # Iterative DFS with an explicit stack to avoid Python recursion limits
+        # on large graphs. Each stack frame tracks the current vertex, its
+        # parent, and an index into its adjacency list.
+        stack: List[List[int]] = [[start, -1, 0]]
+        color[start] = 1
+        while stack:
+            frame = stack[-1]
+            u, pu, idx = frame
+            if idx < len(adj[u]):
+                frame[2] += 1
+                v = adj[u][idx]
+                if v == pu:
                     continue
-                path_uv.append(v)
-                # Cyclic order: v ... u, closing edge (u, v)
-                return list(reversed(path_uv))
-        color[u] = 2
+                if color[v] == 0:
+                    parent[v] = u
+                    color[v] = 1
+                    stack.append([v, u, 0])
+                elif color[v] == 1:
+                    # Back edge (u, v); v is ancestor -> cycle along parent chain.
+                    path_uv: List[int] = []
+                    x = u
+                    while x != v and x != -1:
+                        path_uv.append(x)
+                        x = parent[x]
+                    if x != v:
+                        continue
+                    path_uv.append(v)
+                    # Cyclic order: v ... u, closing edge (u, v)
+                    return list(reversed(path_uv))
+            else:
+                color[u] = 2
+                stack.pop()
         return None
 
     for s in range(n):
         if color[s] != 0:
             continue
         parent[s] = -1
-        cyc = dfs(s, -1)
+        cyc = dfs(s)
         if cyc is not None:
             return cyc
     return None

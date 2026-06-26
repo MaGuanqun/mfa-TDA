@@ -44,6 +44,8 @@ int main(int argc, char** argv)
     double k_strength   = 1.0;   // paper's k > 0 (convergence strength); 0 => plain FFF
     double tau_max      = 100.0; // upper clamp for the adaptive tau (paper used 100)
     double fd_frac      = 0.5;   // finite-difference step as a fraction of grid spacing
+    double loop_eps     = -1.0;  // loop-closure threshold; <0 => derive from step (0 disables)
+    int    self_skip    = -1;    // trailing window (steps) for spiral/self-revisit detection; <0 => derive (0 disables)
     bool   help         = false;
 
     opts::Options ops;
@@ -57,6 +59,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('k', "strength",     k_strength,   " stable-FFF convergence strength k>0 (0 => plain FFF)");
     ops >> opts::Option('x', "tau_max",      tau_max,      " upper clamp for the adaptive correction strength tau");
     ops >> opts::Option('d', "fd",           fd_frac,      " finite-difference step as a fraction of grid spacing");
+    ops >> opts::Option('p', "loop_eps",     loop_eps,     " loop-closure threshold; stop+close when a trace returns within this of its seed (default: step; 0 disables)");
+    ops >> opts::Option('w', "self_skip",    self_skip,    " trailing window (steps) for spiral self-revisit detection; stop when a trace re-enters an earlier-visited cell (default: derived; 0 disables)");
     ops >> opts::Option('h', "help",         help,         " show help");
 
     if (!ops.parse(argc, argv) || help)
@@ -80,9 +84,20 @@ int main(int argc, char** argv)
     if (step         < 0) step         = min_spatial;
     if (spatial_eps  < 0) spatial_eps  = min_spatial;
     if (temporal_eps < 0) temporal_eps = time_space;
+    if (loop_eps     < 0) loop_eps     = step;        // closed-loop detection on by default
+    if (self_skip    < 0)                              // spiral self-revisit detection on by default
+    {
+        // Exclude enough of the trailing path that the locally-adjacent points
+        // (which sit within ~1 occupancy cell of the head) cannot self-match;
+        // a few cell widths of arc length is sufficient.
+        double cell = std::max(spatial_eps, temporal_eps);
+        self_skip = std::max(4, static_cast<int>(std::ceil(3.0 * cell / step)));
+    }
 
     std::cout << "step=" << step << " max_steps=" << max_steps
-              << " spatial_eps=" << spatial_eps << " temporal_eps=" << temporal_eps << std::endl;
+              << " spatial_eps=" << spatial_eps << " temporal_eps=" << temporal_eps
+              << " loop_eps=" << loop_eps << (loop_eps > 0 ? "" : " (seed-return detection disabled)")
+              << " self_skip=" << self_skip << (self_skip > 0 ? "" : " (spiral detection disabled)") << std::endl;
     std::cout << "stable FFF: k=" << k_strength << " tau_max=" << tau_max
               << " fd_frac=" << fd_frac;
     if (k_strength <= 0.0)
@@ -107,7 +122,7 @@ int main(int argc, char** argv)
     sfff::track_all(grid, seeds, static_cast<T>(step), max_steps,
                     static_cast<T>(spatial_eps), static_cast<T>(temporal_eps),
                     static_cast<T>(k_strength), static_cast<T>(tau_max),
-                    static_cast<T>(fd_frac), traces);
+                    static_cast<T>(fd_frac), static_cast<T>(loop_eps), self_skip, traces);
 
     auto t1 = std::chrono::high_resolution_clock::now();
     std::cout << "tracking time (ms): "

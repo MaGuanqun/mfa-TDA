@@ -34,6 +34,7 @@
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
+#include <deque>
 #include <unordered_set>
 
 // mfa/types.hpp defines the global-namespace VectorX/MatrixX alias templates
@@ -331,15 +332,27 @@ namespace vff_io
 // ---------------------------------------------------------------------------
 // RK4 stream-line integration of the feature flow field (no correction step).
 // ---------------------------------------------------------------------------
+template<typename T> class CoveredIndex;   // defined below; used for self-revisit detection
+
 template<typename T>
 struct Integrator
 {
     const VectorFieldGrid<T>& g;
     T   step;          // fixed arc-length step (full space-time)
     int max_steps;     // maximum steps per direction
+    T   loop_eps;      // closure threshold: return within this of the seed => closed loop
+    T   spatial_eps;   // space-time occupancy resolution for self-revisit detection
+    T   temporal_eps;  //   (same grid used to dedup critical points across seeds)
+    int self_skip;     // trailing window (in steps) excluded from self-revisit matching
 
-    Integrator(const VectorFieldGrid<T>& grid, T step_size, int max_steps_)
-        : g(grid), step(step_size), max_steps(max_steps_) {}
+    // How a single integrated branch terminated.
+    enum class Stop { Open, SeedClosed, SelfRevisit };
+
+    Integrator(const VectorFieldGrid<T>& grid, T step_size, int max_steps_,
+               T loop_eps_, T spatial_eps_, T temporal_eps_, int self_skip_)
+        : g(grid), step(step_size), max_steps(max_steps_),
+          loop_eps(loop_eps_), spatial_eps(spatial_eps_),
+          temporal_eps(temporal_eps_), self_skip(self_skip_) {}
 
     // One RK4 step. sign = +1 forward, -1 backward. Returns false to stop.
     bool rk4(const VectorX<T>& p, T sign, VectorX<T>& p_next) const
@@ -359,31 +372,111 @@ struct Integrator
         return true;
     }
 
-    // Integrate one direction from seed; appends new points (excludes seed) to out.
-    void integrate(const VectorX<T>& seed, T sign, std::vector<VectorX<T>>& out) const
+    // Integrate one direction from the seed; appends new points (excludes the
+    // seed) to out. Two loop-termination tests run during integration (matching
+    // the stable-FFF tool so both can be compared on equal footing):
+    //
+    //   * Exact seed return (threshold loop_eps): once the path has moved clear
+    //     of the seed, the first point that comes back within loop_eps of it ends
+    //     the branch -- a closed feature line that passes through the seed. The
+    //     closing point is NOT appended; trace() closes the polyline exactly.
+    //
+    //   * Self-revisit: a stream line that winds onto a (near-)closed orbit never
+    //     returns to the seed, so the seed test never fires and the trace just
+    //     loops until max_steps. We detect this by dropping each visited point
+    //     into a space-time occupancy grid (resolution spatial_eps/temporal_eps)
+    //     after a short trailing delay of self_skip steps -- so the locally
+    //     adjacent path is not matched -- and stopping as soon as a new point
+    //     lands on an already-visited cell, i.e. it begins retracing an earlier
+    //     lap. The revisit point IS appended so the lap closes onto itself.
+    //
+    // Returns how the branch stopped (Open / SeedClosed / SelfRevisit).
+    Stop integrate(const VectorX<T>& seed, T sign, std::vector<VectorX<T>>& out) const
     {
         VectorX<T> p = seed, pn;
         const T stall = static_cast<T>(1e-6) * step;
+        const bool check_seed = (loop_eps > T(0));
+        const bool check_self = (self_skip > 0 && spatial_eps > T(0) && temporal_eps > T(0));
+        bool left_start = false;   // has the path moved clear of the seed yet?
+
+        CoveredIndex<T>        visited(g.D, spatial_eps, temporal_eps);
+        std::deque<VectorX<T>> pending;   // recent points not yet eligible for matching
+        if (check_self) pending.emplace_back(seed);
+
         for (int s = 0; s < max_steps; ++s)
         {
             if (!rk4(p, sign, pn)) break;
             if ((pn - p).norm() < stall) break;
+
+            if (check_seed)
+            {
+                T d_seed = (pn - seed).norm();
+                if (!left_start)
+                {
+                    if (d_seed > loop_eps) left_start = true;
+                }
+                else if (d_seed < loop_eps)
+                {
+                    return Stop::SeedClosed;   // returned to the seed => closed loop
+                }
+            }
+
+            if (check_self && visited.covered(pn))
+            {
+                out.emplace_back(pn);          // retracing an earlier lap => stop here
+                return Stop::SelfRevisit;
+            }
+
+            // Advance the trailing window: points older than self_skip steps
+            // become eligible to match against, the locally-adjacent path does not.
+            if (check_self)
+            {
+                pending.emplace_back(pn);
+                if (static_cast<int>(pending.size()) > self_skip)
+                {
+                    visited.insert(pending.front());
+                    pending.pop_front();
+                }
+            }
+
             out.emplace_back(pn);
             p = pn;
         }
+        return Stop::Open;
     }
 
-    // Full stream line through seed = reverse(backward) + seed + forward.
-    void trace(const VectorX<T>& seed, std::vector<VectorX<T>>& line) const
+    // Full stream line through seed. For an open feature line this is
+    // reverse(backward) + seed + forward (as before). When the forward branch
+    // returns exactly to the seed the whole closed loop is captured in one
+    // revolution, so the backward branch (which would only retrace it) is skipped
+    // and the polyline is closed exactly. A self-revisit on either branch is kept
+    // as integrated and simply flags the trace as a loop.
+    // Returns true iff the resulting stream line is a loop.
+    bool trace(const VectorX<T>& seed, std::vector<VectorX<T>>& line) const
     {
-        std::vector<VectorX<T>> back, fwd;
-        integrate(seed, T(-1), back);
-        integrate(seed, T(+1), fwd);
+        std::vector<VectorX<T>> fwd;
+        Stop fs = integrate(seed, T(+1), fwd);
+
         line.clear();
-        line.reserve(back.size() + 1 + fwd.size());
+        if (fs == Stop::SeedClosed)
+        {
+            line.reserve(fwd.size() + 2);
+            line.emplace_back(seed);
+            for (auto& q : fwd) line.emplace_back(q);
+            line.emplace_back(seed);   // explicit closure: last vertex == first
+            return true;
+        }
+
+        std::vector<VectorX<T>> back;
+        Stop bs = integrate(seed, T(-1), back);
+
+        line.reserve(back.size() + 2 + fwd.size());
         for (auto it = back.rbegin(); it != back.rend(); ++it) line.emplace_back(*it);
         line.emplace_back(seed);
         for (auto& q : fwd) line.emplace_back(q);
+        if (bs == Stop::SeedClosed) line.emplace_back(seed);   // explicit closure
+
+        return (fs != Stop::Open) || (bs != Stop::Open);
     }
 };
 
@@ -520,34 +613,40 @@ void track_all(const VectorFieldGrid<T>& g,
                int                       max_steps,
                T                         spatial_eps,
                T                         temporal_eps,
+               T                         loop_eps,
+               int                       self_skip,
                std::vector<CP_Trace<T>>& traces)
 {
     std::sort(seeds.begin(), seeds.end(),
               [](const VectorX<T>& a, const VectorX<T>& b) { return a[a.size() - 1] < b[b.size() - 1]; });
 
-    Integrator<T>   integrator(g, step, max_steps);
+    Integrator<T>   integrator(g, step, max_steps, loop_eps, spatial_eps, temporal_eps, self_skip);
     CoveredIndex<T> covered(g.D, spatial_eps, temporal_eps);
 
     traces.clear();
     traces.reserve(seeds.size());
 
     int skipped = 0;
+    int loops   = 0;
     for (const auto& seed : seeds)
     {
         if (covered.covered(seed)) { ++skipped; continue; }
 
         std::vector<VectorX<T>> line;
-        integrator.trace(seed, line);
+        bool is_loop = integrator.trace(seed, line);
+        if (is_loop) ++loops;
 
         covered.insert_line(line);
 
         CP_Trace<T> tr;
-        tr.traces = std::move(line);
+        tr.traces  = std::move(line);
+        tr.is_loop = is_loop;
         traces.emplace_back(std::move(tr));
     }
 
     std::cout << "seeds: " << seeds.size()
               << ", stream lines built: " << traces.size()
+              << ", closed loops: " << loops
               << ", seeds skipped (already covered): " << skipped << std::endl;
 }
 

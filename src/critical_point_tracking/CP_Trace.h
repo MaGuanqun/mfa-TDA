@@ -10,6 +10,7 @@ struct CP_Trace
     std::array<int,2> connect_info{-1,-1}; //store the degenerate_point_index
     size_t prefix_start; //store the start index of every trace in the prefix sum of the number of points in every trace
     bool duplicated{false}; //if the trace is duplicated, it will not be written to the output file
+    bool is_loop{false}; //if the trace closed back onto its seed (closed feature line / loop)
 
 };
 
