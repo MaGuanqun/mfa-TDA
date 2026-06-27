@@ -34,7 +34,6 @@
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
-#include <deque>
 #include <unordered_set>
 
 // mfa/types.hpp defines the global-namespace VectorX/MatrixX alias templates
@@ -332,8 +331,6 @@ namespace vff_io
 // ---------------------------------------------------------------------------
 // RK4 stream-line integration of the feature flow field (no correction step).
 // ---------------------------------------------------------------------------
-template<typename T> class CoveredIndex;   // defined below; used for self-revisit detection
-
 template<typename T>
 struct Integrator
 {
@@ -372,6 +369,17 @@ struct Integrator
         return true;
     }
 
+    // True if a and b coincide within the space-time tolerance: Euclidean
+    // distance over the spatial axes (0..D-2) <= spatial_eps AND |dt| over the
+    // time axis (D-1) <= temporal_eps. Exact -- no grid quantization.
+    bool close_in_spacetime(const VectorX<T>& a, const VectorX<T>& b) const
+    {
+        T s2 = T(0);
+        for (int ax = 0; ax < g.D - 1; ++ax) { T d = a[ax] - b[ax]; s2 += d * d; }
+        if (s2 > spatial_eps * spatial_eps) return false;
+        return std::abs(a[g.D - 1] - b[g.D - 1]) <= temporal_eps;
+    }
+
     // Integrate one direction from the seed; appends new points (excludes the
     // seed) to out. Two loop-termination tests run during integration (matching
     // the stable-FFF tool so both can be compared on equal footing):
@@ -383,12 +391,18 @@ struct Integrator
     //
     //   * Self-revisit: a stream line that winds onto a (near-)closed orbit never
     //     returns to the seed, so the seed test never fires and the trace just
-    //     loops until max_steps. We detect this by dropping each visited point
-    //     into a space-time occupancy grid (resolution spatial_eps/temporal_eps)
-    //     after a short trailing delay of self_skip steps -- so the locally
-    //     adjacent path is not matched -- and stopping as soon as a new point
-    //     lands on an already-visited cell, i.e. it begins retracing an earlier
-    //     lap. The revisit point IS appended so the lap closes onto itself.
+    //     loops until max_steps. We detect this EXACTLY: each new point is
+    //     compared (in space-time, spatial_eps over the spatial axes and
+    //     temporal_eps over time) against every earlier point on this branch,
+    //     skipping the last self_skip points so the locally-adjacent path is not
+    //     matched. The branch stops the instant the new point comes within
+    //     tolerance of an earlier one, i.e. as soon as a (near-)loop forms -- with
+    //     no quantization and no lag. The new point and the matched earlier point
+    //     are both appended so the loop closes exactly onto that point.
+    //
+    // Note: the self-revisit test is O(N) per step (O(N^2) per branch). Loops
+    // terminate early so N stays small; only genuinely open branches pay the full
+    // cost up to max_steps.
     //
     // Returns how the branch stopped (Open / SeedClosed / SelfRevisit).
     Stop integrate(const VectorX<T>& seed, T sign, std::vector<VectorX<T>>& out) const
@@ -398,10 +412,6 @@ struct Integrator
         const bool check_seed = (loop_eps > T(0));
         const bool check_self = (self_skip > 0 && spatial_eps > T(0) && temporal_eps > T(0));
         bool left_start = false;   // has the path moved clear of the seed yet?
-
-        CoveredIndex<T>        visited(g.D, spatial_eps, temporal_eps);
-        std::deque<VectorX<T>> pending;   // recent points not yet eligible for matching
-        if (check_self) pending.emplace_back(seed);
 
         for (int s = 0; s < max_steps; ++s)
         {
@@ -421,21 +431,19 @@ struct Integrator
                 }
             }
 
-            if (check_self && visited.covered(pn))
-            {
-                out.emplace_back(pn);          // retracing an earlier lap => stop here
-                return Stop::SelfRevisit;
-            }
-
-            // Advance the trailing window: points older than self_skip steps
-            // become eligible to match against, the locally-adjacent path does not.
             if (check_self)
             {
-                pending.emplace_back(pn);
-                if (static_cast<int>(pending.size()) > self_skip)
+                // Exact scan against all earlier points except the last self_skip.
+                int upto = static_cast<int>(out.size()) - self_skip;
+                for (int j = 0; j < upto; ++j)
                 {
-                    visited.insert(pending.front());
-                    pending.pop_front();
+                    if (close_in_spacetime(out[j], pn))
+                    {
+                        VectorX<T> match = out[j];     // copy before out may reallocate
+                        out.emplace_back(pn);
+                        out.emplace_back(match);       // close the (near-)loop exactly
+                        return Stop::SelfRevisit;
+                    }
                 }
             }
 

@@ -1525,6 +1525,157 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         grad(2) = static_cast<T>(dz.item<double>());
     }
 
+    // Accurate Hessian via nested autograd (second-order), returned in physical
+    // domain coordinates. Follows the autograd scheme of derivative() above and
+    // rescales with convert_hessian_to_domain. The full 3x3 Hessian is filled,
+    // including the time-time term (f_tt), so the leading 2x2 block is the exact
+    // spatial Hessian:
+    //   [ f_xx  f_xy  f_xt ]
+    //   [ f_xy  f_yy  f_yt ]
+    //   [ f_xt  f_yt  f_tt ]
+    void query_hessian_autograd(const VectorX<T>& point, Eigen::MatrixX<T>& Hessian)
+    {
+        if (!loaded) throw std::runtime_error("INR model not loaded");
+
+        // model input is in [-1,1] with reversed axis order (t, y, x)
+        VectorX<T> p = convert_point_to_domain_reverse_order(point);
+
+        torch::Tensor input = torch::from_blob(
+            (void*)p.data(), {1, p.size()},
+            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
+        ).clone();
+        input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
+        input.set_requires_grad(true);
+
+        torch::Tensor output = module.forward({input}).toTensor().reshape({});
+
+        // first-order gradient wrt full input (col 0 = t, 1 = y, 2 = x)
+        torch::Tensor g1 = torch::autograd::grad(
+            {output}, {input}, /*grad_outputs=*/{},
+            /*retain_graph=*/true, /*create_graph=*/true)[0];
+        torch::Tensor dx = g1.index({0, 2});
+        torch::Tensor dy = g1.index({0, 1});
+        torch::Tensor dt = g1.index({0, 0});
+
+        // second-order: differentiate each first-order component again
+        torch::Tensor g2x = torch::autograd::grad({dx}, {input}, {}, /*retain*/true,  /*create*/false)[0]; // [fxt, fxy, fxx]
+        torch::Tensor g2y = torch::autograd::grad({dy}, {input}, {}, /*retain*/true,  /*create*/false)[0]; // [fyt, fyy, fyx]
+        torch::Tensor g2t = torch::autograd::grad({dt}, {input}, {}, /*retain*/false, /*create*/false)[0]; // [ftt, fty, ftx]
+
+        auto val = [](const torch::Tensor& t) {
+            return static_cast<T>(t.detach().to(torch::kCPU).item<double>());
+        };
+
+        const T fxx = val(g2x.index({0, 2}));
+        const T fxy = val(g2x.index({0, 1}));
+        const T fxt = val(g2x.index({0, 0}));
+        const T fyy = val(g2y.index({0, 1}));
+        const T fyt = val(g2y.index({0, 0}));
+        const T ftt = val(g2t.index({0, 0}));
+
+        Hessian.resize(3, 3);
+        Hessian(0, 0) = fxx; Hessian(0, 1) = fxy; Hessian(0, 2) = fxt;
+        Hessian(1, 0) = fxy; Hessian(1, 1) = fyy; Hessian(1, 2) = fyt;
+        Hessian(2, 0) = fxt; Hessian(2, 1) = fyt; Hessian(2, 2) = ftt;
+
+        // [-1,1] model coords -> physical domain: H_ij *= 4/(range_i*range_j)
+        convert_hessian_to_domain(Hessian);
+    }
+
+    // All derivatives needed for the spatial-acceleration (d^2x/dt^2) of a
+    // critical point, computed via nested autograd and returned in physical
+    // domain coordinates. Domain axis order is (x, y, t); the network input is
+    // [-1,1] with reversed axis order (t, y, x).
+    //
+    // Outputs:
+    //   H     : 2x2 spatial Hessian   [[f_xx, f_xy], [f_xy, f_yy]]
+    //   gt    : d/dt of spatial grad  [f_xt, f_yt]
+    //   third : size 9, in the order
+    //           [f_xxx, f_xxy, f_xyy, f_yyy,   // pure spatial thirds
+    //            f_xxt, f_xyt, f_yyt,          // two-spatial + one-time
+    //            f_xtt, f_ytt]                 // one-spatial + two-time
+    void query_accel_derivs(const VectorX<T>& point,
+                            Eigen::MatrixX<T>& H,
+                            VectorX<T>& gt,
+                            VectorX<T>& third)
+    {
+        if (!loaded) throw std::runtime_error("INR model not loaded");
+
+        // model input is in [-1,1] with reversed axis order (t, y, x)
+        VectorX<T> p = convert_point_to_domain_reverse_order(point);
+
+        torch::Tensor input = torch::from_blob(
+            (void*)p.data(), {1, p.size()},
+            torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU)
+        ).clone();
+        input = input.to(device, /*non_blocking=*/false, /*copy=*/true);
+        input.set_requires_grad(true);
+
+        torch::Tensor output = module.forward({input}).toTensor().reshape({});
+
+        // L1: first-order gradient (col 0 = t, 1 = y, 2 = x)
+        torch::Tensor g1 = torch::autograd::grad(
+            {output}, {input}, {}, /*retain*/true, /*create*/true)[0];
+        torch::Tensor fx = g1.index({0, 2});
+        torch::Tensor fy = g1.index({0, 1});
+
+        // L2: rows of the Hessian (keep graph for third order)
+        torch::Tensor Hx = torch::autograd::grad({fx}, {input}, {}, /*retain*/true, /*create*/true)[0]; // [fxt, fxy, fxx]
+        torch::Tensor Hy = torch::autograd::grad({fy}, {input}, {}, /*retain*/true, /*create*/true)[0]; // [fyt, fyy, fyx]
+
+        torch::Tensor fxx = Hx.index({0, 2});
+        torch::Tensor fxy = Hx.index({0, 1});
+        torch::Tensor fxt = Hx.index({0, 0});
+        torch::Tensor fyy = Hy.index({0, 1});
+        torch::Tensor fyt = Hy.index({0, 0});
+
+        // L3: differentiate each needed second-order term once more
+        torch::Tensor Gxx = torch::autograd::grad({fxx}, {input}, {}, /*retain*/true,  /*create*/false)[0]; // [fxxt, fxxy, fxxx]
+        torch::Tensor Gxy = torch::autograd::grad({fxy}, {input}, {}, /*retain*/true,  /*create*/false)[0]; // [fxyt, fxyy, fxyx]
+        torch::Tensor Gyy = torch::autograd::grad({fyy}, {input}, {}, /*retain*/true,  /*create*/false)[0]; // [fyyt, fyyy, fyyx]
+        torch::Tensor Gxt = torch::autograd::grad({fxt}, {input}, {}, /*retain*/true,  /*create*/false)[0]; // [fxtt, fxty, fxtx]
+        torch::Tensor Gyt = torch::autograd::grad({fyt}, {input}, {}, /*retain*/false, /*create*/false)[0]; // [fytt, fyty, fytx]
+
+        auto val = [](const torch::Tensor& t) {
+            return static_cast<T>(t.detach().to(torch::kCPU).item<double>());
+        };
+
+        // model-coordinate values
+        const T m_fxx = val(fxx), m_fxy = val(fxy), m_fyy = val(fyy);
+        const T m_fxt = val(fxt), m_fyt = val(fyt);
+        const T m_fxxx = val(Gxx.index({0, 2})), m_fxxy = val(Gxx.index({0, 1})), m_fxxt = val(Gxx.index({0, 0}));
+        const T m_fxyy = val(Gxy.index({0, 1})), m_fxyt = val(Gxy.index({0, 0}));
+        const T m_fyyy = val(Gyy.index({0, 1})), m_fyyt = val(Gyy.index({0, 0}));
+        const T m_fxtt = val(Gxt.index({0, 0}));
+        const T m_fytt = val(Gyt.index({0, 0}));
+
+        // [-1,1] model coords -> physical domain: each derivative is scaled by
+        // prod_axis (2/range_axis)^(order in that axis).
+        const T rx = domain_range(0), ry = domain_range(1), rt = domain_range(2);
+        const T sx = T(2) / rx, sy = T(2) / ry, st = T(2) / rt;
+
+        H.resize(2, 2);
+        H(0, 0) = m_fxx * sx * sx;
+        H(0, 1) = m_fxy * sx * sy;
+        H(1, 0) = H(0, 1);
+        H(1, 1) = m_fyy * sy * sy;
+
+        gt.resize(2);
+        gt(0) = m_fxt * sx * st;
+        gt(1) = m_fyt * sy * st;
+
+        third.resize(9);
+        third(0) = m_fxxx * sx * sx * sx;   // fxxx
+        third(1) = m_fxxy * sx * sx * sy;   // fxxy
+        third(2) = m_fxyy * sx * sy * sy;   // fxyy
+        third(3) = m_fyyy * sy * sy * sy;   // fyyy
+        third(4) = m_fxxt * sx * sx * st;   // fxxt
+        third(5) = m_fxyt * sx * sy * st;   // fxyt
+        third(6) = m_fyyt * sy * sy * st;   // fyyt
+        third(7) = m_fxtt * sx * st * st;   // fxtt
+        third(8) = m_fytt * sy * st * st;   // fytt
+    }
+
 private:
     torch::jit::script::Module module;
     torch::Device device{torch::kCPU};
