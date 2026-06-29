@@ -294,23 +294,43 @@ namespace ply_io
 //   [fxxx, fxxy, fxyy, fyyy,   fxxt, fxyt, fyyt,   fxtt, fytt]
 // ---------------------------------------------------------------------------
 
-// Returns true (and fills xdot, acc) when the spatial Hessian is invertible.
+// Reciprocal condition number of a symmetric 2x2 matrix, rcond = |lambda_min| /
+// |lambda_max| in [0, 1]. rcond == 0 means exactly singular; small rcond means
+// near-degenerate (one eigenvalue ~ 0). Closed form for [[a,b],[b,c]].
+template<typename T>
+T sym2x2_rcond(const Eigen::Matrix<T, 2, 2>& H)
+{
+    const T a = H(0, 0), c = H(1, 1), b = T(0.5) * (H(0, 1) + H(1, 0));
+    const T mean = T(0.5) * (a + c);
+    const T diff = T(0.5) * (a - c);
+    const T disc = std::sqrt(diff * diff + b * b);
+    const T l1 = mean + disc;
+    const T l2 = mean - disc;
+    const T amax = std::max(std::abs(l1), std::abs(l2));
+    const T amin = std::min(std::abs(l1), std::abs(l2));
+    return (amax > T(0)) ? amin / amax : T(0);
+}
+
+// Returns true (and fills xdot, acc) when the spatial Hessian is well enough
+// conditioned (reciprocal condition number > rcond_tol). The acceleration
+// involves H^{-1} up to the cubic power, so ||x_tt|| ~ rcond^{-3}: a relative
+// determinant / rcond test with a too-small tolerance lets near-degenerate
+// (ill-conditioned) points through and produces enormous finite values. The
+// threshold is therefore expressed directly as a reciprocal-condition-number
+// cutoff (a critical point is "degenerate" exactly when an eigenvalue of the
+// spatial Hessian vanishes, i.e. rcond -> 0).
 template<typename T>
 bool accel_from_derivs(const Eigen::Matrix<T, 2, 2>& H,
                        const Eigen::Matrix<T, 2, 1>& gt,
                        const Eigen::Matrix<T, 9, 1>& third,
+                       T rcond_tol,
                        Eigen::Matrix<T, 2, 1>& xdot,
                        Eigen::Matrix<T, 2, 1>& acc)
 {
-    // Exclude points whose spatial Hessian is (near-)singular: x_tt = -H^{-1}(...)
-    // is undefined there. Use a scale-relative test on the 2x2 determinant --
-    // |det(H)| is compared against the Frobenius norm squared (same units), so
-    // the threshold is invariant to the overall magnitude of the entries.
-    const T det = H(0, 0) * H(1, 1) - H(0, 1) * H(1, 0);
-    const T scale = H.squaredNorm();                 // ||H||_F^2
-    const T sing_tol = T(1e-12);
-    if (!(scale > T(0)) || std::abs(det) <= sing_tol * scale)
-        return false;                                // singular spatial Hessian -> excluded
+    // Exclude (near-)degenerate critical points: x_tt = -H^{-1}(...) blows up as
+    // the spatial Hessian becomes singular.
+    if (sym2x2_rcond<T>(H) <= rcond_tol)
+        return false;                                // degenerate spatial Hessian -> excluded
 
     const Eigen::Matrix<T, 2, 2> Hinv = H.inverse();
 
@@ -400,6 +420,7 @@ int main(int argc, char** argv)
     string inr_name   = "";             // INR analytical function name (domain)
     string ply_file   = "mesh.ply";     // mesh whose vertices are sampled
     string out_file   = "";             // optional per-vertex CSV dump
+    double rcond_tol  = 1e-3;           // degeneracy cutoff (reciprocal cond. number)
     bool   help       = false;
 
     opts::Options ops;
@@ -408,6 +429,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('n', "name", inr_name,  " INR function name (domain bounds), e.g. vortex_street_3d");
     ops >> opts::Option('p', "ply",  ply_file,  " input .ply mesh (vertices sampled)");
     ops >> opts::Option('o', "out",  out_file,  " optional output CSV: x,y,t,xdot_x,xdot_y,acc_x,acc_y,|acc|");
+    ops >> opts::Option('t', "rcond", rcond_tol, " degeneracy cutoff: skip points whose spatial Hessian reciprocal condition number <= this (default 1e-3)");
     ops >> opts::Option('h', "help", help,      " show help");
 
     if (!ops.parse(argc, argv) || help)
@@ -483,7 +505,7 @@ int main(int argc, char** argv)
             Eigen::Matrix<T, 9, 1> t9;
             for (int k = 0; k < 9; ++k) t9(k) = third(k);
 
-            valid[i] = accel_from_derivs<T>(H2, g2, t9, xdot[i], acc[i]) ? 1 : 0;
+            valid[i] = accel_from_derivs<T>(H2, g2, t9, T(rcond_tol), xdot[i], acc[i]) ? 1 : 0;
         }
     }
     else
@@ -517,7 +539,7 @@ int main(int argc, char** argv)
                 for (size_t i = range.begin(); i != range.end(); ++i)
                 {
                     if (mfa_accel_derivs<T>(b, vertices[i], H, gt, third))
-                        valid[i] = accel_from_derivs<T>(H, gt, third, xdot[i], acc[i]) ? 1 : 0;
+                        valid[i] = accel_from_derivs<T>(H, gt, third, T(rcond_tol), xdot[i], acc[i]) ? 1 : 0;
                     else
                         valid[i] = 0;
                 }
@@ -546,7 +568,9 @@ int main(int argc, char** argv)
     }
 
     std::cout << "spatial acceleration |d^2x/dt^2| over " << n_valid << " / " << N
-              << " vertices (rest had singular spatial Hessian):" << std::endl;
+              << " vertices (" << (N - n_valid)
+              << " skipped: degenerate spatial Hessian, rcond <= " << rcond_tol << "):"
+              << std::endl;
     if (n_valid > 0)
     {
         std::cout << std::setprecision(10);

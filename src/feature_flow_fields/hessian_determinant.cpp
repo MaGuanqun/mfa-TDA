@@ -141,7 +141,7 @@ bool read_points_dat(const std::string& filename, int D, std::vector<VectorX<T>>
 template<typename T>
 inline void hessian_dets(const MatrixX<T>& H, T& det, T& det_norm)
 {
-    det = H.determinant();
+    det = std::abs(H.determinant());
     const T n2 = H.squaredNorm();
     det_norm = (n2 > T(0)) ? det / n2 : T(0);
 }
@@ -228,7 +228,7 @@ int main(int argc, char** argv)
     string inr_name   = "";
     string point_file = "points.dat";
     string fmt        = "auto";          // auto | dat | csv
-    string out_file   = "hessian_det.csv";
+    string out_file   = "";
     int    spatial    = 1;               // 1: spatial Hessian (drop time axis); 0: full DxD
     bool   help       = false;
 
@@ -362,6 +362,10 @@ int main(int argc, char** argv)
     std::cout << "evaluation time (ms): "
               << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
               << std::endl;
+
+    if(out_file.empty()){
+        return 0;
+    }
 
     // ---- write ----
     const bool out_dat = (out_file.size() >= 4 &&

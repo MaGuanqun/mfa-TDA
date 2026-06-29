@@ -130,7 +130,10 @@ def remove_boundary_points(polydata, domain_image):
     return filtered
 
 
-def compute_tracking(input_file, output_file, z_translation=1.0):
+
+
+
+def compute_tracking(input_file, output_file,domain_min,domain_max):
     
     print(f"Input file: {input_file}")
     
@@ -153,19 +156,21 @@ def compute_tracking(input_file, output_file, z_translation=1.0):
     # otherwise fall back to the user-supplied z_translation argument.
     fetched_raw = sm.Fetch(timeTrackingvti)
     dims = fetched_raw.GetDimensions()  # (nx, ny, nz); nz==1 for 2-D data
-    relative_destruction_cost = 2.0 / min(dims[0], dims[1])
+    relative_destruction_cost = 2.0*min(domain_max[0]-domain_min[0], domain_max[1]-domain_min[1]) / min(dims[0], dims[1])
     print(f"Grid dimensions: {dims}, Relativedestructioncost: {relative_destruction_cost}")
 
-    if len(all_point_arrays) >= 2:
-        fd0 = fetched_raw.GetFieldData().GetArray(all_point_arrays[0])
-        fd1 = fetched_raw.GetFieldData().GetArray(all_point_arrays[1])
-        if fd0 is not None and fd1 is not None:
-            v0 = VN.vtk_to_numpy(fd0)[0]
-            v1 = VN.vtk_to_numpy(fd1)[0]
-            derived = abs(float(v1) - float(v0))
-            if derived > 0.0:
-                z_translation = derived
-                print(f"Z translation derived from FieldData: {z_translation}")
+    z_translation = (domain_max[2]-domain_min[2])/(len(all_point_arrays)-1)
+    
+    # if len(all_point_arrays) >= 2:
+    #     fd0 = fetched_raw.GetFieldData().GetArray(all_point_arrays[0])
+    #     fd1 = fetched_raw.GetFieldData().GetArray(all_point_arrays[1])
+    #     if fd0 is not None and fd1 is not None:
+    #         v0 = VN.vtk_to_numpy(fd0)[0]
+    #         v1 = VN.vtk_to_numpy(fd1)[0]
+    #         derived = abs(float(v1) - float(v0))
+    #         if derived > 0.0:
+    #             z_translation = derived
+    #             print(f"Z translation derived from FieldData: {z_translation}")
 
     # Apply array preconditioning (required for TTK filters)
     precond = TTKArrayPreconditioning(Input=timeTrackingvti)
@@ -199,6 +204,15 @@ def compute_tracking(input_file, output_file, z_translation=1.0):
     tracking_surface = sm.Fetch(extractSurface1)
     tracking_filtered = remove_boundary_points(tracking_surface, fetched_raw)
 
+    # Shift every point's z value down by domain_min[2]
+    pts = tracking_filtered.GetPoints()
+    for pid in range(pts.GetNumberOfPoints()):
+        x, y, z = pts.GetPoint(pid)
+        pts.SetPoint(pid, x, y, z - domain_min[2])
+    pts.Modified()
+
+    
+
     writer = vtk.vtkXMLPolyDataWriter()
     writer.SetFileName(output_file)
     writer.SetInputData(tracking_filtered)
@@ -209,11 +223,30 @@ def compute_tracking(input_file, output_file, z_translation=1.0):
 parser = argparse.ArgumentParser(description='TTK Tracking From Fields.')
 parser.add_argument('-i', '--input_name',   type=str,   default='file_name.vti', help='input VTI file containing time-step arrays')
 parser.add_argument('-o', '--output_name',  type=str,   default='tracking.vtp',  help='output VTP file for tracking trajectories')
-parser.add_argument('-z', '--z_translation', type=float, default=1.0,            help='Z spacing between consecutive time steps (for 2D data)')
 parser.add_argument('-s', '--server',       type=int,   default=0,               help='0 = local PC, 1 = remote server')
+parser.add_argument('-f', '--function',     type=str,   default='rotating_gaussian', help='function')
 
 args = parser.parse_args()
 
+ # Domain & base dims
+if args.function == "vortex_street":
+    dim = np.array([100, 80, 50])
+    dom_min = np.array([0.0, 0.0, 0.0])
+    dom_max = np.array([99.0, 79.0, 49.0])
+elif args.function =='vortex_street_3d':
+    dim = np.array([80,10,15])
+    dom_min = np.array([-0.5, -0.5, 13.5])
+    dom_max = np.array([7.5, 0.5, 15.0])
+    # min = np.array([-0.5, -0.5, 0.0])
+    # max = np.array([0.5, 7.5, 15])
+elif args.function =='boussinesq_3d':
+    dim = np.array([10,30,15])
+    dom_min = np.array([-0.5, -0.5, 0.0])
+    dom_max = np.array([0.5, 2.5, 1.5])
+else:
+    raise ValueError(f"Unknown function name: {args.function}")
+
+
 # plugin_log(is_server=args.server)
 
-compute_tracking(args.input_name, args.output_name, args.z_translation)
+compute_tracking(args.input_name, args.output_name,dom_min,dom_max)
