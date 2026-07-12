@@ -611,7 +611,9 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         VectorX<T>& grad_out,             // [fx, fy, ft]
         Eigen::MatrixX<T>& Hessian_out,   // 3x3
         VectorX<T>& third_spatial_out,    // [fxxx, fxxy, fxyy, fyyy]
-        VectorX<T>& third_tmix_out       // [fxxt, fxyt, fyyt]
+        VectorX<T>& third_tmix_out,       // [fxxt, fxyt, fyyt]
+        T* fxtt_out = nullptr,            // optional: f_xtt (one-spatial + two-time)
+        T* fytt_out = nullptr             // optional: f_ytt
     ) {
         if (!loaded)
             throw std::runtime_error("INR model not loaded");
@@ -737,6 +739,19 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
 
         T Hxt = (g_t_plus(0) - g_t_minus(0)) * inv2ht; // f_xt
         T Hyt = (g_t_plus(1) - g_t_minus(1)) * inv2ht; // f_yt
+
+        // Optional one-spatial + two-time third derivatives, from a central
+        // second time difference of the spatial gradient (reuses the t-stencil
+        // gradients already evaluated above; no extra model evaluation):
+        //   f_xtt = ( f_x(t+ht) - 2 f_x(t) + f_x(t-ht) ) / ht^2   (and f_ytt)
+        if (fxtt_out || fytt_out)
+        {
+            const T inv_ht2 = static_cast<T>(1) / (ht * ht);
+            if (fxtt_out)
+                *fxtt_out = (g_t_plus(0) - static_cast<T>(2) * grad_out(0) + g_t_minus(0)) * inv_ht2;
+            if (fytt_out)
+                *fytt_out = (g_t_plus(1) - static_cast<T>(2) * grad_out(1) + g_t_minus(1)) * inv_ht2;
+        }
 
         // ---------------------------------------------------------------------
         // 6) Assemble Hessian at base point (center c0 = (0,0,0)):
@@ -1674,6 +1689,57 @@ static VectorXi point_num_in_block_(const string& func_name) //number of initial
         third(6) = m_fyyt * sy * sy * st;   // fyyt
         third(7) = m_fxtt * sx * st * st;   // fxtt
         third(8) = m_fytt * sy * st * st;   // fytt
+    }
+
+    // Finite-difference counterpart of query_accel_derivs. All derivatives are
+    // obtained from central finite differences of the (autograd) gradient field
+    // (step delta_h*range) instead of exact nested autograd, and returned in
+    // physical-domain coordinates. Same outputs and ordering as
+    // query_accel_derivs:
+    //   H     : 2x2 spatial Hessian   [[f_xx, f_xy], [f_xy, f_yy]]
+    //   gt    : d/dt of spatial grad  [f_xt, f_yt]
+    //   third : size 9
+    //           [f_xxx, f_xxy, f_xyy, f_yyy,   f_xxt, f_xyt, f_yyt,   f_xtt, f_ytt]
+    // Unlike the exact autograd version, the finite differences low-pass smooth
+    // the INR's high-frequency curvature, typically yielding smaller, less noisy
+    // velocities/accelerations.
+    void query_accel_derivs_fd(const VectorX<T>& point,
+                               Eigen::MatrixX<T>& H,
+                               VectorX<T>& gt,
+                               VectorX<T>& third)
+    {
+        if (!loaded) throw std::runtime_error("INR model not loaded");
+
+        // 1) Full 3x3 FD Hessian (f_tt = 0), spatial and time-mixed third
+        //    derivatives, and the two-time thirds (f_xtt, f_ytt) -- all from the
+        //    single central-difference stencil of the gradient field.
+        VectorX<T>        grad, third_spatial, third_tmix;
+        Eigen::MatrixX<T> Hfull;
+        T fxtt = T(0), fytt = T(0);
+        query_up_to_third_derivative(point, grad, Hfull, third_spatial, third_tmix,
+                                     &fxtt, &fytt);
+
+        // 2) Assemble outputs in the query_accel_derivs layout
+        H.resize(2, 2);
+        H(0, 0) = Hfull(0, 0);
+        H(0, 1) = Hfull(0, 1);
+        H(1, 0) = Hfull(1, 0);
+        H(1, 1) = Hfull(1, 1);
+
+        gt.resize(2);
+        gt(0) = Hfull(0, 2);   // f_xt
+        gt(1) = Hfull(1, 2);   // f_yt
+
+        third.resize(9);
+        third(0) = third_spatial(0);   // fxxx
+        third(1) = third_spatial(1);   // fxxy
+        third(2) = third_spatial(2);   // fxyy
+        third(3) = third_spatial(3);   // fyyy
+        third(4) = third_tmix(0);      // fxxt
+        third(5) = third_tmix(1);      // fxyt
+        third(6) = third_tmix(2);      // fyyt
+        third(7) = fxtt;               // fxtt
+        third(8) = fytt;               // fytt
     }
 
 private:

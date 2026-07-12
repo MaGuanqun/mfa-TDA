@@ -133,7 +133,7 @@ def remove_boundary_points(polydata, domain_image):
 
 
 
-def compute_tracking(input_file, output_file,domain_min,domain_max):
+def compute_tracking(input_file, output_file,domain_min,domain_max,function):
     
     print(f"Input file: {input_file}")
     
@@ -156,7 +156,12 @@ def compute_tracking(input_file, output_file,domain_min,domain_max):
     # otherwise fall back to the user-supplied z_translation argument.
     fetched_raw = sm.Fetch(timeTrackingvti)
     dims = fetched_raw.GetDimensions()  # (nx, ny, nz); nz==1 for 2-D data
-    relative_destruction_cost = 2.0*min(domain_max[0]-domain_min[0], domain_max[1]-domain_min[1]) / min(dims[0], dims[1])
+    
+    if(function == "boussinesq_3d"):
+        relative_destruction_cost = min(domain_max[0]-domain_min[0], domain_max[1]-domain_min[1]) / min(dims[0], dims[1])
+    else:
+        relative_destruction_cost = 2.0*min(domain_max[0]-domain_min[0], domain_max[1]-domain_min[1]) / min(dims[0], dims[1])
+    
     print(f"Grid dimensions: {dims}, Relativedestructioncost: {relative_destruction_cost}")
 
     z_translation = (domain_max[2]-domain_min[2])/(len(all_point_arrays)-1)
@@ -204,11 +209,11 @@ def compute_tracking(input_file, output_file,domain_min,domain_max):
     tracking_surface = sm.Fetch(extractSurface1)
     tracking_filtered = remove_boundary_points(tracking_surface, fetched_raw)
 
-    # Shift every point's z value down by domain_min[2]
+    # add every point's z value down by domain_min[2]
     pts = tracking_filtered.GetPoints()
     for pid in range(pts.GetNumberOfPoints()):
         x, y, z = pts.GetPoint(pid)
-        pts.SetPoint(pid, x, y, z - domain_min[2])
+        pts.SetPoint(pid, x, y, z)
     pts.Modified()
 
     
@@ -249,4 +254,4 @@ else:
 
 # plugin_log(is_server=args.server)
 
-compute_tracking(args.input_name, args.output_name,dom_min,dom_max)
+compute_tracking(args.input_name, args.output_name,dom_min,dom_max,args.function)

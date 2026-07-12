@@ -27,11 +27,16 @@
 //   -i  .pt   TorchScript INR model file       (INR mode; selected when set)
 //   -n        INR function name (domain bounds), e.g. vortex_street_3d
 //   -p  .ply  mesh whose vertices are sampled
+//   -m        INR derivative method: autograd (default) | fd
 //   -o        optional output CSV: x,y,t,xdot_x,xdot_y,acc_x,acc_y,|acc|
 //
-// MFA derivatives use the analytic mfa_extend::recover_mfa; INR derivatives use
-// the exact nested-autograd INRModel::query_accel_derivs. Field is assumed to
-// be 2 spatial dims + 1 time dim (domain dim 3).
+// MFA derivatives use the analytic mfa_extend::recover_mfa. INR derivatives use
+// one of two methods (-m):
+//   autograd (default): exact nested-autograd INRModel::query_accel_derivs.
+//   fd                : central finite differences of the (autograd) gradient
+//                        field (INRModel::query_accel_derivs_fd), which low-pass
+//                        smooths the INR's high-frequency curvature.
+// Field is assumed to be 2 spatial dims + 1 time dim (domain dim 3).
 //
 #include <mfa/mfa.hpp>
 
@@ -420,6 +425,7 @@ int main(int argc, char** argv)
     string inr_name   = "";             // INR analytical function name (domain)
     string ply_file   = "mesh.ply";     // mesh whose vertices are sampled
     string out_file   = "";             // optional per-vertex CSV dump
+    string inr_method = "autograd";     // INR derivatives: autograd | fd
     double rcond_tol  = 1e-3;           // degeneracy cutoff (reciprocal cond. number)
     bool   help       = false;
 
@@ -428,6 +434,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('i', "inr",  inr_model, " input INR TorchScript .pt model (selects INR mode)");
     ops >> opts::Option('n', "name", inr_name,  " INR function name (domain bounds), e.g. vortex_street_3d");
     ops >> opts::Option('p', "ply",  ply_file,  " input .ply mesh (vertices sampled)");
+    ops >> opts::Option('m', "method", inr_method, " INR derivative method: autograd (exact, default) | fd (finite difference of gradient)");
     ops >> opts::Option('o', "out",  out_file,  " optional output CSV: x,y,t,xdot_x,xdot_y,acc_x,acc_y,|acc|");
     ops >> opts::Option('t', "rcond", rcond_tol, " degeneracy cutoff: skip points whose spatial Hessian reciprocal condition number <= this (default 1e-3)");
     ops >> opts::Option('h', "help", help,      " show help");
@@ -476,9 +483,18 @@ int main(int argc, char** argv)
             return 1;
         }
         const int D = static_cast<int>(model.domain_min.size());
+        const bool use_fd = (inr_method == "fd");
+        if (inr_method != "autograd" && inr_method != "fd")
+        {
+            std::cerr << "unknown INR derivative method '" << inr_method
+                      << "' (expected autograd | fd)" << std::endl;
+            return 1;
+        }
         std::cout << "INR model '" << inr_name << "' domain dim " << D
                   << " min " << model.domain_min.transpose()
-                  << " max " << model.domain_max.transpose() << std::endl;
+                  << " max " << model.domain_max.transpose()
+                  << " method " << (use_fd ? "fd (finite difference)" : "autograd (exact)")
+                  << std::endl;
         if (D < 3)
         {
             std::cerr << "spatial acceleration needs a (x,y,t) field (domain dim >= 3)" << std::endl;
@@ -498,7 +514,10 @@ int main(int argc, char** argv)
                 p[d] = c;
             }
 
-            model.query_accel_derivs(p, H, gt, third);
+            if (use_fd)
+                model.query_accel_derivs_fd(p, H, gt, third);
+            else
+                model.query_accel_derivs(p, H, gt, third);
 
             Eigen::Matrix<T, 2, 2> H2 = H.topLeftCorner(2, 2);
             Eigen::Matrix<T, 2, 1> g2 = gt.head(2);

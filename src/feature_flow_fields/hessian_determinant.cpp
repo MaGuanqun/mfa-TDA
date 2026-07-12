@@ -9,9 +9,14 @@
 // builds the full domain Hessian at each point and writes its determinant.
 //
 // MFA Hessians use the analytic second derivatives of the MFA (same scheme as
-// contour/*::compute_hessian). INR Hessians are central differences of the
-// (autograd) gradient field returned by INRModel::eval_grad_batch_in_domain,
-// which gives the full Hessian (including the time--time term).
+// contour/*::compute_hessian). INR Hessians offer two methods (-m):
+//   autograd (default): exact nested second-order autograd Hessian
+//                        (INRModel::query_hessian_autograd). Captures the INR's
+//                        true (often very large, high-frequency) curvature.
+//   fd                : central finite differences of the (autograd) gradient
+//                        field (INRModel::query_up_to_third_derivative). Low-pass
+//                        smooths the curvature -> smaller, less noisy det(H).
+// Both INR methods return Hessians in physical-domain coordinates.
 //
 // Inputs:
 //   -f  .mfa  diy MFA input file                 (MFA mode, the default)
@@ -19,6 +24,7 @@
 //   -n        INR function name (domain bounds), e.g. vortex_street_3d
 //   -p        input points file (.dat or .csv)
 //   -c        input format override: auto (default) | dat | csv
+//   -m        INR Hessian method: autograd (default) | fd
 //   -o        output .csv (point coords + det_hessian); if it ends with .dat,
 //             a binary float64 array of determinants is written instead
 //
@@ -214,6 +220,46 @@ void inr_hessian_det(INRModel<T>& model, const std::vector<VectorX<T>>& points,
     }
 }
 
+// INR: determinant of the Hessian using *finite differences* of the (autograd)
+// gradient field, via the existing INRModel helpers (central differences with
+// step delta_h*range). Unlike the exact nested-autograd Hessian, this low-pass
+// smooths the high-frequency curvature of the INR, which typically yields
+// smaller, less noisy determinants. The FD helpers already return the Hessian in
+// physical-domain coordinates, so NO convert_hessian_to_domain is applied here.
+//   hdim = D-1 -> spatial Hessian (top-left 2x2 block)
+//   hdim = D   -> full 3x3 Hessian (note: f_tt is 0 by construction in the FD
+//                 helper, so the full-Hessian determinant differs from autograd)
+// Fills dets[i] = det(H) and dets_norm[i] = det(H)/||H||^2.
+template<typename T>
+void inr_hessian_det_fd(INRModel<T>& model, const std::vector<VectorX<T>>& points,
+                        int hdim, std::vector<T>& dets, std::vector<T>& dets_norm)
+{
+    const int D = static_cast<int>(model.domain_min.size());
+
+    dets.resize(points.size());
+    dets_norm.resize(points.size());
+
+    Eigen::MatrixX<T> Hfull;   // full 3x3 FD Hessian (domain coords)
+    Eigen::MatrixX<T> H;
+    VectorX<T> grad, third_spatial, third_tmix;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        VectorX<T> p(D);
+        for (int d = 0; d < D; ++d)
+        {
+            T c = (d < points[i].size()) ? points[i][d] : T(0);
+            if (c < model.domain_min[d]) c = model.domain_min[d];
+            if (c > model.domain_max[d]) c = model.domain_max[d];
+            p[d] = c;
+        }
+
+        // central-difference 3x3 Hessian of the gradient field (domain coords)
+        model.query_up_to_third_derivative(p, grad, Hfull, third_spatial, third_tmix);
+        H = Hfull.topLeftCorner(hdim, hdim);
+        hessian_dets<T>(H, dets[i], dets_norm[i]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 int main(int argc, char** argv)
@@ -229,6 +275,7 @@ int main(int argc, char** argv)
     string point_file = "points.dat";
     string fmt        = "auto";          // auto | dat | csv
     string out_file   = "";
+    string inr_method = "autograd";      // INR Hessian: autograd | fd
     int    spatial    = 1;               // 1: spatial Hessian (drop time axis); 0: full DxD
     bool   help       = false;
 
@@ -238,6 +285,7 @@ int main(int argc, char** argv)
     ops >> opts::Option('n', "name",    inr_name,   " INR function name (domain bounds), e.g. vortex_street_3d");
     ops >> opts::Option('p', "points",  point_file, " input points file (.dat or .csv)");
     ops >> opts::Option('c', "format",  fmt,        " input format: auto | dat | csv");
+    ops >> opts::Option('m', "method",  inr_method, " INR Hessian method: autograd (exact, default) | fd (finite difference of gradient)");
     ops >> opts::Option('s', "spatial", spatial,    " 1: spatial Hessian, e.g. 2x2 for 2D+time [default]; 0: full DxD Hessian");
     ops >> opts::Option('o', "out",     out_file,   " output .csv (coords + det); .dat => binary float64 dets");
     ops >> opts::Option('h', "help",    help,       " show help");
@@ -283,11 +331,20 @@ int main(int argc, char** argv)
         }
         const int D = static_cast<int>(model.domain_min.size());
         const int hdim = (spatial != 0) ? std::max(1, D - 1) : D;
+        const bool use_fd = (inr_method == "fd");
+        if (inr_method != "autograd" && inr_method != "fd")
+        {
+            std::cerr << "unknown INR Hessian method '" << inr_method
+                      << "' (expected autograd | fd)" << std::endl;
+            return 1;
+        }
         std::cout << "INR model '" << inr_name << "' domain dim " << D
                   << " min " << model.domain_min.transpose()
                   << " max " << model.domain_max.transpose() << std::endl;
         std::cout << "Hessian: " << hdim << "x" << hdim
-                  << (spatial ? " (spatial)" : " (full)") << std::endl;
+                  << (spatial ? " (spatial)" : " (full)")
+                  << " method " << (use_fd ? "fd (finite difference)" : "autograd (exact)")
+                  << std::endl;
 
         bool ok = is_csv ? read_points_csv<T>(point_file, D, points)
                          : read_points_dat<T>(point_file, D, points);
@@ -296,7 +353,10 @@ int main(int argc, char** argv)
                   << (is_csv ? " (csv)" : " (dat)") << std::endl;
         if (points.empty()) { std::cerr << "no points -- nothing to do" << std::endl; return 1; }
 
-        inr_hessian_det<T>(model, points, hdim, dets, dets_norm);
+        if (use_fd)
+            inr_hessian_det_fd<T>(model, points, hdim, dets, dets_norm);
+        else
+            inr_hessian_det<T>(model, points, hdim, dets, dets_norm);
     }
     else
     {
