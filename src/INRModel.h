@@ -18,7 +18,7 @@ public:
     VectorX<T> function_range;
     VectorXi block_num;
     VectorXi point_num_in_block;
-    T delta_h = 1e-3;
+    T delta_h = 1e-4;
 
     INRModel(const string& func_name, const std::string& model_path = "inr_base.pt",int initial_point_num_in_a_block_=-1, torch::Device input_device = torch::kCPU): function_name(func_name),
     device(input_device), //torch::cuda::is_available() ? torch::kCUDA : torch::kCPU
