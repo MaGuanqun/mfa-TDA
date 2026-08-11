@@ -6,12 +6,14 @@ include_directories         (${CMAKE_SOURCE_DIR}/src/feature_flow_fields)      #
 add_executable              (feature_flow_fields        feature_flow_fields.cpp)
 add_executable              (stable_feature_flow_fields stable_feature_flow_fields.cpp)
 add_executable              (gradient_norm              gradient_norm.cpp)
+add_executable              (gradient_norm_csv_slices   gradient_norm_csv_slices.cpp)
 add_executable              (hessian_determinant        hessian_determinant.cpp)
 add_executable              (spatial_acceleration       spatial_acceleration.cpp)
 
 target_link_libraries       (feature_flow_fields        ${libraries} Torch::Torch)
 target_link_libraries       (stable_feature_flow_fields ${libraries} Torch::Torch)
 target_link_libraries       (gradient_norm              ${libraries} Torch::Torch)
+target_link_libraries       (gradient_norm_csv_slices   ${libraries} Torch::Torch)
 target_link_libraries       (hessian_determinant        ${libraries} Torch::Torch)
 target_link_libraries       (spatial_acceleration       ${libraries} Torch::Torch)
 
@@ -23,12 +25,14 @@ set_property                (TARGET stable_feature_flow_fields PROPERTY INSTALL_
 set_property                (TARGET stable_feature_flow_fields PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 set_property                (TARGET gradient_norm PROPERTY INSTALL_RPATH "${_rpaths}")
 set_property                (TARGET gradient_norm PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
+set_property                (TARGET gradient_norm_csv_slices PROPERTY INSTALL_RPATH "${_rpaths}")
+set_property                (TARGET gradient_norm_csv_slices PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 set_property                (TARGET hessian_determinant PROPERTY INSTALL_RPATH "${_rpaths}")
 set_property                (TARGET hessian_determinant PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 set_property                (TARGET spatial_acceleration PROPERTY INSTALL_RPATH "${_rpaths}")
 set_property                (TARGET spatial_acceleration PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-install                     (TARGETS feature_flow_fields stable_feature_flow_fields gradient_norm hessian_determinant spatial_acceleration
+install                     (TARGETS feature_flow_fields stable_feature_flow_fields gradient_norm gradient_norm_csv_slices hessian_determinant spatial_acceleration
                             DESTINATION ${CMAKE_INSTALL_PREFIX}/src/feature_flow_fields/
                             PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                             GROUP_READ GROUP_WRITE GROUP_EXECUTE

@@ -409,7 +409,7 @@ int main(int argc, char** argv)
         std::vector<VectorX<double>> root_unique;
         Find_boundary_roots find_boundary_roots(root_finding_grad_epsilon,core_mins,core_maxs,point_num_in_block,span_num,same_root_epsilon,function_type,max_itr,point_itr_threshold,static_cast<Block<double>*>(nullptr),&inr_model);
 
-        boundary_start = boundary_start +"_" + std::to_string(initial_point_num_in_a_block) + "_";
+        boundary_start = boundary_start +"_" + std::to_string(initial_point_num_in_a_block)+std::to_string(int(log10(root_finding_grad_epsilon))) + "_";
 
         if(compute_boundary_start==1){
             if (world_size > 1) {
@@ -479,8 +479,8 @@ int main(int argc, char** argv)
             std::cout<<"finding time, millisecond : "<<std::chrono::duration_cast<std::chrono::microseconds>(finding_end_time - cpt_extract_start_time).count()/1000<<std::endl;
 
 
-            // MPI_Barrier(world_comm);
-            // return 0;
+            MPI_Barrier(world_comm);
+            return 0;
         // string test_file=cp_tracing_file+"_test.obj";
 
         // tracking_utility::convert_to_obj(test_file,root_unique);
