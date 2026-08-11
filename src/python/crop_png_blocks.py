@@ -36,8 +36,8 @@ Image.MAX_IMAGE_PIXELS = None
 # ---------------------------------------------------------------------------
 # Set block size once here (pixels). All three crops share this size.
 # ---------------------------------------------------------------------------
-BLOCK_WIDTH = 700 #1300, 1600 (700,vortex_street_3d, mfa)
-BLOCK_HEIGHT = 700 #1300, 1600
+BLOCK_WIDTH = 406 #1300, 1600 (406, vortex_street_3d, INR) (230,vortex_street_3d, mfa) (500, boussinesq_3d, INR)
+BLOCK_HEIGHT = 406 #1300, 1600
 
 # Dataset name -> filename prefix used in PNG names.
 DATASET_PREFIX = {
@@ -56,10 +56,10 @@ INPUT_NAME_SUFFIX = "remove_obstacle_high_reso.png"
 # Edit the coordinates below for your screenshots.
 # ---------------------------------------------------------------------------
 CROP_STARTS: Dict[Tuple[str, str], List[Tuple[int, int]]] = {
-    ("vortex_street_3d", "mfa"): [(5200, 6750), (4440, 9958), (5000, 7613)],
-    ("vortex_street_3d", "INR"): [(3104, 8726), (2472, 7278), (4184, 9997)],
-    ("boussinesq_3d", "mfa"): [(13992, 9724), (11512, 7232), (9504, 3664)],
-    ("boussinesq_3d", "INR"): [(100, 60), (520, 60), (940, 60)],
+    ("vortex_street_3d", "mfa"): [(1625, 2100), (1446, 3225), (1350, 2435)],
+    ("vortex_street_3d", "INR"): [(970, 2727), (760, 2274), (1245, 3174)],
+    ("boussinesq_3d", "mfa"): [(5514, 3093), (4598, 2260), (3964, 1237)],
+    ("boussinesq_3d", "INR"): [(2792, 2039), (5466, 3426), (6587, 1813)],
 }
 
 DATASETS = tuple(DATASET_PREFIX.keys())

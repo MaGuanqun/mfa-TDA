@@ -187,8 +187,10 @@ def inr_fig():
     step_sizes = [20, 30, 40, 60, 80, 120, 160, 240, 320, 480, 640, 960]
     xlabel_contour = [rf"$r/{s}$" for s in step_sizes]
     
-    cylinder_cc = [202, 268, 302, 326, 350, 378, 385, 390, 398, 407, 399, 408]
-    cylinder_cc_remove_cylinder = [191, 240, 274, 302, 308, 313, 301, 294, 297, 307, 303, 318]
+    cylinder_cc = [203, 254, 314, 305, 312, 333, 348, 328, 334, 333, 339, 328]
+    cylinder_cc_remove_cylinder = [189, 229, 263, 288, 285, 290, 284, 272, 271, 278, 277, 281]
+    # cylinder_cc = [202, 268, 302, 326, 350, 378, 385, 390, 398, 407, 399, 408]
+    # cylinder_cc_remove_cylinder = [191, 240, 274, 302, 308, 313, 301, 294, 297, 307, 303, 318]
     
     xlabel_title_contour = r"Step size $s$"
     # ylabel_title_contour = r"\#CC"
@@ -199,22 +201,32 @@ def inr_fig():
     fig, axes = plt.subplots(1, 2, figsize=(17, 6),gridspec_kw={'width_ratios': [8, 8]})  # 3 subplots in a row
  # Relative widths of the subplots
 
+    vortex_street_cc = [133, 127, 137, 134, 145, 141, 151, 149, 149, 149, 155, 152]
+    vortex_street_cc_remove_cylinder = [125, 123, 122, 123, 122, 123, 128, 125, 125, 125, 125, 122]
     
-    vortex_street_cc = [128, 135, 141, 149, 157, 162, 165, 163, 165, 167, 166, 173]
-    vortex_street_cc_remove_cylinder = [125, 124, 124, 124, 125, 127, 129, 128, 125, 127, 125, 126]
     
-        
-    vortex_street_loop=[3, 5, 7, 4, 2, 2, 1, 1, 2, 1, 1, 1]
-    vortex_street_loop_remove_cylinder=[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    # vortex_street_cc = [128, 135, 141, 149, 157, 162, 165, 163, 165, 167, 166, 173]
+    # vortex_street_cc_remove_cylinder = [125, 124, 124, 124, 125, 127, 129, 128, 125, 127, 125, 126]
     
-    cylinder_loop=[7, 17, 19, 18, 23, 24, 20, 29, 39, 42, 41, 41]
-    cylinder_loop_remove_cylinder=[7, 16, 17, 14, 16, 17, 20, 29, 39, 42, 41, 41]
+    
+    vortex_street_loop = [3, 4, 8, 6, 7, 8, 6, 3, 3, 4, 3, 4]
+    vortex_street_loop_remove_cylinder=[1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 3]
+    
+    # vortex_street_loop=[3, 5, 7, 4, 2, 2, 1, 1, 2, 1, 1, 1]
+    # vortex_street_loop_remove_cylinder=[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    
+    cylinder_loop = [10, 19, 23, 25, 32, 24, 27, 36, 48, 50, 53, 53]
+    
+    cylinder_loop_remove_cylinder = [9, 17, 18, 13, 17, 23, 26, 35, 47, 49, 52, 51]
+    
+    # cylinder_loop=[7, 17, 19, 18, 23, 24, 20, 29, 39, 42, 41, 41]
+    # cylinder_loop_remove_cylinder=[7, 16, 17, 14, 16, 17, 20, 29, 39, 42, 41, 41]
     
     label1=r"$\#$Loop w/ obstacle"
     label2=r"$\#$Loop w/o obstacle"
     
     
-    draw_function(axes[0], xlabel_contour, xlabel_title_contour, cylinder_cc_remove_cylinder,cylinder_cc, 'lower right', (1, 1.0),rotation_angle)
+    draw_function(axes[0], xlabel_contour, xlabel_title_contour, cylinder_cc_remove_cylinder,cylinder_cc, 'lower right', (1, 1.0),rotation_angle,0)
     
     draw_function(axes[1], xlabel_contour, xlabel_title_contour, cylinder_loop_remove_cylinder, cylinder_loop, 'lower right', (1.0, 1.0),rotation_angle,0, label1, label2)
     
@@ -226,7 +238,7 @@ def inr_fig():
     
     fig, axes = plt.subplots(1, 2, figsize=(17, 6),gridspec_kw={'width_ratios': [8, 8]})  # 3 subplots in a row
         
-    draw_function(axes[0], xlabel_contour, xlabel_title_contour, vortex_street_cc_remove_cylinder,vortex_street_cc, 'lower right', (1, 1.0),rotation_angle)
+    draw_function(axes[0], xlabel_contour, xlabel_title_contour, vortex_street_cc_remove_cylinder,vortex_street_cc, 'lower right', (1, 1.0),rotation_angle,0)
     
     draw_function(axes[1], xlabel_contour, xlabel_title_contour, vortex_street_loop_remove_cylinder,vortex_street_loop, 'lower right',(1,1.0),rotation_angle,0, label1, label2)
     # Adjust layout and save the figure
@@ -238,8 +250,8 @@ def inr_fig():
     
 
     fig, axes = plt.subplots(1, 2, figsize=(17, 4),gridspec_kw={'width_ratios': [8, 8]})  # 3 subplots in a row
-    draw_function2(axes[1], xlabel_contour, xlabel_title_contour, cylinder_cc_remove_cylinder,'lower right', (1, 0.1), rotation_angle)
-    draw_function2(axes[0], xlabel_contour, xlabel_title_contour, vortex_street_cc_remove_cylinder,'lower right', (1, 0.1), rotation_angle)
+    draw_function2(axes[1], xlabel_contour, xlabel_title_contour, cylinder_cc_remove_cylinder,'lower right', (1, 0.1), rotation_angle,0)
+    draw_function2(axes[0], xlabel_contour, xlabel_title_contour, vortex_street_cc_remove_cylinder,'lower right', (1, 0.1), rotation_angle,0)
     fig.tight_layout(pad=0.1)
     fig.savefig(folder + 'inr_step_size.png', bbox_inches='tight', pad_inches=0)
     fig.savefig(folder + 'inr_step_size.pdf', bbox_inches='tight', pad_inches=0)
@@ -399,13 +411,13 @@ def gradient_norm_fig():
     xlabel_contour = [rf"$r/{s}$" for s in step_sizes]
     
     
-    vortex_inr_mean = [1.783e-11, 1.749e-11, 1.747e-11, 1.745e-11, 1.787e-11, 1.799e-11, 1.841e-11, 1.930e-11, 1.980e-11, 2.154e-11, 2.300e-11, 2.234e-11]
+    vortex_inr_mean = [1.522e-11, 1.573e-11, 1.477e-11, 1.449e-11, 1.382e-11, 1.211e-11, 1.085e-11, 9.722e-12, 8.501e-12, 7.478e-12, 6.927e-12, 6.303e-12]
 
-    vortex_inr_max = [9.976e-11, 1.000e-10, 9.987e-11, 9.999e-11, 9.997e-11, 1.000e-10, 9.999e-11, 9.997e-11, 9.999e-11, 9.999e-11, 1.000e-10, 1.000e-10]
+    vortex_inr_max = [9.976e-11, 9.990e-11, 9.993e-11, 9.996e-11, 9.989e-11, 9.999e-11, 9.998e-11, 9.980e-11, 1.000e-10, 9.997e-11, 9.998e-11, 1.000e-10]
 
-    cylinder_inr_mean = [2.189e-11, 2.316e-11, 2.372e-11, 2.515e-11, 2.619e-11, 2.718e-11, 2.711e-11, 2.748e-11, 2.758e-11, 2.775e-11, 2.737e-11, 2.734e-11]
-
-    cylinder_inr_max = [9.996e-11, 9.997e-11, 9.997e-11, 9.998e-11, 9.999e-11, 1.000e-10, 9.999e-11, 1.000e-10, 1.000e-10, 1.000e-10, 1.000e-10, 1.000e-10]
+    cylinder_inr_mean =[1.130e-11, 1.171e-11, 1.157e-11, 1.292e-11, 1.229e-11, 1.288e-11, 1.289e-11, 1.299e-11, 1.317e-11, 1.320e-11, 1.310e-11, 1.329e-11]
+    
+    cylinder_inr_max = [9.989e-11, 9.997e-11, 9.999e-11, 9.997e-11, 9.989e-11, 9.999e-11, 9.998e-11, 9.999e-11, 1.000e-10, 9.999e-11, 9.999e-11, 1.000e-10]
 
     vortex_mfa_mean = [6.385e-12, 5.984e-12, 6.426e-12, 6.259e-12, 4.637e-12, 1.693e-12, 2.158e-12, 6.181e-12, 1.467e-11, 2.540e-11, 2.808e-11, 2.708e-11]
 
@@ -533,8 +545,8 @@ def draw_start_points_with_seeds():
     rotation_angle=40
     xlabel_contour = [20, 30, 40, 60, 80, 120, 160, 240, 320]
     # xlabel_contour = [rf"$l/{s}$" for s in step_sizes]
-    boussinesq_inr = [113,115,162,171,175,175,175,175,175]
-    vortex_street_inr=[83, 87,88,88,88,88,88,88,88]
+    boussinesq_inr = [111,144,164,172,175,175,175,175,175]
+    vortex_street_inr=[84, 87,87,89,90,92,92,91,91]
     xlabel_title_contour = "Number of Seeds"
     
     quartic_potential_2d =[1,1,1,1,1,1,1,1,1]
@@ -589,8 +601,8 @@ def draw_start_points_with_epsilon():
     rotation_angle=40
     xlabel_contour = ["$e^{-6}$", "$e^{-7}$", "$e^{-8}$", "$e^{-9}$", "$e^{-10}$","$e^{-11}$","$e^{-12}$", "$e^{-13}$"]
     # xlabel_contour = [rf"$l/{s}$" for s in step_sizes]
-    boussinesq_inr = [175,175,175,175,175,175,174,147]
-    vortex_street_inr=[88,88,88,88,88,88,88,85]
+    boussinesq_inr = [147,147,147,147,147,147,147,147]
+    vortex_street_inr=[83,83,83,83,83,83,83,83]
     
     boussinesq_mfa = [206,206,206,206,206,206,206,206]
     vortex_street_mfa=[158,158,158,158,158,158,158,158]
@@ -623,8 +635,8 @@ def draw_degenerate_points_with_epsilon_k():
     boussinesq_mfa = [265,265,265,265,265,265,265]
     vortex_street_mfa=[221,221,221,221,221,221,221]
     
-    boussinesq_inr = [612,612,612,612,612,612,612]
-    vortex_street_inr=[110,110,110,110,110,110,110]
+    boussinesq_inr = [693,693,693,693,693,693,693]
+    vortex_street_inr=[195,195,195,195,195,195,195]
     
     vortex_mfa=[30398,30398,30398,30398,30398,30398,30398]
     xlabel_title_contour = r"$\epsilon_k$"
@@ -650,10 +662,10 @@ def draw_degenerate_points_with_epsilon_k():
 # closed_form_fig()
 # inr_matching_score_fig() 
 
-mfa_matching_score_fig()
+# mfa_matching_score_fig()
 # draw_4d_fig()
 # gradient_norm_fig()
 # draw_start_points_with_seeds()
-# draw_start_points_with_epsilon()
+draw_start_points_with_epsilon()
 # draw_start_points_with_seeds_analytic()
 # draw_degenerate_points_with_epsilon_k()
