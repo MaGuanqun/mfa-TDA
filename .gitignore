@@ -6,4 +6,5 @@
 *.log
 *.sh
 !/isosurface_explicit.sh
+*.cmake
 *.pyc

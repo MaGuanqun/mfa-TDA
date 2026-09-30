@@ -1,6 +1,9 @@
 project                     (mfa-TDA)
 cmake_minimum_required      (VERSION 3.15)
 
+include                     (CTest)
+find_package                (Eigen3 3.3 REQUIRED NO_MODULE HINTS $ENV{EIGEN_PATH})
+
 
 # Ensure MPI imported targets are available for all subdirs
 find_package(MPI REQUIRED C CXX)
@@ -81,11 +84,17 @@ endif                       ()
 # Make sure Torch_DIR points to the correct cmake package directory, e.g.:
 # export Torch_DIR=/home/guanqunma/spack/opt/spack/linux-x86_64_v4/libtorch-2.8.0_cu126-xxxx/share/cmake/Torch
 # -----------------------------------------------------------------------------
-find_package(Torch REQUIRED)
-
-set(Torch_DIR $ENV{Torch_DIR} CACHE PATH "Path to Torch CMake config" FORCE)
-set(TBB_DIR $ENV{TBB_DIR} CACHE PATH "Path to TBB CMake config" FORCE)
-set(CMAKE_PREFIX_PATH $ENV{CMAKE_PREFIX_PATH} CACHE PATH "Prefix path for CMake packages" FORCE)
+# find_package already honors Torch_DIR and CMAKE_PREFIX_PATH from the cache
+# and environment. Preserve its cached result when the shell has no Spack env.
+find_package(Torch CONFIG QUIET HINTS "$ENV{TORCH_PATH}")
+if(NOT Torch_FOUND)
+  message(FATAL_ERROR
+    "LibTorch was not found. From the repository root, run:\n"
+    "  source ./load-env.sh\n"
+    "  cmake -S . -B build\n"
+    "The script must be sourced in the same shell as CMake. Alternatively, "
+    "set -DTorch_DIR=/path/to/libtorch/share/cmake/Torch.")
+endif()
 
 message(STATUS "Found LibTorch at: ${Torch_DIR}")
 message(STATUS "Torch include dirs: ${TORCH_INCLUDE_DIRS}")
@@ -105,7 +114,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 # MFA
 if                          (NOT DEFINED MFA_PATH AND DEFINED ENV{MFA_PATH})
-    set                     (MFA_PATH $ENV{MFA_PATH})
+    set                     (MFA_PATH "$ENV{MFA_PATH}" CACHE PATH "Path to MFA installation")
 endif                       ()
 add_definitions             (-DMFA_NO_WEIGHTS)
 # add_definitions             (-DMFA_SERIAL)

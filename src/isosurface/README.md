@@ -7,39 +7,39 @@ with C++17 and Eigen; they do not require MPI, MFA, TBB, or Torch.
 
 ## Build and run
 
-The existing compiled executables are in `build/isosurface`, and the run script
-points there. Edit its parameters and execute it without arguments:
-
-```sh
-./isosurface_explicit.sh
-```
-
-For the normal project build, load the Spack environment in your current shell
-before configuring or compiling. From the repository root:
+The isosurface executables build with the other enabled project folders. Load
+the Spack environment in your current shell, then configure and compile from
+the repository root:
 
 ```sh
 source ./load-env.sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target root_finding_explicit isosurface_explicit -j 3
+cmake --build build -j 3
+ctest --test-dir build -R '^isosurface_' --output-on-failure
+./isosurface_explicit.sh
 ```
 
-That build produces executables in `build/src/isosurface`. To use them, change
-the script's `binary_dir` to `${script_dir}/build/src/isosurface` after compiling.
+This produces `root_finding_explicit` and `isosurface_explicit` in
+`build/src/isosurface`, which is also the run script's default `binary_dir`.
+To rebuild only these executables, use
+`cmake --build build --target root_finding_explicit isosurface_explicit -j 3`.
+`cmake --install build` installs them under `<install-prefix>/src/isosurface`,
+matching the other project folders. Tests are enabled by default; configure
+with `-DBUILD_TESTING=OFF` to omit them.
 
 Use `source ./load-env.sh`, rather than executing it in a separate process, so
 its exported dependency paths remain available to CMake and the executables.
 Set the function name, isovalue, numerical parameters, executable paths, and
 output location directly in `isosurface_explicit.sh`.
 
-The script only executes the already compiled root finder and mesher; it does
-not build code or parse command-line arguments. Roots and meshes are saved in
-`build/isosurface/results/FUNCTION/` by default. Uncomment entries in its
-`mesh_options` array to allow open surfaces, disable crack closing, or supply
-singular points. The script can also be launched using its full path.
+The script executes the compiled root finder and mesher without rebuilding.
+Roots and meshes are saved in `build/src/isosurface/results/FUNCTION/` by default.
+Uncomment entries in its `mesh_options` array to allow open surfaces, disable
+crack closing, or supply singular points. The script can also be launched using
+its full path.
 
-For a standalone build of the explicit code, the following alternative uses
-only C++17 and Eigen. This is the configuration used for the local regression
-tests; it does not validate the full Spack-based project build:
+An optional standalone build of the explicit code still uses only C++17 and
+Eigen. Use a separate build directory:
 
 ```sh
 cmake -S src/isosurface -B build/isosurface -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
@@ -51,9 +51,10 @@ build/isosurface/isosurface_explicit -f ellipsoid -v 1 \
     -s build/isosurface/roots.dat -o build/isosurface/ellipsoid_sheet
 ```
 
-The last command writes `ellipsoid_sheet0.obj`, after validating it. This
-standalone build matches the run script's current `binary_dir` setting,
-`${script_dir}/build/isosurface`.
+The last command writes `ellipsoid_sheet0.obj`, after validating it. To use this
+optional build with the run script, set its `binary_dir` to
+`${script_dir}/build/isosurface`. Standalone installation places executables in
+`<install-prefix>/bin`.
 
 A single seed can be supplied in a text file containing `1 0 0`. Binary root files
 from the previous `utility::writeMatrixVector` format are supported: one matrix,

@@ -42,11 +42,22 @@ source /path/to/mfa-TDA/load-env.sh
 
 ## Building mfa-TDA
 
+Run from the repository root after sourcing `load-env.sh`:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-flto=auto" -Dmfa_thread=tbb
+cmake --build build -j 3
 ```
-cd build
-rm CMakeCache.txt
-cmake .. \
--DCMAKE_CXX_FLAGS="-flto=auto" \
--Dmfa_thread=tbb
-make -j
+
+The main build includes `critical_point_tracking`, `feature_flow_fields`, and
+`isosurface`. Executables are placed in `build/src/<folder>/`.
+
+To run the isosurface tests and example:
+
+```sh
+ctest --test-dir build -R '^isosurface_' --output-on-failure
+./isosurface_explicit.sh
 ```
+
+See [the isosurface README](src/isosurface/README.md) for parameters and the
+optional standalone build.
