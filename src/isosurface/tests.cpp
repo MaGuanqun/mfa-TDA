@@ -138,6 +138,20 @@ int main(int argc,char** argv) {
         const std::string filter=argc>1?argv[1]:"all";
         if(filter=="all"||filter=="geometry")geometry_tests();
         if(filter=="all"||filter=="quality")quality_tests();
+        if(filter=="all"||filter=="open") {
+            SurfaceField<double> plane{[](const P& p){return p[2];},[](const P&)->P{return P(0,0,1);}};
+            MeshingOptions<double> clipped;clipped.domain_min=P::Constant(-1);clipped.domain_max=P::Constant(1);
+            clipped.step=.25;clipped.min_step=.125;
+            std::vector<P> seeds{P(0,0,0)};
+            for(int i=0;i<5;++i)for(int j=0;j<5;++j)seeds.emplace_back(-1+.5*i,-1+.5*j,0);
+            MarchingTriangles<double> mesher(plane,clipped);
+            std::vector<std::vector<P>> vertices;std::vector<std::vector<Triangle>> triangles;
+            require(mesher.extract_all_sheets(seeds,vertices,triangles)&&vertices.size()==1,
+                    "open: boundary seeds generated duplicate overlapping patches");
+            auto report=validate_mesh(vertices[0],triangles[0],1e-9);
+            require(report.valid()&&report.boundary_edges>0,"open: invalid clipped plane: "+report.summary());
+            std::cout<<"clipped plane: "<<report.summary()<<std::endl;
+        }
         MeshingOptions<double> options;options.step=.3;options.min_step=.03;
         if(filter=="all"||filter=="sphere") {
             check_surface("sphere",sphere(),options,{P::Zero(),P(1,0,0),P(0,1,0),P(0,0,-1)},1,2);

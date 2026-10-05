@@ -1,7 +1,5 @@
 #include "explicit_field.h"
-#include "marching_triangles.h"
-#include "mesh_validation.h"
-#include "root_io.h"
+#include "extract_isosurface.h"
 #include "../opts.h"
 
 int main(int argc,char** argv) {
@@ -45,35 +43,7 @@ int main(int argc,char** argv) {
         options.max_triangles=static_cast<size_t>(triangle_limit);options.close_cracks=!no_close;
         options.quality_iterations=quality_iterations;
         options.validate();
-        const auto seeds=read_roots(root_file);
-        MarchingTriangles<double> mesher(setup.field,options);
-        if(!singular_file.empty())mesher.set_degenerate_points(read_roots(singular_file));
-        std::vector<std::vector<Point<double>>> vertices;
-        std::vector<std::vector<Triangle>> triangles;
-        std::cout<<"Loaded "<<seeds.size()<<" roots; seed edge length="<<options.step<<'\n';
-        if(!mesher.extract_all_sheets(seeds,vertices,triangles))throw std::runtime_error("No regular surface sheet found; check the seeds and isovalue");
-        if(!mesher.diagnostic().empty())std::cerr<<mesher.diagnostic()<<'\n';
-        // Validate before publishing any of the meshes. Failure is observable
-        // as a nonzero exit code, not a success message attached to an open OBJ.
-        bool valid=true;
-        for(size_t i=0;i<vertices.size();++i){
-            const auto report=validate_mesh(vertices[i],triangles[i],options.step*1e-9);
-            std::cout<<"sheet "<<i<<": vertices="<<vertices[i].size()<<" triangles="<<triangles[i].size()<<' '<<report.summary()<<'\n';
-            valid=valid&&report.valid()&&(allow_open||report.closed());
-            if(report.invalid_indices==0) {
-                const auto quality=measure_mesh_quality(vertices[i],triangles[i],setup.field);
-                std::cout<<"sheet "<<i<<" quality: "<<quality.summary()<<'\n';
-                valid=valid&&quality.reversed_faces==0;
-                if(quality.triangles_below_5_degrees || quality.max_normal_error_degrees>45)
-                    std::cerr<<"sheet "<<i<<": poor triangle shapes or normal alignment remain; inspect the quality report and consider a finer resolution.\n";
-            }
-        }
-        if(!valid)throw std::runtime_error("Mesh validation failed. No output written; reduce the step size or use --allow-open for an intentionally bounded surface");
-        for(size_t i=0;i<vertices.size();++i){
-            const std::string filename=output+std::to_string(i)+".obj";
-            mesher.save_mesh_obj(filename,vertices[i],triangles[i]);
-            std::cout<<"Wrote "<<filename<<'\n';
-        }
+        extract_isosurface(setup,root_file,singular_file,output,allow_open);
         return 0;
     } catch(const std::exception& e){std::cerr<<"isosurface_explicit: "<<e.what()<<'\n';return 1;}
 }

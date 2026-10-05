@@ -1,4 +1,4 @@
-# Adaptive marching triangles: explicit scalar fields
+# Adaptive marching triangles: explicit functions and MFA models
 
 This directory implements the two-stage algorithm in Akkouche and Galin,
 *Adaptive Implicit Surface Polygonization using Marching Triangles*, Computer
@@ -97,6 +97,119 @@ ignored. `quartic_potential_3d` has a four-dimensional domain and is rejected by
 this three-dimensional triangle extractor. The other existing three-dimensional
 quartic fields remain available, but their chosen level sets can be singular or
 intersect the domain boundary; such surfaces need not close.
+
+## MFA models
+
+The main project build also creates `root_finding_mfa` and `isosurface_mfa` in
+`build/src/isosurface`. These targets use MFA, DIY/MPI, Eigen, and the project's
+threading libraries; they do not link Torch. The optional standalone build
+continues to build only the explicit programs.
+
+```sh
+source ./load-env.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j 3
+./isosurface_mfa.sh
+```
+
+Edit `model_file`, `isovalue`, `variable`, mesh/seed resolution, and the other settings in
+`isosurface_mfa.sh`. Its defaults use
+`build/src/boussinesq_3d_iso/boussinesq_3d.mfa`, variable 0, and level 0.5, with
+`--allow-open` because this level set intersects the domain boundary. Output is saved in
+`build/src/isosurface/results/boussinesq_3d/iso_0.5/`. Run these executables directly
+with one MPI rank; each process writes the whole selected block.
+
+The equivalent commands are:
+
+```sh
+build/src/isosurface/root_finding_mfa -f build/src/boussinesq_3d_iso/boussinesq_3d.mfa -v 0.5 \
+    -g 2 --samples 20 -s roots.dat
+build/src/isosurface/isosurface_mfa -f build/src/boussinesq_3d_iso/boussinesq_3d.mfa -v 0.5 \
+    -g 1 -n 0.5 --allow-open -s roots.dat -o boussinesq_3d_sheet
+```
+
+The MFA root finder orders seeds by distance from the domain boundary, with
+interior seeds first. This reduces tiny duplicate patches caused by starting at
+a clipped edge. The example uses seed resolution 2 (separation 0.025) and mesh
+resolution 1 (initial edge length 0.05); these can be adjusted independently.
+
+The MFA programs retain the explicit programs' root-file format and numerical
+options. `-f` selects the MFA file, `--variable` selects a zero-based scalar
+science variable, and `--block` selects a zero-based block index when the input
+contains multiple blocks. A multiblock input requires explicit selection;
+stitching between blocks is not implemented. Input paths must not contain
+spaces because of the repository's existing argument parser.
+
+`mfa_model.h` uses the project's standard DIY `Block<double>::load` reader.
+Only files written in the current installed MFA format are supported; there is
+no old-format detection or conversion. Extraction evaluates the spline model
+directly. Files use the native double-precision serialization used by this
+project.
+
+`mfa_field.h` adapts a model to the same `FieldSetup<double>` and
+`SurfaceField<double>` interface used by `explicit_field.h`. It checks for
+Cartesian affine geometry, scalar unweighted variables, and one tensor product
+per model. Non-Cartesian, rational/weighted, and hierarchical models are rejected
+explicitly. The geometry maps physical coordinates to parameter coordinates;
+MFA derivatives are divided by the geometry extent to give physical gradients.
+Out-of-domain queries return non-finite values for the safeguarded projector
+to reject. Reusable decoder buffers make this adapter serial; use separate
+adapters for independent threads.
+
+Both paths share `find_initial_root.h`, `surface_field.h`,
+`marching_triangles.h`, crack closing, mesh quality, and mesh validation.
+`extract_isosurface.h` also shares the CLI extraction and output checks,
+including scalar residuals and domain bounds. Open-front seed coverage checks
+a short projected connection to the existing front, avoiding duplicate
+patches from seeds just outside its triangle footprints.
+
+### Boussinesq experiment
+
+The example uses the current-format model
+`build/src/boussinesq_3d_iso/boussinesq_3d.mfa` at level 0.5. Boundary sampling
+finds values on both sides of 0.5 on the faces `x = 0.5`, `z = 0`, and `z = 1.5`,
+so the example enables `--allow-open`. With the settings above, the experiment
+produced:
+
+| Check | Result |
+| --- | --- |
+| Seeds | 1,215, ordered from the domain interior toward its boundary |
+| Components | 8 (one closed, seven open) |
+| Vertices / triangles | 6,815 / 13,498 |
+| Boundary edges | 134 |
+| Maximum vertex scalar residual | 9.99925e-9 |
+| VTK nonmanifold edges / nonadjacent triangle intersections | 0 / 0 |
+| Gradient finite-difference relative error | 1.49318e-9 |
+
+The VTK check includes intersections between different output files. With the
+optional Python `vtk` package installed, reproduce it using:
+
+```sh
+python src/isosurface/tests/verify_obj_vtk.py --allow-open --components 8 \
+    build/src/isosurface/results/boussinesq_3d/iso_0.5/boussinesq_3d_sheet*.obj
+```
+
+A separate VTK contour of MFA samples on a `65 x 193 x 97` grid also has eight
+components. Its area is about 2.50834, compared with 2.47242 for the direct mesh.
+This sampled comparison does not establish complete coverage or exact topology.
+
+The mesher does not compute exact clipped boundary curves or cap them. Additional
+gaps and thin triangles remain: this run has 907 triangles with an angle below
+5 degrees, and a maximum face-normal error of about 89.7 degrees. Quality
+optimization currently applies only to closed sheets. Increasing resolution can
+make crack closing substantially slower; disabling it leaves many more gaps.
+Seed ordering improves this example but does not guarantee duplicate-free
+extraction for every model, so retain independent validation when changing inputs.
+
+`ctest --test-dir build -R '^isosurface_' --output-on-failure` runs the explicit
+suite plus a clipped-plane coverage regression and a current-format MFA fixture.
+The MFA fixture checks analytic scalar values, anisotropic physical gradients,
+finite differences, domain guards, and a closed ellipsoid extraction. To check
+derivatives against finite differences on another model:
+
+```sh
+build/src/isosurface/isosurface_mfa_tests build/src/boussinesq_3d_iso/boussinesq_3d.mfa
+```
 
 ## Paper-to-code correspondence
 
@@ -204,8 +317,8 @@ section 4 is not implemented here.
 The numerical and topology core accepts `SurfaceField<T>` callbacks for scalar
 values and gradients, plus `MeshingOptions<T>`. This replaces the old constructor
 that directly depended on MFA/INR. No other repository caller used that
-constructor. The explicit path is implemented and tested here; MFA/INR adapters
-and their derivatives have not been validated by this work. The return value of
+constructor. Both the explicit path and the MFA adapter above are implemented
+and tested; an INR adapter is not provided here. The return value of
 `extract_all_sheets` means at least one sheet was generated; library callers must
 also inspect `diagnostic()` and run `validate_mesh` when closure is required.
 

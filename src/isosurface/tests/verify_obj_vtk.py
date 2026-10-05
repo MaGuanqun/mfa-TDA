@@ -10,6 +10,7 @@ import json
 from vtkmodules.vtkCommonCore import vtkIdList
 from vtkmodules.vtkCommonDataModel import vtkStaticCellLocator, vtkTriangle
 from vtkmodules.vtkFiltersCore import (
+    vtkAppendPolyData,
     vtkFeatureEdges,
     vtkMassProperties,
     vtkPolyDataConnectivityFilter,
@@ -17,22 +18,39 @@ from vtkmodules.vtkFiltersCore import (
 from vtkmodules.vtkIOGeometry import vtkOBJReader
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("obj")
+parser.add_argument("obj", nargs="+")
+parser.add_argument("--allow-open", action="store_true")
+parser.add_argument("--components", type=int, default=1)
 args = parser.parse_args()
-reader = vtkOBJReader()
-reader.SetFileName(args.obj)
-reader.Update()
-mesh = reader.GetOutput()
+append = vtkAppendPolyData()
+readers = []
+for filename in args.obj:
+    reader = vtkOBJReader()
+    reader.SetFileName(filename)
+    reader.Update()
+    if reader.GetOutput().GetNumberOfCells() == 0:
+        raise SystemExit(f"No faces found in {filename}")
+    append.AddInputData(reader.GetOutput())
+    readers.append(reader)
+append.Update()
+mesh = append.GetOutput()
 if mesh.GetNumberOfCells() == 0:
     raise SystemExit("No faces found")
 
 boundary = vtkFeatureEdges()
 boundary.SetInputData(mesh)
 boundary.BoundaryEdgesOn()
-boundary.NonManifoldEdgesOn()
+boundary.NonManifoldEdgesOff()
 boundary.FeatureEdgesOff()
 boundary.ManifoldEdgesOff()
 boundary.Update()
+nonmanifold = vtkFeatureEdges()
+nonmanifold.SetInputData(mesh)
+nonmanifold.BoundaryEdgesOff()
+nonmanifold.NonManifoldEdgesOn()
+nonmanifold.FeatureEdgesOff()
+nonmanifold.ManifoldEdgesOff()
+nonmanifold.Update()
 connectivity = vtkPolyDataConnectivityFilter()
 connectivity.SetInputData(mesh)
 connectivity.SetExtractionModeToAllRegions()
@@ -69,13 +87,14 @@ for i in range(mesh.GetNumberOfCells()):
 report = {
     "vertices": mesh.GetNumberOfPoints(),
     "triangles": mesh.GetNumberOfCells(),
-    "boundary_or_nonmanifold_edges": boundary.GetOutput().GetNumberOfCells(),
+    "boundary_edges": boundary.GetOutput().GetNumberOfCells(),
+    "nonmanifold_edges": nonmanifold.GetOutput().GetNumberOfCells(),
     "components": connectivity.GetNumberOfExtractedRegions(),
     "nonadjacent_triangle_intersections": intersections,
     "candidate_pairs_checked": checked,
-    "volume": mass.GetVolume(),
+    "volume": mass.GetVolume() if not args.allow_open else None,
     "area": mass.GetSurfaceArea(),
 }
 print(json.dumps(report, indent=2))
-if report["boundary_or_nonmanifold_edges"] or report["components"] != 1 or intersections:
+if (report["boundary_edges"] and not args.allow_open) or report["nonmanifold_edges"] or report["components"] != args.components or intersections:
     raise SystemExit(1)

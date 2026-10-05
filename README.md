@@ -38,6 +38,11 @@ source ./load-env.sh
 source /path/to/mfa-TDA/load-env.sh
 ```
 
+Use `source` in the same terminal where you run CMake. Executing
+`./load-env.sh` cannot update the parent shell, and a separate IDE CMake process
+may not inherit these variables. Configure once from the activated terminal to
+cache the dependency paths in `build`, and use that build directory in the IDE.
+
 ----
 
 ## Building mfa-TDA
@@ -59,5 +64,9 @@ ctest --test-dir build -R '^isosurface_' --output-on-failure
 ./isosurface_explicit.sh
 ```
 
-See [the isosurface README](src/isosurface/README.md) for parameters and the
-optional standalone build.
+For extraction directly from an MFA model, run `./isosurface_mfa.sh`. Its default
+input is `build/src/boussinesq_3d_iso/boussinesq_3d.mfa` at isovalue 0.5. The shared
+mesher handles both MFA and explicit scalar fields.
+
+See [the isosurface README](src/isosurface/README.md) for parameters, MFA model
+compatibility, validation results, and the optional standalone build.

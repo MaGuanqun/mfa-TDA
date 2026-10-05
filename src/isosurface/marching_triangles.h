@@ -103,6 +103,34 @@ private:
             const T tolerance=std::max(options_.vertex_tolerance,T(.15)*h);
             if((q-p).norm()<tolerance && (q-chord).norm()<=h*T(.5)) return true;
         }
+        // An open front stops just inside the domain boundary. A seed on the
+        // unmeshed rim may be outside every triangle footprint but still belong
+        // to this sheet. Verify a short local path on the level set to its front.
+        // The tangent tests prevent jumping across close parallel sheets.
+        if(!mesh.boundary.empty()) {
+            const T gn=g.stableNorm();
+            if(!g.allFinite() || gn<=std::numeric_limits<T>::min())return false;
+            std::set<int> boundary_vertices;
+            for(const auto& edge:mesh.boundary)boundary_vertices.insert(edge.first.first);
+            for(int index:boundary_vertices) {
+                const Point<T>& q=mesh.vertices[index];const Point<T> delta=q-p;
+                const T distance=delta.norm();
+                if(distance>2*options_.step)continue;
+                if(distance<=options_.vertex_tolerance)return true;
+                const Point<T> qg=field_.gradient(q);const T qgn=qg.stableNorm();
+                if(!qg.allFinite() || qgn<=std::numeric_limits<T>::min() || g.dot(qg)<=T(.5)*gn*qgn ||
+                   std::abs(delta.dot(g))>T(.35)*distance*gn ||
+                   std::abs(delta.dot(qg))>T(.35)*distance*qgn)continue;
+                bool connected=true;
+                for(int j=1;j<8;++j) {
+                    Point<T> trial=p+delta*(T(j)/8);
+                    if(!projector_.project(trial,T(.15)*distance)) {connected=false;break;}
+                    const Point<T> tg=field_.gradient(trial);
+                    if(!tg.allFinite() || tg.dot(g)<=0) {connected=false;break;}
+                }
+                if(connected)return true;
+            }
+        }
         return false;
     }
     bool geometry_ok(const Mesh& mesh,const Triangle& t,bool delaunay,bool check_surface_overlap=true) const {

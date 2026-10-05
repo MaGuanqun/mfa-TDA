@@ -45,6 +45,13 @@ template<class T> struct MeshingOptions {
     }
 };
 
+// An input adapter supplies these three pieces for the shared root finder and mesher.
+template<class T> struct FieldSetup {
+    SurfaceField<T> field;
+    MeshingOptions<T> options;
+    T base_step = T(.2);
+};
+
 // Section 3.2.1: gradient march with alpha > 1 to bracket the root, then bisection.
 // Backtracking safeguards the march against singular gradients and distant roots.
 template<class T> class SurfaceProjector {

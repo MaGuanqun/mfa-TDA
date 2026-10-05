@@ -13,11 +13,7 @@ using std::string;
 #include "../closed_form_function.h"
 
 namespace marching_triangles {
-struct ExplicitField {
-    SurfaceField<double> field;
-    MeshingOptions<double> options;
-    double base_step;
-};
+using ExplicitField = FieldSetup<double>;
 inline ExplicitField explicit_field(const std::string& name,double iso) {
     int type=0;
     if(name=="quartic_potential") type=1;
