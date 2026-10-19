@@ -8,3 +8,5 @@
 !/isosurface_explicit.sh
 *.cmake
 *.pyc
+!/isosurface_mfa.sh
+!/src/isosurface/tests/*.cmake

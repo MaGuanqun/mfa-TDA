@@ -68,5 +68,10 @@ For extraction directly from an MFA model, run `./isosurface_mfa.sh`. Its defaul
 input is `build/src/boussinesq_3d_iso/boussinesq_3d.mfa` at isovalue 0.5. The shared
 mesher handles both MFA and explicit scalar fields.
 
+Critical-curve extraction is available through `critical_curves_explicit`,
+`critical_values_mfa`, and `critical_curves_mfa`. See the
+[critical-curve workflow](src/isosurface/README.md#critical-curves) for known-value
+analytic examples and MFA candidate-value discovery followed by tracing.
+
 See [the isosurface README](src/isosurface/README.md) for parameters, MFA model
 compatibility, validation results, and the optional standalone build.

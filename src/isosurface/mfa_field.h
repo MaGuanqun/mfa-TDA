@@ -57,6 +57,44 @@ public:
         // MFA differentiates with respect to u in [0,1]. Apply dx/du scaling.
         return gradient_.cwiseQuotient(extent_);
     }
+    // Critical-curve continuation needs a continuous Hessian. Checking knot
+    // multiplicity is conservative: low-continuity splines whose coefficients
+    // happen to cancel the discontinuity are not specially recognized.
+    void enable_hessian() {
+        if(hessian_scratch_) return;
+        const auto& b=model_->block();
+        for(int d=0;d<3;++d) {
+            const auto& knots=data_.tmesh.all_knots[d];
+            const double lo=(b.core_mins[d]-origin_[d])/extent_[d];
+            const double hi=(b.core_maxs[d]-origin_[d])/extent_[d];
+            const double endpoint_epsilon=64*std::numeric_limits<double>::epsilon();
+            for(size_t i=0;i<knots.size();) {
+                size_t j=i+1;while(j<knots.size() && knots[j]==knots[i])++j;
+                if(knots[i]>std::max(0.,lo)+endpoint_epsilon && knots[i]<std::min(1.,hi)-endpoint_epsilon &&
+                   data_.p[d]-static_cast<int>(j-i)<2)
+                    throw std::invalid_argument("Critical curves require C2 MFA splines: axis "+std::to_string(d)+
+                        ", interior knot "+std::to_string(knots[i])+", degree "+std::to_string(data_.p[d])+
+                        ", multiplicity "+std::to_string(j-i));
+                i=j;
+            }
+        }
+        hessian_scratch_=std::make_unique<mfa::DecodeInfo<double>>(data_,Eigen::VectorXi::Constant(3,2));
+    }
+    Eigen::Matrix3d hessian(const Point<double>& p) {
+        enable_hessian();
+        if(!parameter(p))return Eigen::Matrix3d::Constant(std::numeric_limits<double>::quiet_NaN());
+        Eigen::Matrix3d h;
+        for(int i=0;i<3;++i)for(int j=i;j<3;++j) {
+            Eigen::VectorXi deriv=Eigen::VectorXi::Zero(3);++deriv[i];++deriv[j];
+            double entry=0;
+            if((deriv.array()<=data_.p.array()).all()) {
+                decoder_.VolPt(param_,value_,*hessian_scratch_,data_.tmesh.tensor_prods[0],deriv);
+                entry=value_[0]/(extent_[i]*extent_[j]);
+            }
+            h(i,j)=h(j,i)=entry;
+        }
+        return h;
+    }
     const Block<double>& block() const {return model_->block();}
 private:
     static const mfa::MFA_Data<double>& checked_data(const Block<double>& b,int variable) {
@@ -82,6 +120,7 @@ private:
     const mfa::MFA_Data<double>& data_;
     mfa::Decoder<double> decoder_;
     mfa::FastDecodeInfo<double> scratch_;
+    std::unique_ptr<mfa::DecodeInfo<double>> hessian_scratch_;
     Point<double> origin_,extent_;
     Eigen::VectorXd param_,value_,gradient_;
 };

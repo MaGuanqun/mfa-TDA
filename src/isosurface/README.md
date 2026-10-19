@@ -98,6 +98,163 @@ this three-dimensional triangle extractor. The other existing three-dimensional
 quartic fields remain available, but their chosen level sets can be singular or
 intersect the domain boundary; such surfaces need not close.
 
+## Critical curves
+
+The existing CMake target directory also builds three separate critical-curve
+tools. These produce polylines; attaching triangles to the curves is future work.
+The existing regular marching-triangles pipeline and critical-point extractor
+are unchanged.
+
+```sh
+source ./load-env.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build --target critical_curves_explicit critical_values_mfa critical_curves_mfa \
+    critical_curves_tests critical_curves_mfa_tests -j 2
+ctest --test-dir build -R '^critical_curves_' --output-on-failure
+```
+
+### Explicit functions: choose a known value and trace
+
+The examples live in `critical_explicit_field.h`. Their field offset `b` defaults
+to **1.25** and is independent of `--iso`. The domain is `[-2,2]^3`.
+
+| `--function` | Field | Critical crossing at value `b` |
+| --- | --- | --- |
+| `crossing_line` | `xy + b` | `x=y=0`, ending on the two z faces |
+| `crossing_circle` (default) | `z(x²+y²−1) + b` | `z=0`, `x²+y²=1` |
+| `parallel_lines` | `z(z−y²+1/4) + b` | Two lines: `z=0`, `y=±1/2` |
+
+```sh
+build/src/isosurface/critical_curves_explicit -f crossing_circle -v 1.25 \
+    --samples 9 --step 0.05 -o build/src/isosurface/results/critical_curves/circle
+build/src/isosurface/critical_curves_explicit -f crossing_line -v 1.25 \
+    -o build/src/isosurface/results/critical_curves/line
+```
+
+No critical-value search is performed for these examples: seeds are found at the
+requested level, then traced. Omitting `--iso` uses the known offset value.
+For example, `--offset 2 --iso 2` moves the critical value to 2, while
+`--offset 2 --iso 1.25` should produce no curves. The analytic curve positions
+are used only for testing, not provided to the search as known answers.
+
+Negative controls are `definite_line` (`x²+y²+b`), `isolated_rank_two`
+(`x²−y²+z⁴+b`), and `tilted_line` (`xy+0.01z+b`). They respectively test rejection
+of definite normal Hessians, isolated rank-two critical points, and nonzero
+tangential gradients.
+
+### MFA: discover values, select one, then trace
+
+Run value discovery without providing an isovalue:
+
+```sh
+build/src/isosurface/critical_values_mfa \
+    -f build/src/boussinesq_3d_iso/boussinesq_3d.mfa --samples 9 \
+    -o build/src/isosurface/results/critical_curves/boussinesq_s9
+```
+
+Inspect `boussinesq_s9.values.csv`. Each row has a candidate ID, estimated value,
+minimum/maximum seed values, and seed count. Its positions are saved separately
+as `boussinesq_s9.value_ID.seeds.txt`. The catalog contains **candidate** critical
+values: pointwise gradient/Hessian checks cannot prove a critical curve exists.
+An empty catalog is a valid result, not proof that the model has no curves.
+Use the catalog from the current run; seed files from older runs with the same
+prefix may still exist.
+
+Given an actual row, substitute its value and ID in the following command:
+
+```sh
+build/src/isosurface/critical_curves_mfa \
+    -f build/src/boussinesq_3d_iso/boussinesq_3d.mfa -v VALUE \
+    -s build/src/isosurface/results/critical_curves/boussinesq_s9.value_ID.seeds.txt \
+    -o build/src/isosurface/results/critical_curves/boussinesq_selected
+```
+
+The tracer revalidates and refines supplied seeds against the current model and
+selected value. Omit `-s` to perform a fresh grid search at that value. Different
+disconnected curves can share one value; value grouping does not join them.
+
+`critical_curves_mfa_tests` creates an exact polynomial MFA fixture at
+`critical_curve_test_files/circle.mfa` relative to its working directory. Its
+known curve is the unit circle at **0.37**, providing a positive MFA example even
+when a real dataset has no critical curves. Tests verify the full
+discovery → seed-file → tracing CLI workflow, analytic/mixed Hessians, and
+physical derivative scaling on unequal axis extents.
+
+The supplied `boussinesq_3d.mfa` (variable 0) was tested with the default residual
+and Hessian tolerances. It has cubic degree in each axis, `13×33×13` control
+points, and domain `[-0.5,0.5] × [-0.5,2.5] × [0,1.5]`. These searches found:
+
+| Seed grid | Cell offset | Starts | Full-rank convergences | Failed solves | Curve-candidate seeds |
+| --- | --- | --- | --- | --- | --- |
+| `9³` | `0.5` | 729 | 199 | 530 | 0 |
+| `17³` | `0.5` | 4,913 | 1,448 | 3,465 | 0 |
+| `17³` | `0.25` | 4,913 | 1,427 | 3,486 | 0 |
+
+Convergences count solver starts, not distinct critical points. All converged
+starts had resolved full-rank Hessians, so none qualified as a crossing-curve
+seed. There was no discovered value to pass to the tracer for this dataset.
+The failed solves and finite sampling prevent a claim of global absence.
+Reports are under `build/src/isosurface/results/critical_curves/boussinesq_*`.
+
+### Method, tolerances, and output
+
+`critical_field.h` contains seed discovery and Hessian classification.
+`critical_curves.h` contains continuation. Both backends use the same routines.
+Discovery solves the gradient residual with a damped augmented SVD
+Levenberg–Marquardt step; it never rejects a point merely because the Hessian
+determinant is small. When a value is supplied, the scalar residual `F-c` is
+included as well. A candidate must have small gradient and exactly one unresolved
+Hessian eigenvalue, with opposite signs on the two resolved eigenvalues.
+
+Continuation predicts along the Hessian null direction and corrects in a fixed
+normal plane using a `3x2` SVD solve involving **all three** gradient components.
+It checks the selected value, full gradient, Hessian signature, correction
+distance, and tangent change at every accepted sample. It traces both directions,
+detects closed loops, and corrects transverse endpoints on box faces. Rank loss,
+failed corrections, point limits, and ambiguous self-contacts are recorded.
+Short failed traces are reported as unvalidated events rather than accepted
+curve components. Partial longer curves remain explicitly labeled in the output.
+
+All positions and `--step`/`--min-step` are in physical coordinates. Numerical
+residuals are normalized using `L = longest box side` and a fixed field scale
+`A`. By default, a fixed 5×5×5 grid estimates
+`A = max(sampled value range, L * maximum sampled gradient norm)`; a constant
+field uses 1. Set `--field-scale` to supply a reference scale. Consequently:
+
+- `--value-tolerance` bounds `|F-c|/A` and the width of a candidate value group.
+- `--gradient-tolerance` bounds `L*|gradient F|/A`.
+- `--hessian-absolute` and `--hessian-relative` set the rank threshold
+  `absolute + relative * spectral_norm(L² H/A)`.
+- Output eigenvalues and gradient norms use these normalized units; field values
+  use the original units. The report records both scales and all settings.
+
+Use `--samples` and `--seed-offset` to repeat discovery at different densities and
+offsets. Seeding, eigenvalue thresholds, seed deduplication, and branch coverage
+are resolution dependent; none certifies global completeness. A fitted MFA may
+also lose an exact crossing, even when scalar fitting errors are small.
+
+The MFA adapter evaluates six analytic second partial derivatives, applying
+`H_x(i,j) = H_u(i,j)/(extent[i]*extent[j])`. It requires the existing Cartesian,
+single-tensor-product, unweighted scalar model and verifies at least C2 spline
+continuity across interior knots in the selected block. Endpoint knot repetition
+does not reduce interior smoothness. As with the regular MFA tools, run one MPI
+rank and select a block explicitly for multiblock files. Junction merging,
+cross-block stitching, higher-order contacts, and surface-to-curve stitching
+are not implemented in this stage.
+
+For a tracing output prefix `P`, the files are:
+
+- `P.obj` and `P.vtk`: indexed curve polylines (VTK opens in ParaView).
+- `P.points.csv`: coordinates, original values, scaled gradient norms, and Hessian eigenvalues.
+- `P.curves.csv`: per-component endpoint/closure status and residual summaries.
+- `P.events.csv`: unresolved locations and reasons.
+- `P.report.txt`: configuration, search counts, evaluation counts, and tracing summary.
+
+Discovery writes `.values.csv`, `.seeds.csv`, per-value `.seeds.txt` files, and
+`.report.txt`. Exit code 0 means the search ran successfully, including empty
+or partial results; inspect the reports for curve counts and unresolved events.
+Invalid input or an I/O failure returns a nonzero exit code.
+
 ## MFA models
 
 The main project build also creates `root_finding_mfa` and `isosurface_mfa` in
