@@ -648,6 +648,19 @@ struct MFAParser
                 vars_nctrl = {166, 166};
             }
         }
+        if(input=="hurricane_isabel_3d")
+        {
+            d_args.full_dom_pts = {500, 500, 100};
+            d_args.ndom_pts = d_args.full_dom_pts;
+            d_args.min = {0.0, 0.0, 0.0};
+            d_args.max = {499.0, 499.0, 99.0};
+            d_args.set_domain_range = true;
+
+            if (!adaptive)
+            {
+                vars_nctrl = {166, 166, 33};
+            }
+        }
         // EDelta Wing dataset (unstructured):  edelta/edelta.txt
         if (input == "edelta")
         {
