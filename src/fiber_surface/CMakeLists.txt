@@ -1,6 +1,6 @@
 add_library(fiber_surface_core STATIC find_seeds.cpp trace_endpoint_fibers.cpp
     march_surface.cpp stitch_surface.cpp evaluate_surface.cpp)
-target_link_libraries(fiber_surface_core PUBLIC Eigen3::Eigen)
+target_link_libraries(fiber_surface_core PUBLIC Eigen3::Eigen TBB::tbb)
 target_compile_features(fiber_surface_core PUBLIC cxx_std_17)
 add_library(fiber_surface_pipeline STATIC pipeline_io.cpp model_io.cpp pipeline_cli.cpp)
 target_link_libraries(fiber_surface_pipeline PUBLIC fiber_surface_core ${libraries})
@@ -27,7 +27,7 @@ if(BUILD_TESTING)
     set_tests_properties(fiber_surface_mfa_adapter PROPERTIES FIXTURES_SETUP fiber_surface_mfa_model)
     add_executable(fiber_surface_tests tests.cpp)
     target_link_libraries(fiber_surface_tests PRIVATE fiber_surface_core)
-    foreach(case derivatives sphere closed-sphere strip disconnected)
+    foreach(case derivatives seeds sphere closed-sphere strip disconnected)
         add_test(NAME fiber_surface_${case} COMMAND fiber_surface_tests ${case})
     endforeach()
     add_test(NAME fiber_surface_cli COMMAND ${CMAKE_COMMAND}

@@ -47,6 +47,10 @@ def main():
         assert mesh == (run / "surface.obj").read_bytes(), "Restart changed mesh geometry"
         report = json.loads((run / "report.json").read_text())
         assert report["complete"] is not partial
+        seed_report = json.loads((run / "seeds_report.json").read_text())
+        shape = seed_report["discovery_grid_shape"]
+        assert seed_report["starting_points"] == shape[0] * shape[1] * shape[2]
+        assert report["discovery_grid_shape"] == shape
         artifacts = ["run.conf", "surface_seeds.dat", "endpoint_seeds.dat",
                      "surface_seeds.vtk", "endpoint_seeds.vtk", "seeds_report.json",
                      "fibers.state", "marching.state", "stitched.state",
@@ -69,9 +73,17 @@ def main():
         run = args.work / "mfa sphere"
         mesh, report = pipeline(run, ["--model", "mfa", *common])
         assert report["components"] == 1 and report["fiber_components"] == 1
+        assert report["discovery_grid_shape"] == [7, 7, 7]
         prefix = args.work / "mfa_reference"
         invoke("fiber_surface_mfa", [*common, "--output", prefix])
         assert mesh == prefix.with_suffix(".obj").read_bytes(), "Staged MFA differs from in-memory extraction"
+        anisotropic = args.work / "mfa anisotropic"
+        stage(1, anisotropic, ["--model", "mfa", "--first", model,
+                              "--a", "1,-2", "--b", "1,0.5", "--seed-grid", "5",
+                              "--min", "-1,-2,-2", "--max", "1,2,2"])
+        seed_report = json.loads((anisotropic / "seeds_report.json").read_text())
+        assert seed_report["discovery_grid_shape"] == [5, 10, 10]
+        assert seed_report["starting_points"] == 500
         original = model.read_bytes()
         try:
             model.write_bytes(original + b"changed")
@@ -79,6 +91,33 @@ def main():
         finally:
             model.write_bytes(original)
     else:
+        anisotropic = args.work / "anisotropic"
+        stage(1, anisotropic, ["--example", "strip", "--seed-grid", "5",
+                               "--min", "-1,-2,-2", "--max", "1,2,2"])
+        seed_report = json.loads((anisotropic / "seeds_report.json").read_text())
+        assert seed_report["discovery_grid_shape"] == [5, 10, 10]
+        # Shape metadata is checked before a later stage accepts the seeds.
+        seed_path = anisotropic / "surface_seeds.dat"
+        original_seed = seed_path.read_text()
+        malformed = original_seed.splitlines()
+        header = malformed[0].split()
+        header[6] = "6"
+        malformed[0] = " ".join(header)
+        try:
+            seed_path.write_text("\n".join(malformed) + "\n")
+            assert "grid shape" in stage(2, anisotropic, expected=1)
+        finally:
+            seed_path.write_text(original_seed)
+        # Existing version-1 discoveries remain readable.
+        for name in ["surface_seeds.dat", "endpoint_seeds.dat"]:
+            path = anisotropic / name
+            lines = path.read_text().splitlines()
+            header = lines[0].split()
+            header[1] = "1"
+            del header[6:9]
+            lines[0] = " ".join(header)
+            path.write_text("\n".join(lines) + "\n")
+        stage(2, anisotropic)
         for name in ["sphere", "closed-sphere", "strip", "disconnected"]:
             run = args.work / name
             mesh, report = pipeline(run, ["--model", "analytical", "--example", name])

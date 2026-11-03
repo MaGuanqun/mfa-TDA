@@ -1,9 +1,42 @@
 #include "analytical_field.h"
 #include "output.h"
 #include "extract.h"
+#include <tbb/global_control.h>
 
 using namespace fiber_surface;
 static void require(bool ok,const std::string& message) { if (!ok) throw std::runtime_error(message); }
+
+static void seeds() {
+    auto e=analytical_field("strip"); Options options;
+    e.field.box.min=Vec(-.5,-1,-2); e.field.box.max=Vec(.5,1,2);
+    require(discovery_shape(e.field,options)==SeedShape{7,14,28},"Proportional default seed counts");
+    options.seed_grid=0;
+    require(discovery_shape(e.field,options)==SeedShape{7,14,28},"Zero selects the default shortest-axis count");
+    options.seed_grid=3;
+    const auto shape=discovery_shape(e.field,options);
+    require(shape==SeedShape{3,6,12},"Shortest-axis seed count override");
+    const auto grid=discovery_grid(e.field.box,shape);
+    require(grid.size()==216 && grid.front()==e.field.box.min && grid.back()==e.field.box.max,"Anisotropic grid bounds/count");
+    require(discovery_grid(e.field.box,SeedShape{1,1,1}).front()==Vec::Zero(),"Singleton axes use midpoint");
+    e.field.box.max[2]=1.1;
+    require(discovery_shape(e.field,options)==SeedShape{3,6,10},"Noninteger aspect ratio rounds up");
+    e.field.box.max[2]=2;
+    Corrector corrector(e.field,e.segment,options);
+    Seeds reference;
+    for (int endpoint=0; endpoint<2; ++endpoint)
+        for (Vec p:grid) if (corrector.fiber_seed(p,endpoint ? e.segment.b : e.segment.a)) reference.endpoints[endpoint].push_back(p);
+    for (Vec p:grid) if (corrector.surface(p,(e.field.box.max-e.field.box.min).norm())) reference.surface.push_back(p);
+    for (int threads:{1,4}) {
+        tbb::global_control control(tbb::global_control::max_allowed_parallelism,threads);
+        const auto actual=find_seeds(e.field,e.segment,options);
+        require(actual.grid_shape==shape && actual.starting_points==grid.size(),"Saved seed grid metadata");
+        require(actual.surface==reference.surface && actual.endpoints==reference.endpoints,"Parallel corrections must preserve serial values and ordering");
+    }
+    options.seed_grid=1000000;
+    bool rejected=false;
+    try { discovery_shape(e.field,options); } catch (const std::invalid_argument&) { rejected=true; }
+    require(rejected,"Excessive grid allocation must be rejected");
+}
 
 static void derivatives() {
     const auto e=analytical_field("sphere"); const Vec p(.2,-.4,.7); const Segment s(Range(.1,.2),Range(2,.6));
@@ -38,6 +71,7 @@ int main(int argc,char** argv) {
     try {
         const std::string name=argc>1?argv[1]:"sphere";
         if (name=="derivatives") { derivatives(); return 0; }
+        if (name=="seeds") { seeds(); return 0; }
         auto example=analytical_field(name); Options options;
         const Result r=Extractor(example.field,example.segment,options).run();
         const auto report=evaluate(r,example.field,example.segment,options);

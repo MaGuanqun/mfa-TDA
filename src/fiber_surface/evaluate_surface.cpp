@@ -80,13 +80,16 @@ void write_outputs(const std::string& prefix, const Result& r, const Report& rep
     for (const auto& e:r.fiber_edges) fibers<<"2 "<<e.first.first<<' '<<e.first.second<<'\n';
     fibers<<"CELL_DATA "<<r.fiber_edges.size()<<"\nSCALARS endpoint int 1\nLOOKUP_TABLE default\n";
     for (const auto& e:r.fiber_edges) fibers<<r.fibers[e.second].endpoint<<'\n';
+    const auto shape=discovery_shape(field,options);
     json<<"{\n  \"complete\": "<<(report.complete(r)?"true":"false")
         <<",\n  \"segment_a\": ["<<segment.a[0]<<','<<segment.a[1]<<"],\n  \"segment_b\": ["<<segment.b[0]<<','<<segment.b[1]<<"],"
         <<"\n  \"domain_min\": ["<<field.box.min[0]<<','<<field.box.min[1]<<','<<field.box.min[2]<<"],"
         <<"\n  \"domain_max\": ["<<field.box.max[0]<<','<<field.box.max[1]<<','<<field.box.max[2]<<"],"
         <<"\n  \"step\": "<<options.step<<",\n  \"fiber_step\": "<<options.fiber_step
         <<",\n  \"spatial_tolerance\": "<<options.spatial_tolerance<<",\n  \"range_tolerance\": "<<options.residual_tolerance
-        <<",\n  \"discovery_grid\": "<<options.seed_grid<<",\n  \"fiber_seed_hits\": ["<<r.fiber_seed_hits[0]<<','<<r.fiber_seed_hits[1]<<']'
+        <<",\n  \"discovery_grid\": "<<options.seed_grid
+        <<",\n  \"discovery_grid_shape\": ["<<shape[0]<<','<<shape[1]<<','<<shape[2]<<']'
+        <<",\n  \"fiber_seed_hits\": ["<<r.fiber_seed_hits[0]<<','<<r.fiber_seed_hits[1]<<']'
         <<",\n  \"surface_seed_hits\": "<<r.surface_seed_hits
         <<",\n  \"vertices\": "<<r.mesh.vertices.size()<<",\n  \"triangles\": "<<r.mesh.triangles.size()
         <<",\n  \"components\": "<<report.components<<",\n  \"fiber_components\": "<<r.fibers.size()

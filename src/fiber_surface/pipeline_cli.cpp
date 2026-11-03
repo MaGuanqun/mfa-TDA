@@ -58,7 +58,8 @@ int stage_main(Stage stage,int argc,char** argv) {
             if (config.options.max_triangles>10000000) throw std::invalid_argument("Staged runs support at most 10000000 triangles");
             const auto seeds=find_seeds(loaded.field,config.segment,config.options);
             write_config(run,config); write_seeds(run,config,seeds);
-            std::cout<<"Surface candidates="<<seeds.surface.size()<<" endpoint candidates="<<seeds.endpoints[0].size()<<','<<seeds.endpoints[1].size()
+            std::cout<<"Seed grid="<<seeds.grid_shape[0]<<'x'<<seeds.grid_shape[1]<<'x'<<seeds.grid_shape[2]
+                <<" ("<<seeds.starting_points<<" starting points)\nSurface candidates="<<seeds.surface.size()<<" endpoint candidates="<<seeds.endpoints[0].size()<<','<<seeds.endpoints[1].size()
                 <<"\nSaved "<<run<<'\n';
             return 0;
         }

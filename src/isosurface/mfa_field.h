@@ -46,6 +46,13 @@ public:
                  <<"; variable="<<variable<<" degree="<<data_.p.transpose()
                  <<" controls="<<data_.tmesh.tensor_prods[0].nctrl_pts.transpose()<<std::endl;
     }
+    // Share immutable model data, but allocate independent decoder workspaces.
+    MfaEvaluator(const MfaEvaluator& other)
+        : model_(other.model_),data_(other.data_),decoder_(data_,0),scratch_(decoder_),
+          origin_(other.origin_),extent_(other.extent_),param_(3),value_(1),gradient_(3) {
+        scratch_.ResizeDers(1);
+        if(other.hessian_scratch_) enable_hessian();
+    }
     double value(const Point<double>& p) {
         if(!parameter(p))return std::numeric_limits<double>::quiet_NaN();
         decoder_.FastVolPt(param_,value_,scratch_,data_.tmesh.tensor_prods[0]);

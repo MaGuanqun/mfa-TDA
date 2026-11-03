@@ -27,7 +27,7 @@ int main(int argc,char** argv) {
         common_options(args,field,segment,options); args.finish();
         if (inspect) {
             Range lo=Range::Constant(std::numeric_limits<double>::infinity()),hi=-lo;
-            for (const Vec& x:discovery_grid(field.box,options.seed_grid)) { const Range f=field.value(x); lo=lo.cwiseMin(f); hi=hi.cwiseMax(f); }
+            for (const Vec& x:discovery_grid(field.box,discovery_shape(field,options))) { const Range f=field.value(x); lo=lo.cwiseMin(f); hi=hi.cwiseMax(f); }
             std::cout<<std::setprecision(17)<<"Sampled range min: "<<lo.transpose()<<" max: "<<hi.transpose()<<'\n';
             const Vec center=(field.box.min+field.box.max)/2;
             std::cout<<"Center xyz: "<<center.transpose()<<" F: "<<field.value(center).transpose()<<"\nJ:\n"<<field.jacobian(center)<<'\n';

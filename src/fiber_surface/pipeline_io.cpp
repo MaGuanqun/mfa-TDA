@@ -133,12 +133,14 @@ fs::path state_path(const fs::path& run,Stage stage) {
 void write_seeds(const fs::path& run,const RunConfig& config,const Seeds& seeds) {
     const auto signature=config_signature(config);
     atomic_write(run/"surface_seeds.dat",[&](std::ostream& out) {
-        out<<"FIBER_SURFACE_SEEDS 1 surface "<<signature<<' '<<seeds.seconds<<' '<<seeds.starting_points<<' '<<seeds.surface.size()<<'\n';
+        out<<"FIBER_SURFACE_SEEDS 2 surface "<<signature<<' '<<seeds.seconds<<' '<<seeds.starting_points<<' '
+            <<seeds.grid_shape[0]<<' '<<seeds.grid_shape[1]<<' '<<seeds.grid_shape[2]<<' '<<seeds.surface.size()<<'\n';
         for (size_t i=0; i<seeds.surface.size(); ++i) out<<i<<' '<<seeds.surface[i].transpose()<<'\n';
         out<<"END\n";
     });
     atomic_write(run/"endpoint_seeds.dat",[&](std::ostream& out) {
-        out<<"FIBER_SURFACE_SEEDS 1 endpoints "<<signature<<' '<<seeds.seconds<<' '<<seeds.starting_points<<' '
+        out<<"FIBER_SURFACE_SEEDS 2 endpoints "<<signature<<' '<<seeds.seconds<<' '<<seeds.starting_points<<' '
+            <<seeds.grid_shape[0]<<' '<<seeds.grid_shape[1]<<' '<<seeds.grid_shape[2]<<' '
             <<seeds.endpoints[0].size()+seeds.endpoints[1].size()<<'\n';
         size_t id=0;
         for (int endpoint=0; endpoint<2; ++endpoint) for (const auto& p:seeds.endpoints[endpoint]) out<<id++<<' '<<endpoint<<' '<<p.transpose()<<'\n';
@@ -154,6 +156,7 @@ void write_seeds(const fs::path& run,const RunConfig& config,const Seeds& seeds)
     });
     atomic_write(stage_artifact(run,Stage::seeds,"report.json"),[&](std::ostream& out) {
         out<<"{\n  \"stage\": \"seeds\",\n  \"starting_points\": "<<seeds.starting_points
+            <<",\n  \"discovery_grid_shape\": ["<<seeds.grid_shape[0]<<','<<seeds.grid_shape[1]<<','<<seeds.grid_shape[2]<<']'
             <<",\n  \"surface_candidates\": "<<seeds.surface.size()<<",\n  \"endpoint_candidates\": ["
             <<seeds.endpoints[0].size()<<','<<seeds.endpoints[1].size()<<"],\n  \"stage_seconds\": "<<seeds.seconds<<"\n}\n";
     });
@@ -162,11 +165,19 @@ Seeds read_seeds(const fs::path& run,const RunConfig& config) {
     Seeds seeds; const auto signature=config_signature(config);
     for (bool endpoints:{false,true}) {
         Reader in(run/(endpoints?"endpoint_seeds.dat":"surface_seeds.dat"));
-        in.header("FIBER_SURFACE_SEEDS"); in.word(endpoints?"endpoints":"surface"); in.word(signature);
-        const double seconds=in.real(); const size_t starts=in.count(),count=in.count();
+        in.word("FIBER_SURFACE_SEEDS"); const int version=in.get<int>();
+        if (version!=1 && version!=2) in.fail("unsupported format version");
+        in.word(endpoints?"endpoints":"surface"); in.word(signature);
+        const double seconds=in.real(); const size_t starts=in.count();
+        SeedShape shape{0,0,0}; // Older discoveries did not save their axis counts.
+        if (version==2) {
+            for (int& n:shape) n=in.get<int>();
+            if (discovery_size(shape)!=starts) in.fail("seed grid shape does not match starting point count");
+        }
+        const size_t count=in.count();
         if (seconds<0) in.fail("negative duration");
-        if (!endpoints) { seeds.seconds=seconds; seeds.starting_points=starts; }
-        else if (seeds.seconds!=seconds || seeds.starting_points!=starts) in.fail("seed files are from different discoveries");
+        if (!endpoints) { seeds.seconds=seconds; seeds.starting_points=starts; seeds.grid_shape=shape; }
+        else if (seeds.seconds!=seconds || seeds.starting_points!=starts || seeds.grid_shape!=shape) in.fail("seed files are from different discoveries");
         for (size_t i=0; i<count; ++i) {
             if (in.count()!=i) in.fail("nonsequential seed ID");
             const int endpoint=endpoints?in.index(2):-1; const Vec p=in.point();

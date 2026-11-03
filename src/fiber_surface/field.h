@@ -8,6 +8,7 @@ using Vec = Eigen::Vector3d;
 using Range = Eigen::Vector2d;
 using Jacobian = Eigen::Matrix<double, 2, 3>;
 using Hessian = Eigen::Matrix3d;
+using SeedShape = std::array<int, 3>;
 using Mesh = marching_triangles::TriangleMesh<double>;
 using marching_triangles::Triangle;
 using marching_triangles::Edge;
@@ -35,6 +36,7 @@ struct Box {
 };
 
 // Derivatives are with respect to shared physical coordinates, never MFA parameters.
+// Evaluation callbacks must support concurrent calls during seed discovery.
 struct Field {
     std::function<Range(const Vec&)> value;
     std::function<Jacobian(const Vec&)> jacobian;
@@ -63,12 +65,13 @@ struct Options {
     double step = .2, min_step = .025, fiber_step = .15, spatial_tolerance = .015;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
     double min_angle_degrees = .1, max_normal_degrees = 55;
+    // Count on the shortest physical axis for every field; zero is an alias for 7.
     int seed_grid = 7, iterations = 40, max_trace_steps = 10000;
     size_t max_triangles = 30000;
     void validate(const Field& f, const Segment& segment) const {
         for (double x : {step, min_step, fiber_step, spatial_tolerance, residual_tolerance, derivative_tolerance})
             if (!std::isfinite(x) || x <= 0) throw std::invalid_argument("Steps and tolerances must be positive and finite");
-        if (min_step > step || seed_grid < 2 || seed_grid > 100 || iterations < 1 || max_trace_steps < 4 ||
+        if (min_step > step || seed_grid < 0 || seed_grid == 1 || iterations < 1 || max_trace_steps < 4 ||
             max_triangles < 4 || !std::isfinite(min_angle_degrees) || min_angle_degrees < 0 || min_angle_degrees >= 60 ||
             !std::isfinite(max_normal_degrees) || max_normal_degrees <= 0 || max_normal_degrees >= 90 ||
             residual_tolerance >= .01*segment.length)
@@ -97,6 +100,7 @@ struct Seeds {
     std::vector<Vec> surface;
     std::array<std::vector<Vec>,2> endpoints;
     size_t starting_points = 0;
+    SeedShape grid_shape{0,0,0};
     double seconds = 0;
 };
 
@@ -111,10 +115,46 @@ Seeds find_seeds(const Field& field, const Segment& segment, const Options& opti
 Result trace_endpoint_fibers(const Field& field, const Segment& segment,
                              const Options& options, const Seeds& seeds);
 
-inline std::vector<Vec> discovery_grid(const Box& box, int n) {
+inline size_t discovery_size(const SeedShape& shape) {
+    // Preserve the previous maximum (100^3), while allowing anisotropic grids.
+    size_t size=1;
+    for (int n:shape) {
+        if (n<1 || size>1000000/size_t(n))
+            throw std::invalid_argument("Seed grid must contain between 1 and 1000000 starting points");
+        size*=size_t(n);
+    }
+    return size;
+}
+
+inline SeedShape discovery_shape(const Field& field, const Options& options) {
+    const Vec lengths=field.box.max-field.box.min;
+    if (!lengths.allFinite() || (lengths.array()<=0).any()) throw std::invalid_argument("Invalid seed domain");
+    SeedShape shape;
+    const int shortest=options.seed_grid==0 ? 7 : options.seed_grid;
+    if (shortest<2) throw std::invalid_argument("--seed-grid must be 0 (default count 7) or at least 2");
+    for (int d=0; d<3; ++d) {
+        const double n=std::ceil(shortest*(lengths[d]/lengths.minCoeff()));
+        if (!std::isfinite(n) || n>1000000) throw std::invalid_argument("Seed grid exceeds 1000000 starting points");
+        shape[d]=int(n);
+    }
+    discovery_size(shape);
+    return shape;
+}
+
+inline std::vector<Vec> discovery_grid(const Box& box, const SeedShape& shape) {
     std::vector<Vec> points;
-    for (int k=0; k<n; ++k) for (int j=0; j<n; ++j) for (int i=0; i<n; ++i)
-        points.push_back(box.min+(box.max-box.min).cwiseProduct(Vec(i,j,k)/double(n-1)));
+    points.reserve(discovery_size(shape));
+    for (int k=0; k<shape[2]; ++k) for (int j=0; j<shape[1]; ++j) for (int i=0; i<shape[0]; ++i) {
+        const SeedShape index{i,j,k}; Vec point;
+        for (int d=0; d<3; ++d) {
+            const double u=shape[d]==1 ? .5 : double(index[d])/(shape[d]-1);
+            point[d]=index[d]==shape[d]-1 && shape[d]>1 ? box.max[d] : box.min[d]+(box.max[d]-box.min[d])*u;
+        }
+        points.push_back(point);
+    }
     return points;
+}
+inline std::vector<Vec> discovery_grid(const Box& box, int n) {
+    return discovery_grid(box,SeedShape{n,n,n});
 }
 } // namespace fiber_surface

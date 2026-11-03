@@ -70,7 +70,10 @@ inline void common_help() {
         <<"  --output PREFIX       OBJ, VTK, fiber VTK and JSON report\n"
         <<"  --step H --min-step H --fiber-step H (physical units)\n"
         <<"  --spatial-tolerance E --residual-tolerance E --derivative-tolerance E\n"
-        <<"  --seed-grid N --iterations N --max-trace-steps N --max-triangles N\n"
+        <<"  --seed-grid N         N seeds on the shortest axis; other counts = ceil(N * length / shortest)\n"
+        <<"                        default 7 for both analytical and MFA fields; 0 also selects 7\n"
+        <<"                        uses the selected physical box; maximum 1000000 starts\n"
+        <<"  --iterations N --max-trace-steps N --max-triangles N\n"
         <<"Exit 0: complete discovered mesh; 1: input/runtime error; 2: unresolved/invalid partial result.\n";
 }
 } // namespace fiber_surface
