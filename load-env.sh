@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Exports must affect the calling shell so CMake can find Spack packages.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    printf 'Load this environment with: source ./load-env.sh\n' >&2
+    exit 1
+fi
+
 # activate the environment
 export SPACKENV=mfa-TDA-env
 spack env deactivate > /dev/null 2>&1
