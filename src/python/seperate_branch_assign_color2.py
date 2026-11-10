@@ -13,12 +13,17 @@ distance is <= 1e-3, copy that branch's ColorId; otherwise assign a new ColorId
 randomly in [1, 40]. Existing ColorId on the input VTP is removed before
 assignment.
 
+For (x, y, time) trajectories, --spatial-step-size and --t-step-size normalize
+matching coordinates by (spatial_step, spatial_step, time_step). Use
+--match-distance-threshold 1 for a mean nearest-point distance of one step.
+The saved geometry remains in the original physical coordinates.
+
 Default matching uses subsampled per-point mean distance with KD-tree candidate
 pruning (accurate and fast for 1k+ branches). Use ``--distance-mode centroid`` for
 a faster but coarser match.
 
 Usage:
-  pvpython src/python/seperate_ttk_trajectory.py \\
+  pvpython src/python/seperate_branch_assign_color2.py \\
     --input-vtp in.vtp \\
     --reference-vtp ref_colorid.vtp \\
     --output-vtp out.vtp
@@ -27,12 +32,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import random
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import vtk
@@ -132,12 +138,24 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--spatial-step-size", type=float,
+        help="Normalize X/Y distances by this step; requires --t-step-size and --distance-dim 3d.",
+    )
+    p.add_argument(
+        "--t-step-size", type=float,
+        help="Normalize Z (= physical time) distances by this step; requires --spatial-step-size.",
+    )
+    p.add_argument(
+        "--matches-csv", help="Write branch ids, reference ids/colors, distances and match status to CSV.",
+    )
+    p.add_argument(
         "--match-distance-threshold",
         type=float,
         default=1e-3,
         help=(
             "Assign the matched reference ColorId when branch distance is <= this value; "
-            "otherwise assign a random new ColorId in [1, 40] (default: 1e-3)."
+            "otherwise assign a random new ColorId in [1, 40] (default: 1e-3). "
+            "Distances are in step units when step sizes are supplied; use 1 for one step."
         ),
     )
     p.add_argument(
@@ -450,6 +468,8 @@ def assign_color_ids_from_reference(
     candidate_k: int,
     match_distance_threshold: float,
     rng: random.Random,
+    distance_scales: Optional[Tuple[float, ...]] = None,
+    matches_csv: Optional[str] = None,
 ) -> Tuple[Dict[int, Tuple[int, float, bool]], int]:
     ref_branches, region_to_color, ref_poly = prepare_reference_branches(
         ref_poly,
@@ -460,15 +480,23 @@ def assign_color_ids_from_reference(
 
     input_points = get_match_points(poly, t_array_name, distance_dim)
     ref_points = get_match_points(ref_poly, t_array_name, distance_dim)
+    if distance_scales is not None:
+        scales = np.asarray(distance_scales, dtype=np.float64)
+        if (scales.shape != (input_points.shape[1],)
+                or not np.isfinite(scales).all() or np.any(scales <= 0)):
+            raise ValueError("Distance scales must be finite, positive, and match the coordinate dimension.")
+        input_points = input_points / scales
+        ref_points = ref_points / scales
     ref_index = build_reference_branch_index(ref_points, ref_branches)
     ref_index.region_to_color = region_to_color
 
     region_to_color_out: Dict[int, int] = {}
     match_info: Dict[int, Tuple[int, float, bool]] = {}
+    match_rows = []
 
     for region_id in sorted(input_regions.keys()):
         query_pids = input_regions[region_id]
-        _, matched_color_id, dist = find_closest_reference_branch(
+        reference_region_id, matched_color_id, dist = find_closest_reference_branch(
             query_point_ids=query_pids,
             query_points=input_points,
             ref_index=ref_index,
@@ -484,6 +512,8 @@ def assign_color_ids_from_reference(
             matched = False
         region_to_color_out[region_id] = color_id
         match_info[region_id] = (color_id, dist, matched)
+        match_rows.append((region_id, reference_region_id, matched_color_id,
+                           color_id, dist, int(matched), len(query_pids)))
 
     pd = poly.GetPointData()
     cd = poly.GetCellData()
@@ -535,6 +565,13 @@ def assign_color_ids_from_reference(
     pd.AddArray(col_p)
     cd.AddArray(col_c)
     pd.SetActiveScalars(color_array_name)
+    if matches_csv:
+        os.makedirs(os.path.dirname(matches_csv) or ".", exist_ok=True)
+        with open(matches_csv, "w", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["RegionId", "ReferenceRegionId", "ReferenceColorId", "ColorId",
+                             "Distance", "MatchedReference", "Points"])
+            writer.writerows(match_rows)
     return match_info, len(ref_branches)
 
 
@@ -549,6 +586,15 @@ def main() -> None:
         raise ValueError("--sample-points must be > 0.")
     if int(args.candidate_k) <= 0:
         raise ValueError("--candidate-k must be > 0.")
+    if np.isnan(args.match_distance_threshold) or args.match_distance_threshold < 0:
+        raise ValueError("--match-distance-threshold must be nonnegative.")
+    distance_scales = None
+    if args.spatial_step_size is not None or args.t_step_size is not None:
+        if args.spatial_step_size is None or args.t_step_size is None or args.distance_dim != "3d":
+            raise ValueError("Supply both step sizes with --distance-dim 3d for (x, y, time) data.")
+        distance_scales = (args.spatial_step_size, args.spatial_step_size, args.t_step_size)
+        if not np.isfinite(distance_scales).all() or min(distance_scales) <= 0:
+            raise ValueError("Step sizes must be finite and positive.")
 
     rng = random.Random(int(args.seed))
     random.seed(int(args.seed))
@@ -582,11 +628,16 @@ def main() -> None:
         candidate_k=int(args.candidate_k),
         match_distance_threshold=float(args.match_distance_threshold),
         rng=rng,
+        distance_scales=distance_scales,
+        matches_csv=args.matches_csv,
     )
 
     vtk_write_polydata(labeled, args.output_vtp, args.data_mode)
 
     dist_label = "distance_3d" if args.distance_dim == "3d" else "distance_4d"
+    if distance_scales is not None:
+        dist_label = "distance_in_steps"
+        print(f"Matching scales (x, y, time): {distance_scales}")
     print(f"Wrote: {args.output_vtp}")
     print(f"Points: {labeled.GetNumberOfPoints()}  Cells: {labeled.GetNumberOfCells()}")
     print(f"Input branches: {len(match_info)}  Reference branches: {ref_branch_count}")

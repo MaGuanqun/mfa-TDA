@@ -9,6 +9,8 @@ write_slice_bin="./build/src/convert/write_bin_select_slices"
 tracking="./build/src/critical_point_tracking/critical_point_tracking"
 tracking_explicit="./build/src/critical_point_tracking/critical_point_tracking_explicit"
 
+degenerate_case_multi_threshold="./build/src/critical_point_tracking/degenerate_case_multi_threshold"
+
 count_betti_num="./src/contour/count_betti_num.py"
 
 derivative_control_point="./build/src/critical_point/derivative_control_point"
@@ -120,7 +122,17 @@ raw_data_file="./build/src/ori_data/vorts/vorts_list.txt"
 # done
 
 
-for step_size in 8 16
+# step_size=16
+# for J_threshold in "1e-2" # "1e-3" "1e-4" "1e-5" "1e-6" "1e-7" "1e-8"
+# do  
+# # echo "degenerate case with threshold: ${J_threshold}"
+# gdb --args "${degenerate_case_multi_threshold}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 0
+
+# done
+
+
+for step_size in 16
 do
     # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
     # # gdb --args 
@@ -128,19 +140,83 @@ do
     # do
     echo "test"
     # echo "tracking with step size: ${step_size}"
-    "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}"
+    # "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}"
     
     
     # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 0
 
-    # python ./src/python/remove_obstacle.py --data "${data_type}" --input_csv "${boundary_point_INR}${step_size}.csv" --output_csv "${boundary_point_INR}${step_size}_remove_obstacle.csv" --for_our_csv 1
 
-
-    # python "${filter_points}" -i "${boundary_point_INR}${step_size}_remove_obstacle.csv"
     # source ~/enter/etc/profile.d/conda.sh
     # conda activate mfa
     # python $convert_obj_domain --csv "${degenerate_point}_${step_size}.csv" --function "${data_type}" --obj "${tracking_result}_${step_size}.obj"
-    # python ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result}_${step_size}.vtp"
+
+    # python ./src/python/merge_obj_edge_type_4d.py -i "${tracking_result}_${step_size}.obj.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result}_4d_${step_size}.vtp"
+
+    # pvpython ./src/python/seperate_diffferent_branches.py --input-vtp "${tracking_result}_4d_${step_size}.vtp" --output-vtp "${tracking_result}_4d_${step_size}_colorid.vtp" --seed 0
+
+    # python ./src/critical_point_tracking/extract_trajectories_from_vtp.py -i "${tracking_result}_4d_${step_size}.vtp" -o "${tracking_result}_trajectory_${step_size}.obj" --data "${data_type}"
+
+   
+    # pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_trajectory_${step_size}_cc9.obj" -j "${tracking_result}_trajectory_${step_size}_cc9_edge_types.txt" -o "${tracking_result}_trajectory_${step_size}_cc9.vtp"
+
+# we extract 51~80, 501~540, 5001~5030
+# for the combination, we extract 2 11 29 63, in global indices, they are 53 62 72 79 
+
+
+
+# pvpython ./src/python/compute_connected_components.py -i "${tracking_result}_4d_${step_size}.vtp" -o "${tracking_result}_trajectory_${step_size}" --num_k 30 --start_k 5000 --server 0
+
+
+
+
+# we need 62,68x
+# for index in $(seq 5001 5030)
+# do
+# pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_trajectory_${step_size}_cc${index}.obj" -j "${tracking_result}_trajectory_${step_size}_cc${index}_edge_types.txt" -o "${tracking_result}_trajectory_${step_size}_cc${index}.vtp"
+
+# pvpython ./src/python/merge_obj_edge_type_4d.py -i "${tracking_result}_trajectory_${step_size}_cc${index}.obj" -j "${tracking_result}_trajectory_${step_size}_cc${index}_edge_types.txt" -o "${tracking_result}_trajectory_${step_size}_4d_cc${index}.vtp"
+
+
+# #71.2 corresponds to 64
+
+# # for t in 71.2
+# # do
+# # python ./src/python/point_at_certain_time4d.py --input "${tracking_result}_trajectory_${step_size}_4d_cc${index}.vtp" --output "${tracking_result}_trajectory_${step_size}_4d_cc${index}_${t}.vtp" --t ${t} --type-array EdgeValues
+
+
+# done
+
+#  python ./src/python/combine_trajectory.py --dir "./build/src/${save_folder}" --start 51 --end 80 --pattern "${data_type}_trajectory_${step_size}_4d_cc{i}.vtp" --output "${tracking_result}_trajectory_${step_size}_4d_combine0.vtp"
+
+#   python ./src/python/combine_trajectory.py --dir "./build/src/${save_folder}" --start 501 --end 540 --pattern "${data_type}_trajectory_${step_size}_4d_cc{i}.vtp" --output "${tracking_result}_trajectory_${step_size}_4d_combine1.vtp"
+
+#     python ./src/python/combine_trajectory.py --dir "./build/src/${save_folder}" --start 5001 --end 5030 --pattern "${data_type}_trajectory_${step_size}_4d_cc{i}.vtp" --output "${tracking_result}_trajectory_${step_size}_4d_combine2.vtp"
+
+#  python ./src/python/combine_trajectory.py --dir "./build/src/${save_folder}" --start 0 --end 2 --pattern "${data_type}_trajectory_${step_size}_4d_combine{i}.vtp" --output "${tracking_result}_trajectory_${step_size}_4d_combine.vtp"
+
+
+
+
+# pvpython ./src/python/assign_component_id_to_point.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_combine.vtp" --output-vtp "${tracking_result}_trajectory_${step_size}_4d_combine_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+
+# pvpython ./src/python/assign_component_id_to_point.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_cc53.vtp" --output-vtp "${tracking_result}_trajectory_${step_size}_4d_cc53_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+# pvpython ./src/python/assign_component_id_to_point.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_cc62.vtp" --output-vtp "${tracking_result}_trajectory_${step_size}_4d_cc62_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+# pvpython ./src/python/assign_component_id_to_point.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_cc72.vtp" --output-vtp "${tracking_result}_trajectory_${step_size}_4d_cc72_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+# pvpython ./src/python/assign_component_id_to_point.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_cc79.vtp" --output-vtp "${tracking_result}_trajectory_${step_size}_4d_cc79_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+
+
+# python ./src/python/find_common_points.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_cc${index}_44.5.vtp" --input-csv "${mfa_file}_${step_size}_40.csv" --output-csv "${tracking_result}_trajectory_${step_size}_4d_${index}_44.5_matching.csv" --distance 1.5875
+
+# python ./src/python/find_common_points.py --input-vtp "${tracking_result}_trajectory_${step_size}_4d_cc${index}_71.2.vtp" --input-csv "${mfa_file}_${step_size}_64.csv" --output-csv "${tracking_result}_trajectory_${step_size}_4d_${index}_71.2_matching.csv" --distance 1.5875
+
+# done
+
+
+
+
+# time 44.5, 66.75
+
+# python ./src/python/point_at_certain_time4d.py --input "${tracking_result}_4d_${step_size}.vtp" --output "${tracking_result}_4d_${step_size}_66.75.vtp" --t 66.75 --type-array EdgeValues
 
     # pvpython "${count_betti_num}" "${tracking_result}_${step_size}.vtp"
 
@@ -160,6 +236,7 @@ do
 
     # pvpython ./src/critical_point_tracking/mfa_bin_critical_point.py --cpp_exe "${write_slice_bin}" --chunk_size 20 --step_size "${step_size}" --float_type 'float64' --function "${data_type}" --server 0 --output_csv "${mfa_file}_${step_size}.csv" --mfa_file "${mfa_file}"
 
+# done
     done
 # done
 
@@ -350,18 +427,18 @@ do
 
 for step_size in 4
 do
-#     "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}_${step_size}.dat" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+    "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}_${step_size}.dat" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
 #     "${convert_root_to_vtk}" -f "${degenerate_point_original}_${step_size}.dat" -o "${degenerate_point_original}.csv" -j 0 -t 0
 
 # #     # gdb --args 
-    # "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}_${step_size}" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}_${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv"
+    "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}_${step_size}" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}_${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv"
 
 
 source ~/enter/etc/profile.d/conda.sh
 conda activate mfa_env
 
-    # python ./src/python/create_cube.py
+    python ./src/python/create_cube.py
 
 
 source ~/enter/etc/profile.d/conda.sh
@@ -369,6 +446,8 @@ conda activate mfa
 
     # pvpython ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${ori_tracking_result_w_type}_${step_size}.vtp"
 
+
+# pvpython ./src/python/seperate_diffferent_branches.py --input-vtp "${ori_tracking_result_w_type}_${step_size}.vtp" --output-vtp "${ori_tracking_result_w_type}_${step_size}_colorid.vtp" --seed 0
 # pvpython ./src/python/point_at_certain_time.py --input "${ori_tracking_result_w_type}_${step_size}.vtp" --output "${ori_tracking_result_w_type}_${step_size}_2.76.vtp" --z 2.76 --type-array EdgeValues
 
 #     pvpython "${count_betti_num}" "${ori_tracking_result_w_type}_${step_size}.vtp"

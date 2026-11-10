@@ -9,4 +9,6 @@
 *.cmake
 *.pyc
 !/isosurface_mfa.sh
+!/critical_point_tracking_local.sh
+!/feature_flow_fields_analytical.sh
 !/src/isosurface/tests/*.cmake

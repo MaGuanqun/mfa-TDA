@@ -132,13 +132,32 @@ fi
 
 # pvpython ./src/python/remove_obstacle.py -i "${tracking_result}_${step_size}_ttk_tracking.vtp" -o "${tracking_result}_${step_size}_ttk_tracking_remove_obstacle.vtp" --data "${data_type}"
 
-# #
+# # #
 # pvpython ./src/python/seperate_ttk_trajectory.py \
 #   -i "${tracking_result}_${step_size}_ttk_tracking_remove_obstacle.vtp" \
 #   -r "${tracking_result}_${step_size}_remove_obstacle_colorid.vtp" \
 #   -o "${tracking_result}_${step_size}_ttk_tracking_remove_obstacle_colorid.vtp" \
 #   --distance-mode mean
 
+
+
+pvpython ./src/python/seperate_branch_assign_color2.py \
+  -i "${tracking_result}_${step_size}_regionid_colorid.vtp" \
+  -r "${tracking_result}_${step_size}_remove_obstacle_colorid.vtp" \
+  -o "${tracking_result}_${step_size}_regionid_colorid.vtp" \
+  --distance-mode mean
+
+pvpython ./src/python/seperate_ttk_trajectory.py \
+  -i "${tracking_result}_${step_size}_ttk_tracking.vtp" \
+  -r "${tracking_result}_${step_size}_regionid_colorid.vtp" \
+  -o "${tracking_result}_${step_size}_ttk_tracking_colorid.vtp" \
+  --distance-mode mean
+
+pvpython ./src/python/seperate_ttk_trajectory.py \
+  -i "${tracking_result}_${step_size}_sfff.vtp" \
+  -r "${tracking_result}_${step_size}_regionid_colorid.vtp" \
+  -o "${tracking_result}_${step_size}_sfff_colorid.vtp" \
+  --distance-mode mean
 
 
 # python src/python/convert_vtp_to_ply.py -i "${tracking_result}_${step_size}_ttk_tracking_remove_obstacle.vtp" -o "${tracking_result}_${step_size}_ttk_tracking_remove_obstacle.ply"
@@ -154,9 +173,11 @@ fi
 # "${spatial_acceleration}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_ttk_tracking_remove_obstacle.ply"
 
 
+
+
+
 # "${write_gradient}" \
 #     -f "${mfa_file}" \
-#     -m 3 -d 4 \
 #     -u "${step_size}-${step_size}-${step_size}" \
 #     -w "${tracking_result}_${step_size}.vff"
 
@@ -165,7 +186,7 @@ fi
 # ${pvpython2} "${vff_critical_points}" -i "${tracking_result}_${step_size}.vff" -o "${tracking_result}_${step_size}_vff_critical_points.csv"
 
 # "${stable_feature_flow_fields}" -f "${tracking_result}_${step_size}.vff" -s "${tracking_result}_${step_size}_vff_critical_points.csv" -b "${tracking_result}_${step_size}_sfff" -m 10000 -k 10.0
-# # #
+# # # #
 # python ./src/python/convert_obj_to_vtp.py -i "${tracking_result}_${step_size}_sfff.obj" -o "${tracking_result}_${step_size}_sfff.vtp"
 
 
@@ -185,19 +206,31 @@ fi
 
 # "${gradient_norm}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle.ply" -s 1
 
-"${hessian_determinant}" -f "${mfa_file}" -p "${degenerate_point}${step_size}.dat" -s 1
+# "${gradient_norm}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle.ply" -s 1
+
+
+# "${hessian_determinant}" -f "${mfa_file}" -p "${degenerate_point}${step_size}.dat" -s 1
 
 
 
 
 
-python src/feature_flow_fields/trajectory_degenerate_point.py -i "${tracking_result}_${step_size}_sfff_remove_obstacle.vtp" -o "${tracking_result}_${step_size}_sfff_remove_obstacle_degenerate_points.csv" --boundary-threshold "${spatial_step_size}" "${spatial_step_size}" "${t_step_size}"
+# python src/feature_flow_fields/trajectory_degenerate_point.py -i "${tracking_result}_${step_size}_sfff_remove_obstacle.vtp" -o "${tracking_result}_${step_size}_sfff_remove_obstacle_degenerate_points.csv" --boundary-threshold "${spatial_step_size}" "${spatial_step_size}" "${t_step_size}"
 
-"${hessian_determinant}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle_degenerate_points.csv" -s 1
+# "${hessian_determinant}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle_degenerate_points.csv" -s 1
 
-"${spatial_acceleration}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle.ply"
+# "${spatial_acceleration}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle.ply"
 
-"${spatial_acceleration}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_remove_obstacle.ply"
+# "${spatial_acceleration}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_remove_obstacle.ply"
+
+
+
+
+# python src/python/crop_png_blocks.py \
+#     --figs-folder ./build/src/vortex_street_3d/test/revision/block2/ \
+#     --dataset vortex_street_3d \
+#     --repr mfa
+
 
 # # Default: 3D matching
 # pvpython ./src/python/seperate_ttk_trajectory.py \
@@ -205,6 +238,11 @@ python src/feature_flow_fields/trajectory_degenerate_point.py -i "${tracking_res
 #   -r "${tracking_result}_${step_size}_remove_obstacle_colorid.vtp" \
 #   -o "${tracking_result}_${step_size}_sfff_remove_obstacle_colorid.vtp" \
 #   --distance-mode mean
+
+
+# # Default: 3D matching
+
+
 
 
 for step_size in 16

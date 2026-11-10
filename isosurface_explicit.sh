@@ -1,11 +1,4 @@
-
 #!/usr/bin/env bash
-
-# Configure and generate build files
-cmake -S src/isosurface -B build/isosurface -DCMAKE_BUILD_TYPE=Release
-
-# Compile (invokes make for your current build)
-cmake --build build/isosurface -j 3
 
 set -e
 
@@ -29,15 +22,20 @@ mesh_options=(
 )
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# Location of the existing compiled executables.
-binary_dir="${script_dir}/build/isosurface"
+# Executables from the main project build.
+binary_dir="${script_dir}/build/src/isosurface"
 root_finder="${binary_dir}/root_finding_explicit"
 mesher="${binary_dir}/isosurface_explicit"
 output_dir="${binary_dir}/results/${function_name}"
 root_file="roots.dat"
 mesh_prefix="${function_name}_sheet"
 
-
+for executable in "$root_finder" "$mesher"; do
+    if [[ ! -x "$executable" ]]; then
+        printf 'Executable not found: %s\nBuild the project first; see src/isosurface/README.md.\n' "$executable" >&2
+        exit 1
+    fi
+done
 
 mkdir -p "$output_dir"
 # Use local filenames because the C++ argument parser rejects paths with spaces.

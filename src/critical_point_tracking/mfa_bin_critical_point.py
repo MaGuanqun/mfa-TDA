@@ -28,6 +28,7 @@ from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 
 from paraview.simple import *  # noqa: F401,F403
 from paraview import servermanager as sm
+from paraview import simple as pv
 
 import gc  # <<< for explicit garbage collection
 
@@ -189,18 +190,39 @@ def load_bin_to_vtkImageData(
 def critical_points_from_vtkImageData_chunk(
     img: vtk.vtkImageData,
     csvwriter: csv.writer,
+    *,
+    threads: Optional[int] = None,
+    on_slice=None,
+    quiet: bool = False,
 ) -> None:
     """
     Run TTK on a vtkImageData chunk and append critical points to CSV via csvwriter.
+
+    Optional on_slice(array_name, mesh) receives the unfiltered native result,
+    before its Z coordinate is replaced by physical time. Pass csvwriter=None
+    when the callback writes richer reference outputs. The numerical pipeline
+    and default CSV behavior are unchanged.
     """
 
+    if threads is not None and threads < 1:
+        raise ValueError('threads must be positive')
+
+    def configure(proxy):
+        if threads is not None and 'UseAllCores' in proxy.ListProperties():
+            proxy.UseAllCores = 0
+            proxy.ThreadNumber = threads
+        if quiet and 'DebugLevel' in proxy.ListProperties():
+            proxy.DebugLevel = 0
+
     # 1) Wrap raw vtkImageData in a ParaView pipeline source
-    print("[critical_chunk] Creating TrivialProducer from vtkImageData")
+    if not quiet:
+        print("[critical_chunk] Creating TrivialProducer from vtkImageData")
     producer = TrivialProducer()
     producer.GetClientSideObject().SetOutput(img)
 
     # 2) Preconditioning + tetrahedralization
-    precond = TTKArrayPreconditioning(Input=producer)
+    precond = pv.TTKArrayPreconditioning(Input=producer)
+    configure(precond)
     precond.UpdatePipeline()
     tet = Tetrahedralize(Input=precond)
 
@@ -211,17 +233,23 @@ def critical_points_from_vtkImageData_chunk(
         for i in range(point_data.GetNumberOfArrays())
         if point_data.GetArrayName(i) is not None
     ]
-    print("[critical_chunk] Scalar fields in this chunk:", arrays)
+    if not quiet:
+        print("[critical_chunk] Scalar fields in this chunk:", arrays)
 
     # 4) Run TTK critical points per scalar field
     for arr_name in arrays:
-        print(f"[critical_chunk] Processing scalar field: {arr_name}")
-        crit = TTKScalarFieldCriticalPoints(Input=tet)
+        if not quiet:
+            print(f"[critical_chunk] Processing scalar field: {arr_name}")
+        crit = pv.TTKScalarFieldCriticalPoints(Input=tet)
+        configure(crit)
         crit.ScalarField = ["POINTS", arr_name]
         crit.InputOffsetField = ["POINTS", arr_name]
         crit.UpdatePipeline()
 
         out = sm.Fetch(crit)
+
+        if on_slice is not None:
+            on_slice(arr_name, out)
 
         # Positions
         pts = vtk_to_numpy(out.GetPoints().GetData())
@@ -243,8 +271,9 @@ def critical_points_from_vtkImageData_chunk(
             pts = pts[mask]
 
         # Append to CSV
-        for p in pts:
-            csvwriter.writerow([p[0], p[1], p[2]])
+        if csvwriter is not None:
+            for p in pts:
+                csvwriter.writerow([p[0], p[1], p[2]])
 
         # ### MEMORY CLEANUP for this scalar field
         del pts, zvals

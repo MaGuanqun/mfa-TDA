@@ -79,3 +79,15 @@ python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${raw_d
 # tensorboard --logdir=logs/expotential/summaries/ --host=0.0.0.0
 # ip addr show eth0 | grep "inet\b" | awk '{print $2}' | cut -d/ -f1
 ## after get ip address, open browser and go to http://ip_address:6006
+
+# python sample_compute_cp_by_slice.py \
+# --ts_model ../Exp/$function_name/super-spatial-temporal-64-$num_res-float64.pt \
+# --dataset $function_name \
+# --up_sample_ratio $step_size \
+# --chunk_size 50 \
+# --batch_size 100000 \
+# --output_dir ../Result/$function_name \
+# --output_csv_name vti_critical_points-$num_res-$step_size.csv \
+# --pvpython /home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/bin/pvpython \
+# --pv_script ./compute_critical_points_from_bin.py \
+# --server 1

@@ -171,14 +171,14 @@ elif [ "${step_size}" = "96" ]; then
         t_step_size="0.00104166"
 fi
 
-echo "computing matching ratio for step size: ${step_size}"
-csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}.csv"
-python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
-echo "remove obstacle/n"
+# echo "computing matching ratio for step size: ${step_size}"
+# csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}.csv"
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
+# echo "remove obstacle/n"
 
-csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle.csv"
+# csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle.csv"
 
-python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
 
 done
 

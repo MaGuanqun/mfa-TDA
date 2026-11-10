@@ -24,7 +24,7 @@ convert_obj_domain=./src/critical_point_tracking/convert_obj_back_to_domain.py
 step_size="32"
 t_sample_ratio="32"
 root_finding_epsilon="1e-10"
-J_threshold="1e-9"
+J_threshold="1e-6"
 
 for data_type in "vortex_street_3d" #"vortex_street_3d" #"boussinesq_3d"
 do

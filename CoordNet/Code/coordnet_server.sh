@@ -85,17 +85,17 @@ do
 #     # python ../../src/critical_point_tracking/binary_time_data_convert.py -i "${func_raw_data}-${step_size}.dat" -o "${vti_file}-${step_size}.vti" -f "${function_name}" --step_size $step_size --float_type float64
 #     # pvpython ../../src/critical_point_tracking/extract_all_critical_points.py -i "${vti_file}-${step_size}.vti" -o "${vti_critical_point}-${step_size}.csv" -s 1
 
-    # python sample_compute_cp_by_slice.py \
-    # --ts_model ../Exp/$function_name/super-spatial-temporal-64-$num_res-float64.pt \
-    # --dataset $function_name \
-    # --up_sample_ratio $step_size \
-    # --chunk_size 50 \
-    # --batch_size 100000 \
-    # --output_dir ../Result/$function_name \
-    # --output_csv_name vti_critical_points-$num_res-$step_size.csv \
-    # --pvpython /home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/bin/pvpython \
-    # --pv_script ./compute_critical_points_from_bin.py \
-    # --server 1
+    python sample_compute_cp_by_slice.py \
+    --ts_model ../Exp/$function_name/super-spatial-temporal-64-$num_res-float64.pt \
+    --dataset $function_name \
+    --up_sample_ratio $step_size \
+    --chunk_size 50 \
+    --batch_size 100000 \
+    --output_dir ../Result/$function_name \
+    --output_csv_name vti_critical_points-$num_res-$step_size.csv \
+    --pvpython /home/u1435513-gma/apps/ParaView-5.11.2-osmesa-MPI-Linux-Python3.9-x86_64/bin/pvpython \
+    --pv_script ./compute_critical_points_from_bin.py \
+    --server 1
 
 
     python ../../src/python/remove_obstacle.py --data "${function_name}" --input_csv "${vti_critical_point}-${step_size}.csv" --output_csv "${vti_critical_point}-${step_size}_remove_obstacle.csv"
