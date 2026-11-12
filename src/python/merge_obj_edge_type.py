@@ -1,5 +1,4 @@
 from paraview.simple import *
-import pandas as pd
 import os
 import csv
 import argparse
@@ -44,6 +43,7 @@ from paraview.vtk import vtkPoints, vtkCellArray, vtkFloatArray, vtkLine
 
 # Create points
 points = vtkPoints()
+points.SetDataTypeToDouble()
 for vertex in vertices:
     points.InsertNextPoint(vertex)
 

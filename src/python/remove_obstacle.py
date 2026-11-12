@@ -24,6 +24,8 @@ def filter_polydata_in_circle(polydata, cx, cy, radius, return_removed=False):
     removed_point_id_map = [-1] * n_points
     kept_points = vtk.vtkPoints()
     removed_points = vtk.vtkPoints()
+    kept_points.SetDataType(points.GetDataType())
+    removed_points.SetDataType(points.GetDataType())
 
     for pid in range(n_points):
         x, y, z = points.GetPoint(pid)

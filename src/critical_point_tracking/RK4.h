@@ -178,6 +178,12 @@ namespace RK4
         {
             return false;
         }
+        // A zero correction budget accepts the RK4 prediction without Newton
+        // updates or a gradient-residual convergence test (tracking ablation).
+        if(max_itr == 0)
+        {
+            return input_point.allFinite();
+        }
         compute_f_dev_f(input_point, f, dev_f, function_type, b,inr_model);
 
         // std::cout<<"===="<< f.squaredNorm()<<" "<<root_finding_epsilon*root_finding_epsilon<<std::endl;
@@ -384,7 +390,7 @@ namespace RK4
             }
             else
             {
-                if(RK4(p,result,time_step,upper_search,core_mins,core_maxs,function_type,b,inr_model));
+                if(RK4(p,result,time_step,upper_search,core_mins,core_maxs,function_type,b,inr_model))
                 {
                     return correction_newton(result, max_itr, d_max_square, gradient_epsilon, core_mins,core_maxs,function_type,b,inr_model);
                 }

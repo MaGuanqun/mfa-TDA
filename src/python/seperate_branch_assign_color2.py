@@ -18,6 +18,9 @@ matching coordinates by (spatial_step, spatial_step, time_step). Use
 --match-distance-threshold 1 for a mean nearest-point distance of one step.
 The saved geometry remains in the original physical coordinates.
 
+Use --ref-region-association cell when the reference's cell RegionId/ColorId
+arrays are authoritative. This excludes unused reference vertices from matching.
+
 Default matching uses subsampled per-point mean distance with KD-tree candidate
 pruning (accurate and fast for 1k+ branches). Use ``--distance-mode centroid`` for
 a faster but coarser match.
@@ -104,6 +107,11 @@ def parse_args() -> argparse.Namespace:
         "--ref-region-array-name",
         default="RegionId",
         help="Reference branch id array (default: RegionId). Branches are matched by this, not ColorId.",
+    )
+    p.add_argument(
+        "--ref-region-association", choices=["point", "cell"], default="point",
+        help="Read reference branch ids/colors from point data (default) or cell data. "
+             "Cell mode excludes unused reference vertices and handles inconsistent point RegionId labels.",
     )
     p.add_argument(
         "--distance-dim",
@@ -265,6 +273,7 @@ def prepare_reference_branches(
     ref_poly: vtk.vtkPolyData,
     region_array_name: str,
     color_array_name: str,
+    region_association: str = "point",
 ) -> Tuple[Dict[int, np.ndarray], Dict[int, int], vtk.vtkPolyData]:
     """
     Group reference points by branch id (RegionId).
@@ -272,6 +281,27 @@ def prepare_reference_branches(
     ColorId may repeat across branches when there are many components; matching
     must use RegionId and only then copy the matched branch's ColorId.
     """
+    if region_association == "cell":
+        regions = ref_poly.GetCellData().GetArray(region_array_name)
+        colors = ref_poly.GetCellData().GetArray(color_array_name)
+        if regions is None or colors is None:
+            raise RuntimeError("Cell reference matching requires cell RegionId and ColorId arrays.")
+        groups = defaultdict(set)
+        region_to_color = {}
+        for cid in range(ref_poly.GetNumberOfCells()):
+            region_id = int(regions.GetTuple1(cid))
+            color_id = int(colors.GetTuple1(cid))
+            if region_id in region_to_color and region_to_color[region_id] != color_id:
+                raise ValueError(f"Reference cell region {region_id} has multiple ColorId values.")
+            region_to_color[region_id] = color_id
+            cell = ref_poly.GetCell(cid)
+            groups[region_id].update(cell.GetPointId(j) for j in range(cell.GetNumberOfPoints()))
+        branches = {rid: np.asarray(sorted(pids), dtype=np.int64)
+                    for rid, pids in groups.items() if pids}
+        if not branches:
+            raise RuntimeError("No reference branches with cells available for matching.")
+        return branches, region_to_color, ref_poly
+
     region_arr = ref_poly.GetPointData().GetArray(region_array_name)
     if region_arr is None:
         ref_poly = compute_connectivity_regions(ref_poly, region_array_name=region_array_name)
@@ -470,11 +500,13 @@ def assign_color_ids_from_reference(
     rng: random.Random,
     distance_scales: Optional[Tuple[float, ...]] = None,
     matches_csv: Optional[str] = None,
+    ref_region_association: str = "point",
 ) -> Tuple[Dict[int, Tuple[int, float, bool]], int]:
     ref_branches, region_to_color, ref_poly = prepare_reference_branches(
         ref_poly,
         region_array_name=ref_region_array_name,
         color_array_name=color_array_name,
+        region_association=ref_region_association,
     )
     input_regions = group_points_by_scalar_array(poly, region_array_name)
 
@@ -600,9 +632,10 @@ def main() -> None:
     random.seed(int(args.seed))
 
     ref = vtk_read_polydata(args.reference_vtp)
-    if ref.GetPointData().GetArray(args.color_array_name) is None:
+    ref_data = ref.GetCellData() if args.ref_region_association == "cell" else ref.GetPointData()
+    if ref_data.GetArray(args.color_array_name) is None:
         raise RuntimeError(
-            f"Reference VTP missing PointData['{args.color_array_name}']. "
+            f"Reference VTP missing {args.ref_region_association} ColorId array '{args.color_array_name}'. "
             "Run seperate_diffferent_branches.py on the reference first."
         )
 
@@ -630,6 +663,7 @@ def main() -> None:
         rng=rng,
         distance_scales=distance_scales,
         matches_csv=args.matches_csv,
+        ref_region_association=args.ref_region_association,
     )
 
     vtk_write_polydata(labeled, args.output_vtp, args.data_mode)
@@ -641,6 +675,7 @@ def main() -> None:
     print(f"Wrote: {args.output_vtp}")
     print(f"Points: {labeled.GetNumberOfPoints()}  Cells: {labeled.GetNumberOfCells()}")
     print(f"Input branches: {len(match_info)}  Reference branches: {ref_branch_count}")
+    print(f"Reference region association: {args.ref_region_association}")
     matched_count = sum(1 for _, _, matched in match_info.values() if matched)
     new_count = len(match_info) - matched_count
     print(

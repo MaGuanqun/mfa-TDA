@@ -2,7 +2,7 @@
 # add_subdirectory              (critical_point)
 # add_subdirectory            (contour)
 add_subdirectory            (encode)
-# add_subdirectory            (critical_point_tracking)
+add_subdirectory            (critical_point_tracking)
 add_subdirectory            (feature_flow_fields)
 # add_subdirectory            (isosurface)
 add_subdirectory            (fiber_surface)

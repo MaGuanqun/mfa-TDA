@@ -27,6 +27,12 @@ target_link_libraries       (test_derivatives        ${libraries} Torch::Torch)
 target_link_libraries       (degenerate_case_INR_multi_threshold        ${libraries} Torch::Torch)
 target_link_libraries       (degenerate_case_multi_threshold        ${libraries} Torch::Torch)
 
+if(BUILD_TESTING)
+    add_executable(test_rk4_correction test_rk4_correction.cpp)
+    target_link_libraries(test_rk4_correction PRIVATE ${libraries} Torch::Torch)
+    add_test(NAME rk4_correction COMMAND test_rk4_correction)
+endif()
+
 
 set(_rpaths "$ENV{TORCH_PATH}/lib;$ENV{TBB_PATH}/lib;/usr/local/cuda-12.6/lib64")
 

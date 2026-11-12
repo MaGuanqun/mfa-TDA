@@ -94,6 +94,7 @@ int main(int argc, char** argv)
     double grad_threshold = 1e-5;
 
     int correction_max_itr = 30;
+    int newton_correction = 1;
 
 
 
@@ -129,6 +130,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('p', "point_itr_threshold", point_itr_threshold, " stop iteration when point update is less than point_itr_threshold * step size");
 
     ops >> opts::Option('e', "edge_type_file", edge_type_file, " edge type file name");
+    ops >> opts::Option('n', "newton_correction", newton_correction,
+                       " apply Newton correction after each particle step: 1 (default) or 0");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -136,6 +139,16 @@ int main(int argc, char** argv)
             std::cout << ops;
         return 1;
     }
+
+    if(newton_correction != 0 && newton_correction != 1)
+    {
+        std::cerr << "newton_correction must be 0 or 1" << std::endl;
+        return 1;
+    }
+    if(newton_correction == 0)
+        correction_max_itr = 0;
+    std::cout << "Post-step Newton correction: "
+              << (newton_correction ? "enabled" : "disabled") << std::endl;
 
 
     std::istringstream iss(input_shrink_ratio);

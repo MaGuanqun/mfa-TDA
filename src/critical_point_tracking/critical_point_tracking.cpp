@@ -101,6 +101,7 @@ int main(int argc, char** argv)
     double grad_threshold = 1e-5;
 
     int correction_max_itr = 60;
+    int newton_correction = 1;
 
 
 
@@ -152,6 +153,8 @@ int main(int argc, char** argv)
     ops >> opts::Option('d', "directly_read_file", directly_read_file, " directly read degenerate tracing file");
 
     ops >> opts::Option('c', "compute_boundary_start", compute_boundary_start, " compute_boundary_start");
+    ops >> opts::Option('n', "newton_correction", newton_correction,
+                       " apply Newton correction after each particle step: 1 (default) or 0");
 
     if (!ops.parse(argc, argv) || help)
     {
@@ -159,6 +162,16 @@ int main(int argc, char** argv)
             std::cout << ops;
         return 1;
     }
+
+    if(newton_correction != 0 && newton_correction != 1)
+    {
+        std::cerr << "newton_correction must be 0 or 1" << std::endl;
+        return 1;
+    }
+    if(newton_correction == 0)
+        correction_max_itr = 0;
+    std::cout << "Post-step Newton correction: "
+              << (newton_correction ? "enabled" : "disabled") << std::endl;
 
 
     std::istringstream iss(input_shrink_ratio);
