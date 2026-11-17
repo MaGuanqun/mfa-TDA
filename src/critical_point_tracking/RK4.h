@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <iostream>
 #include <complex>
 #include <vector>
@@ -83,6 +84,17 @@ namespace RK4
     template<typename T>
     bool RK4(VectorX<T>& p,VectorX<T>& result, T step_size, bool upper_search, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr, INRModel<T>* inr_model=nullptr)
     {
+        const int time_axis = p.size() - 1;
+        const T boundary_time = upper_search ? core_maxs[time_axis] : core_mins[time_axis];
+        const T remaining_time = upper_search ? boundary_time - p[time_axis]
+                                             : p[time_axis] - boundary_time;
+        if (!(step_size > T(0)) || step_size > remaining_time)
+            return false;
+        // Use the exact boundary value for the last stage and corrected point.
+        // A rounded time slightly outside the domain would reject the whole step.
+        const T end_time = step_size == remaining_time ? boundary_time
+            : p[time_axis] + (upper_search ? step_size : -step_size);
+        const T middle_time = p[time_axis] + (end_time - p[time_axis]) / T(2);
         VectorX<T> k1(p.size());
         if(!compute_direction(p, k1,core_mins,core_maxs,function_type,b, inr_model))
         {
@@ -98,6 +110,7 @@ namespace RK4
         {
             p2 = p-0.5*step_size*k1;
         }
+        p2[time_axis] = middle_time;
         if(!compute_direction(p2, k2,core_mins,core_maxs,function_type,b, inr_model))
         {
             return false;
@@ -112,6 +125,7 @@ namespace RK4
         {
             p3 = p-0.5*step_size*k2;
         }
+        p3[time_axis] = middle_time;
 
         if(!compute_direction(p3, k3,core_mins,core_maxs,function_type,b, inr_model))
         {
@@ -127,6 +141,7 @@ namespace RK4
         {
             p4 = p-step_size*k3;
         }
+        p4[time_axis] = end_time;
         if(!compute_direction(p4, k4,core_mins,core_maxs,function_type,b, inr_model))
         {
             return false;
@@ -141,6 +156,7 @@ namespace RK4
         {
             result = p - step_size*k;
         }
+        result[time_axis] = end_time;
         if(!utility::In_Domain(result,core_mins,core_maxs))
         {
             return false;
@@ -424,15 +440,25 @@ namespace RK4
     template<typename T>
     bool RK4_correction(VectorX<T>& p,VectorX<T>& result, T time_step, T sptial_step_size,  T gradient_epsilon, bool upper_search,int max_itr, T d_max_square, const VectorX<T>& core_mins, const VectorX<T>& core_maxs, const int function_type=0, const Block<T>* b=nullptr, INRModel<T>* inr_model=nullptr)
     {
+        const int time_axis = p.size() - 1;
+        const T remaining_time = upper_search ? core_maxs[time_axis] - p[time_axis]
+                                             : p[time_axis] - core_mins[time_axis];
+        if (!p.allFinite() || !std::isfinite(time_step) || !(time_step > T(0))
+            || !(remaining_time > T(0)))
+            return false;
+        // A trace seeded on one time face must also reach the opposite face.
+        // Limit both predictor choices by the remaining time, preserving the
+        // spatial step limit and the existing Newton correction at that time.
+        const T limited_time_step = std::min(time_step, remaining_time);
         bool fixed_time;
-        if(!determine_fixed_space_time(p,time_step,sptial_step_size,fixed_time,core_mins,core_maxs,function_type,b,inr_model))
+        if(!determine_fixed_space_time(p,limited_time_step,sptial_step_size,fixed_time,core_mins,core_maxs,function_type,b,inr_model))
         {
             return false;
         }
 
         // std::cout<<"determined fixed time "<<fixed_time<<std::endl;
 
-        if(RK4_choose_direction(p,result,time_step,sptial_step_size,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time,core_mins,core_maxs,function_type,b,inr_model))
+        if(RK4_choose_direction(p,result,limited_time_step,sptial_step_size,gradient_epsilon,upper_search,max_itr,d_max_square,fixed_time,core_mins,core_maxs,function_type,b,inr_model))
         {
             // if((p-result).head(p.size()-1).squaredNorm()<d_max_square)
                 return true;

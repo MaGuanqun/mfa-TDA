@@ -7,133 +7,83 @@ import vtk
 import csv
 
 def filter_polydata_in_circle(polydata, cx, cy, radius, return_removed=False):
-    """
-    Remove points with (x,y) inside circle and edges incident to them.
+    """Remove points on/inside the circle and lines incident to those points.
 
-    If return_removed=True, also return a second vtkPolyData containing
-    all removed line cells (and their points).
+    Preserve point, cell and field attributes, including reference colors. Keep
+    singleton detections as vertex cells; clipping a line may create new ones.
+    The optional removed output contains inside points and fully inside lines.
+    Crossing lines are discarded from both outputs, as in the original filter.
     """
-
+    n_points = polydata.GetNumberOfPoints()
     r2 = radius * radius
-
-    points = polydata.GetPoints()
-    n_points = points.GetNumberOfPoints()
-
-    # Map old point id -> kept/removed point ids (-1 means not present)
-    kept_point_id_map = [-1] * n_points
-    removed_point_id_map = [-1] * n_points
-    kept_points = vtk.vtkPoints()
-    removed_points = vtk.vtkPoints()
-    kept_points.SetDataType(points.GetDataType())
-    removed_points.SetDataType(points.GetDataType())
-
+    inside = []
     for pid in range(n_points):
-        x, y, z = points.GetPoint(pid)
-        dx = x - cx
-        dy = y - cy
-        if dx * dx + dy * dy > r2:
-            # Keep this point
-            new_pid = kept_points.InsertNextPoint(x, y, z)
-            kept_point_id_map[pid] = new_pid
-        else:
-            # Keep track of removed points for optional output
-            removed_pid = removed_points.InsertNextPoint(x, y, z)
-            removed_point_id_map[pid] = removed_pid
+        x, y, _ = polydata.GetPoint(pid)
+        inside.append((x - cx)**2 + (y - cy)**2 <= r2)
 
-    # Prepare new cell arrays for kept and removed lines
-    kept_lines = vtk.vtkCellArray()
-    removed_lines = vtk.vtkCellArray()
+    # Preserve the native VTK cell order: vertices first, followed by lines.
+    vertices, lines = [], []
+    incident_cell = [-1] * n_points
+    for cid in range(polydata.GetNumberOfCells()):
+        cell = polydata.GetCell(cid)
+        if cell.GetCellType() not in (vtk.VTK_VERTEX, vtk.VTK_LINE):
+            raise ValueError("Obstacle filtering expects vertex cells and two-point lines")
+        ids = [cell.GetPointId(j) for j in range(cell.GetNumberOfPoints())]
+        (vertices if cell.GetCellType() == vtk.VTK_VERTEX else lines).append((cid, ids))
+        for pid in ids:
+            if incident_cell[pid] == -1:
+                incident_cell[pid] = cid
 
-    cell_data = polydata.GetCellData()
-    num_cell_arrays = cell_data.GetNumberOfArrays()
-    original_arrays = []
-    kept_cell_arrays = []
-    removed_cell_arrays = []
+    def select(remove_inside):
+        selected = [pid for pid in range(n_points) if inside[pid] == remove_inside]
+        mapping = {pid: index for index, pid in enumerate(selected)}
+        result = vtk.vtkPolyData()
+        points = vtk.vtkPoints()
+        if polydata.GetPoints() is not None:
+            points.SetDataType(polydata.GetPoints().GetDataType())
+        result.SetPoints(points)
+        result.GetPointData().CopyAllocate(polydata.GetPointData(), len(selected))
+        for new_id, old_id in enumerate(selected):
+            points.InsertNextPoint(polydata.GetPoint(old_id))
+            result.GetPointData().CopyData(polydata.GetPointData(), old_id, new_id)
 
-    # Copy metadata for cell data arrays
-    for ai in range(num_cell_arrays):
-        arr = cell_data.GetArray(ai)
-        original_arrays.append(arr)
-        kept_arr = arr.NewInstance()
-        kept_arr.SetName(arr.GetName())
-        kept_arr.SetNumberOfComponents(arr.GetNumberOfComponents())
-        kept_cell_arrays.append(kept_arr)
+        selected_lines = [(cid, ids) for cid, ids in lines if all(pid in mapping for pid in ids)]
+        selected_vertices = [(cid, ids) for cid, ids in vertices if ids[0] in mapping]
+        used = {pid for _, ids in selected_lines + selected_vertices for pid in ids}
+        # An outside endpoint whose only incident line was clipped still needs
+        # a cell, so that Surface representation displays every surviving point.
+        orphan_vertices = [(incident_cell[pid], [pid]) for pid in selected if pid not in used]
+        cells = selected_vertices + orphan_vertices + selected_lines
+        result.GetCellData().CopyAllocate(polydata.GetCellData(), len(cells))
+        for index in range(result.GetCellData().GetNumberOfArrays()):
+            array = result.GetCellData().GetAbstractArray(index)
+            array.SetNumberOfTuples(len(cells))
+            # Orphan input points without an incident cell have no cell tuple.
+            for value_index in range(array.GetNumberOfValues()):
+                array.SetVariantValue(value_index, vtk.vtkVariant(0))
+        for new_id, (old_id, _) in enumerate(cells):
+            if old_id >= 0:
+                result.GetCellData().CopyData(polydata.GetCellData(), old_id, new_id)
+        # A newly isolated detection has no matched segment distance.
+        distance = result.GetCellData().GetArray('MatchDistance')
+        if distance is not None:
+            for index in range(len(selected_vertices), len(selected_vertices) + len(orphan_vertices)):
+                distance.SetTuple1(index, 0.)
+        for collection, setter in [(selected_vertices + orphan_vertices, result.SetVerts),
+                                   (selected_lines, result.SetLines)]:
+            output_cells = vtk.vtkCellArray()
+            for _, ids in collection:
+                output_cells.InsertNextCell(len(ids))
+                for pid in ids:
+                    output_cells.InsertCellPoint(mapping[pid])
+            setter(output_cells)
+        result.GetFieldData().ShallowCopy(polydata.GetFieldData())
+        return result
 
-        removed_arr = arr.NewInstance()
-        removed_arr.SetName(arr.GetName())
-        removed_arr.SetNumberOfComponents(arr.GetNumberOfComponents())
-        removed_cell_arrays.append(removed_arr)
-
-    num_cells = polydata.GetNumberOfCells()
-    id_list = vtk.vtkIdList()
-
-    for cid in range(num_cells):
-        # Only consider line cells
-        if polydata.GetCellType(cid) != vtk.VTK_LINE:
-            continue
-
-        polydata.GetCellPoints(cid, id_list)
-        if id_list.GetNumberOfIds() != 2:
-            continue
-
-        p0 = id_list.GetId(0)
-        p1 = id_list.GetId(1)
-
-        new_p0 = kept_point_id_map[p0]
-        new_p1 = kept_point_id_map[p1]
-
-        # If both endpoints are kept, keep the edge.
-        if new_p0 != -1 and new_p1 != -1:
-            kept_lines.InsertNextCell(2)
-            kept_lines.InsertCellPoint(new_p0)
-            kept_lines.InsertCellPoint(new_p1)
-
-            # Copy cell data for this cell
-            for ai, arr in enumerate(original_arrays):
-                tup = arr.GetTuple(cid)
-                kept_cell_arrays[ai].InsertNextTuple(tup)
-            continue
-
-        # If both endpoints are removed, store the edge in removed output.
-        rem_p0 = removed_point_id_map[p0]
-        rem_p1 = removed_point_id_map[p1]
-        if rem_p0 != -1 and rem_p1 != -1:
-            removed_lines.InsertNextCell(2)
-            removed_lines.InsertCellPoint(rem_p0)
-            removed_lines.InsertCellPoint(rem_p1)
-
-            for ai, arr in enumerate(original_arrays):
-                tup = arr.GetTuple(cid)
-                removed_cell_arrays[ai].InsertNextTuple(tup)
-
-    # Build new polydata
-    new_polydata = vtk.vtkPolyData()
-    new_polydata.SetPoints(kept_points)
-    new_polydata.SetLines(kept_lines)
-
-    new_cell_data = new_polydata.GetCellData()
-    for new_arr in kept_cell_arrays:
-        new_cell_data.AddArray(new_arr)
-
-    # Optionally set the first array as active scalars
-    if kept_cell_arrays:
-        new_cell_data.SetScalars(kept_cell_arrays[0])
-
-    removed_polydata = vtk.vtkPolyData()
-    removed_polydata.SetPoints(removed_points)
-    removed_polydata.SetLines(removed_lines)
-
-    removed_cell_data = removed_polydata.GetCellData()
-    for removed_arr in removed_cell_arrays:
-        removed_cell_data.AddArray(removed_arr)
-
-    if removed_cell_arrays:
-        removed_cell_data.SetScalars(removed_cell_arrays[0])
-
+    kept = select(False)
     if return_removed:
-        return new_polydata, removed_polydata
-
-    return new_polydata
+        return kept, select(True)
+    return kept
 
 
 

@@ -45,7 +45,12 @@ namespace particle_tracing{
         while (utility::In_Domain(p_new, block_min,block_max))
         {           
 
-            if(std::abs(p_new[p_new.size()-1]-p_old[p_old.size()-1])<0.1*time_step)
+            const int time_axis = p_new.size() - 1;
+            const T boundary_time = upper_search ? core_maxs[time_axis] : core_mins[time_axis];
+            const bool reached_time_boundary = p_new[time_axis] == boundary_time;
+            // The shortened terminal step is meaningful even when it is below
+            // the usual stagnation threshold. Keep its corrected boundary point.
+            if(!reached_time_boundary && std::abs(p_new[time_axis]-p_old[time_axis])<0.1*time_step)
             {
                 if((p_new.head(p_new.size()-1)-p_old.head(p_old.size()-1)).squaredNorm()<0.01*spatial_step_size*spatial_step_size)
                 {

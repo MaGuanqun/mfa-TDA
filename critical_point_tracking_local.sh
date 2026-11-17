@@ -4,20 +4,34 @@ set -eo pipefail
 
 # EDIT THESE SETTINGS, then run: bash critical_point_tracking_local.sh
 # z is physical time. Each row is: XMIN XMAX YMIN YMAX ZMIN ZMAX.
-dataset="boussinesq_3d_INR"  # Also accepts boussinesq_3d or vortex_street_3d for MFA.
+dataset="vortex_street_3d_INR" # Append _INR for CoordNet; unsuffixed names select MFA.
 backend="auto"              # _INR selects inr; otherwise mfa. Override with --backend.
-points_per_span=160          # Sampling density: spacing = span_width / this number.
+points_per_span=160          # MFA sampling density: intervals per actual knot span.
 inr_sampling_ratio=80        # Intervals per INR block axis; 0.1/80 = 0.00125.
-tracker="auto"              # INR: all critical points (including saddles); MFA: legacy TTK.
+tracker="auto"              # Boussinesq/INR: all points; vortex MFA: legacy TTK.
 threads=3
 vortex_street_regions=(
     "0.5 1.0 -0.5 0.5 14.5 15.0"
     "0.36 0.76 -0.1 0.42 13.6 14.0"
     "0.46 0.51 -0.1 0.1 14.3 14.6"
 )
+vortex_street_inr_regions=(
+    "0.15 0.85 -0.2 0.3 13.5 14.2"
+    "0.0 0.25 -0.45 0.5 14.0 14.5"
+    # Requested y minimum -0.55 clipped to the model boundary, as confirmed.
+    "-0.1 0.25 -0.5 0.2 14.2 14.9"
+)
 boussinesq_regions=(
-    "-0.05 0.10 0.05 0.22 0.81 1.20"
-    "0.25 0.30 1.16 1.26 0.28 0.66"
+    "-0.1 0.21 1.0 1.4 0.3 0.7"
+    "0.1 0.2 0.8 1.0 0.7 1.1"
+    # Requested z maximum 1.55 exceeds the model's time domain [0, 1.5].
+    "0.1 0.45 0.5 0.8 1.2 1.5"
+)
+# Preserve the previous CoordNet boxes for --dataset boussinesq_3d_INR.
+boussinesq_inr_regions=(
+    "-0.18 0.50 0.05 0.22 0.81 1.20"
+    # Requested x maximum 0.55 clipped to the model boundary, as confirmed.
+    "0.25 0.50 1.16 1.40 0.28 0.66"
     "0.32 0.40 1.62 1.73 1.07 1.30"
 )
 
@@ -27,12 +41,14 @@ Usage:
   bash critical_point_tracking_local.sh [options]
 
 NAME: boussinesq_3d or vortex_street_3d (both are 2D space + time).
-Append _INR to select CoordNet, e.g. boussinesq_3d_INR (the default).
+The default is vortex_street_3d_INR (CoordNet). Append _INR to select CoordNet.
 All region bounds and padding are in ORIGINAL domain coordinates.
+Vortex INR region 3 starts at y=-0.5 (model limit; requested minimum -0.55).
+Boussinesq MFA region 3 stops at z=1.5 (model limit; requested maximum 1.55).
 
   --dataset NAME            Default: editable dataset setting at top of script
   --backend auto|mfa|inr|both Default: auto (_INR selects inr; otherwise mfa)
-  --tracker auto|all|legacy  Default: auto (INR uses all; MFA/both uses legacy)
+  --tracker auto|all|legacy  Default: auto (Boussinesq/INR: all; vortex MFA: legacy)
   --region X0 X1 Y0 Y1 T0 T1 Replace configured boxes; repeat for multiple boxes
   --points-per-span N       MFA span sampling (default: 160 intervals per span)
   --ratio R                 Physical spacing 0.1/R; INR defaults to 80 per block axis
@@ -62,13 +78,11 @@ All region bounds and padding are in ORIGINAL domain coordinates.
   --critical-points-chunk-size N  Slices per critical-point batch (default: 8)
   --postprocess-only        Legacy: recolor saved trajectories; all: retrack/recolor saved points
   --skip-postprocess        Legacy tracker only: stop after TTK without coloring
-  --reference-vtp FILE      Default: build/src/NAME/NAME_16_regionid_colorid.vtp
-                            Vortex street uses NAME_16_remove_obstacle_regionid_colorid.vtp
-                            Boussinesq INR: build/src/boussinesq_3d_INR/
-                              boussinesq_3d_8_remove_obstacle_regionid_colorid.vtp
-  --spatial-step-size H     Color X/Y scale (Boussinesq INR: 0.0125, MFA: 0.00694444;
+  --reference-vtp FILE      MFA: build/src/NAME/NAME_16_remove_obstacle_regionid_colorid.vtp
+                            INR: build/src/NAME_INR/NAME_8_remove_obstacle_regionid_colorid.vtp
+  --spatial-step-size H     Color X/Y scale (INR: 0.0125; Boussinesq MFA: 0.00694444;
                             vortex MFA: 0.00625)
-  --t-step-size H           Color time scale (Boussinesq INR: 0.0125, MFA: 0.0133929;
+  --t-step-size H           Color time scale (INR: 0.0125; Boussinesq MFA: 0.0133929;
                             vortex MFA: 0.00520833)
   --match-distance-threshold D  Mean nearest-point distance in step units (default: 1)
   --dry-run                 Print all grids (reads knots for MFA); no field evaluation
@@ -82,7 +96,7 @@ Unequal/nonuniform spans are rejected in this mode. With --ratio/--ratios,
 the physical-spacing mode is used, including the exact box endpoints.
 CoordNet uses its configured block counts: Boussinesq (10,30,15), vortex (80,10,15).
 The default INR ratio is 80 intervals per block axis; partial blocks receive
-proportional counts. All three Boussinesq boxes align exactly at spacing 0.00125.
+proportional counts. All configured INR boxes align at spacing 0.00125.
 CoordNet input is normalized against the full dataset domain and ordered (t,y,x).
 Padding is clipped to the dataset domain. Sampling uses bounded batches;
 all-point extraction processes eight time slices per chunk by default.
@@ -105,8 +119,9 @@ Both use per-type adjacent-frame assignment on those
 references, with no persistence/track-length filtering. Unlinked points remain
 vertex cells. It writes samples_tracking_all_critical_points*.vtp and a coverage
 report. The _regionid_colorid.vtp version excludes all six boundary faces.
-The raw trajectory retains boundary points too. Color matching uses Hxy=Ht=0.0125
-for the Boussinesq INR step-8 reference, independently of the sampling density.
+The raw trajectory retains boundary points too. Boussinesq MFA colors use the
+step-16 obstacle-removed reference (Hxy=0.00694444, Ht=0.0133929); INR uses the
+selected dataset's step-8 reference (Hxy=Ht=0.0125), independently of sampling density.
 Legacy TTK options (--persistence, --implicit-grid, etc.) require --tracker legacy.
 
 Examples:
@@ -115,6 +130,8 @@ Examples:
   bash critical_point_tracking_local.sh --postprocess-only
   bash critical_point_tracking_local.sh --critical-points-only
   bash critical_point_tracking_local.sh --track-all-critical-points
+  bash critical_point_tracking_local.sh --dataset vortex_street_3d_INR
+  bash critical_point_tracking_local.sh --dataset boussinesq_3d_INR
   bash critical_point_tracking_local.sh --dataset vortex_street_3d
   bash critical_point_tracking_local.sh --dataset boussinesq_3d \
     --region -0.2 0.2 0.5 0.9 0.4 0.6 --output-dir build/local_tracking/my_box
@@ -197,7 +214,7 @@ fi
 if [[ $backend == auto ]]; then backend=mfa; fi
 if [[ $tracker == auto ]]; then
     tracker=legacy
-    if [[ $backend == inr ]]; then tracker=all; fi
+    if [[ $dataset == boussinesq_3d || $backend == inr ]]; then tracker=all; fi
 fi
 [[ "$dataset" == boussinesq_3d || "$dataset" == vortex_street_3d ]] || fail "Choose --dataset boussinesq_3d or vortex_street_3d"
 [[ "$backend" == mfa || "$backend" == inr || "$backend" == both ]] || fail "Choose --backend mfa, inr, or both"
@@ -213,7 +230,13 @@ if [[ $tracker == all ]]; then
 fi
 if [[ ${#regions[@]} -eq 0 ]]; then
     if [[ "$dataset" == vortex_street_3d ]]; then
-        regions=("${vortex_street_regions[@]}")
+        if [[ $backend == inr ]]; then
+            regions=("${vortex_street_inr_regions[@]}")
+        else
+            regions=("${vortex_street_regions[@]}")
+        fi
+    elif [[ $backend == inr ]]; then
+        regions=("${boussinesq_inr_regions[@]}")
     else
         regions=("${boussinesq_regions[@]}")
     fi
@@ -273,8 +296,8 @@ output_dir=${output_dir:-"$repo_root/build/local_tracking/$output_dataset/$resol
 mfa_model=${mfa_model:-"$repo_root/build/src/$dataset/$dataset.mfa"}
 inr_model=${inr_model:-"$repo_root/CoordNet/Exp/$dataset/super-spatial-temporal-64-5-float64.pt"}
 # Match reference step sizes independently of the dense sampling grid.
-if [[ $dataset == boussinesq_3d && $backend == inr ]]; then
-    reference_vtp=${reference_vtp:-"$repo_root/build/src/boussinesq_3d_INR/boussinesq_3d_8_remove_obstacle_regionid_colorid.vtp"}
+if [[ $backend == inr ]]; then
+    reference_vtp=${reference_vtp:-"$repo_root/build/src/${dataset}_INR/${dataset}_8_remove_obstacle_regionid_colorid.vtp"}
     spatial_step_size=${spatial_step_size:-0.0125}
     t_step_size=${t_step_size:-0.0125}
 elif [[ $dataset == vortex_street_3d ]]; then
@@ -282,7 +305,7 @@ elif [[ $dataset == vortex_street_3d ]]; then
     spatial_step_size=${spatial_step_size:-0.00625}
     t_step_size=${t_step_size:-0.00520833}
 else
-    reference_vtp=${reference_vtp:-"$repo_root/build/src/$dataset/${dataset}_16_regionid_colorid.vtp"}
+    reference_vtp=${reference_vtp:-"$repo_root/build/src/$dataset/${dataset}_16_remove_obstacle_regionid_colorid.vtp"}
     spatial_step_size=${spatial_step_size:-0.00694444}
     t_step_size=${t_step_size:-0.0133929}
 fi

@@ -1,6 +1,6 @@
 # Local sampled tracking reference
 
-Run the complete three-region Boussinesq CoordNet workflow from the repository root:
+Run the complete three-region vortex-street CoordNet workflow from the repository root:
 
 ```bash
 bash critical_point_tracking_local.sh --dry-run
@@ -8,24 +8,232 @@ bash critical_point_tracking_local.sh
 ```
 
 The driver activates the existing Spack environment, builds `sample_local_field`
-through the root CMake configuration, validates every region, samples the INR,
+through the root CMake configuration, validates every region, samples CoordNet,
 extracts TTK critical points at every time slice, tracks every detection (including
 saddles and singletons), and assigns reference colors. Default output is
-`build/local_tracking/boussinesq_3d_INR/ratio_80/region_N/inr/`.
+`build/local_tracking/vortex_street_3d_INR/ratio_80/region_N/inr/`.
 The editable configuration at the **top of `critical_point_tracking_local.sh`**
 contains `dataset`, `backend`, `points_per_span`, `inr_sampling_ratio`, `tracker`,
-`threads`, and one region array per dataset. `_INR` selects the INR backend;
+`threads`, and region arrays for each dataset/backend. `_INR` selects the INR backend;
 unsuffixed dataset names select MFA. Explicit `--backend inr` also works with
 unsuffixed names. `--tracker all` runs the full all-point workflow for either
 backend; `--tracker legacy` selects the original TTK trajectory pipeline.
+`--tracker auto` uses all-point tracking for Boussinesq and INR, and legacy TTK
+for vortex-street MFA.
 
-Configured Boussinesq boxes (original coordinates, z = time):
+## Vortex-street CoordNet: 80 intervals per block (default)
+
+The model is `CoordNet/Exp/vortex_street_3d/super-spatial-temporal-64-5-float64.pt`.
+`CoordNet/Code/sample_compute_cp_by_slice.py`, `CoordNet/Code/dataio.py`, and
+`src/INRModel.h` define **(80, 10, 15)** blocks over the full domain
+**[-0.5, 7.5] × [-0.5, 0.5] × [13.5, 15]**. Each block axis is 0.1 units wide;
+ratio 80 gives **dx = dy = dt = 0.00125**. Region counts are proportional to their
+extent: `n = ceil(region_length / (block_width / 80)) + 1`, including both endpoints.
+Inputs retain full-domain [-1,1] normalization and model order (t,y,x).
+
+| Region | x | y | z = time | Grid (nx, ny, nt) |
+| --- | --- | --- | --- | --- |
+| 1 | [0.15, 0.85] | [-0.2, 0.3] | [13.5, 14.2] | 561 × 401 × 561 |
+| 2 | [0.0, 0.25] | [-0.45, 0.5] | [14.0, 14.5] | 201 × 761 × 401 |
+| 3 | [-0.1, 0.25] | [-0.5, 0.2] | [14.2, 14.9] | 281 × 561 × 561 |
+
+Region 3's requested y minimum **-0.55** is clipped to the model boundary **-0.5**,
+as confirmed by the user. No extrapolation is performed. These boxes align exactly
+at ratio 80. `--ratio`/`--ratios` override the density; `--device cuda` enables GPU
+evaluation of the same float64 model. CPU evaluation is the portable default.
+
+```bash
+bash critical_point_tracking_local.sh --dataset vortex_street_3d_INR --device cuda
+```
+
+One invocation performs sampling, per-slice TTK critical-point extraction, per-type
+adjacent-frame assignment, `RegionId` labeling, and reference `ColorId` assignment.
+All detections remain in `samples_tracking_all_critical_points.vtp`, including
+minima, saddles, maxima, boundary detections, and unlinked vertex cells. There is no
+persistence or minimum-track-length filter. The per-slice coverage report checks
+that every detection is represented in the output.
+
+The final `samples_tracking_all_critical_points_regionid_colorid.vtp` retains every
+interior detection after the established six-face boundary exclusion. Colors use
+`build/src/vortex_street_3d_INR/vortex_street_3d_8_remove_obstacle_regionid_colorid.vtp`
+with **Hxy = Ht = 0.0125**, independently of sampling density. The default maximum
+XY displacement per slice is also 0.0125; override it with
+`--tracking-max-displacement`. Unmatched paths retain seeded fallback colors and
+are flagged `ReferenceColorMatched=0`. Use the reference's `ColorId` lookup table
+and fixed range **0..46** in ParaView, with Surface or Points representation to
+show singletons.
+
+Sampling metadata, commands, stage logs, per-slice critical points, trajectory
+coverage, and color-match CSVs are saved in each `region_N/inr/` directory.
+`tracking_all_critical_points_summary.csv` indexes all final colored files.
+Resume after sampling with `--tracking-only`, or rerun trajectory assignment and
+coloring from saved detections with `--track-all-critical-points`.
+
+The updated region configuration's ratio-80 GPU run retained all **150,845 raw detections** and all
+**129,485 interior detections**, with exact coverage at every time slice:
+
+| Region | Raw points | Interior points | Interior paths/singletons | Reference colors matched | Fallback colors |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 30,864 | 22,512 | 3,058 | 2,395 | 663 |
+| 2 | 35,632 | 28,363 | 1,461 | 471 | 990 |
+| 3 | 84,349 | 78,610 | 2,993 | 957 | 2,036 |
+
+The 3,689 unmatched paths/singletons have `ReferenceColorMatched=0`; their
+fallback colors do not imply correspondence to a reference branch.
+`results_validation.json` in the output root records checks of grid dimensions,
+sample-file sizes, unchanged detection positions and attributes, full cell and
+per-slice coverage, adjacent-frame links of the same critical type, and agreement
+of accepted colors with the reference. The accompanying `validate_results.py`
+reruns those checks with `pvpython` from the repository root.
+The earlier region configuration's results are preserved in
+`build/local_tracking/vortex_street_3d_INR/ratio_80_previous_regions/`.
+
+To remove the obstacle from the final colored results for **all three regions**:
+
+```bash
+bash critical_point_tracking_local_remove_obstacle.sh
+```
+
+The wrapper calls `src/python/remove_obstacle.py --data vortex_street_3d`, using
+its existing circle centered at **(0,0)** with **radius 0.12**. Points on or inside
+the circle and their incident segments are removed. Surviving point/cell data,
+including `RegionId`, `ColorId`, and `ReferenceColorMatched`, are preserved.
+Singletons, including newly isolated endpoints, remain vertex cells.
+
+For **region 2**, the wrapper then calls `src/python/recolor_filtered_trajectories.py`
+to recheck colors on each surviving connected path. Matching before obstacle
+removal can leave a good outside path with a fallback color because its removed
+inside portion exceeded the distance threshold. The correction retains original
+`RegionId` values and geometry; `ColorMatchComponentId` distinguishes disconnected
+pieces of the same original path. It retains the original scales, threshold,
+and matcher (mean distance, 48 samples, 32 candidates), and selects the requested
+TTK color reference for region 2:
+`build/src/vortex_street_3d_INR/vortex_street_3d_8_ttk_tracking_remove_obstacle_colorid.vtp`.
+The reference has 363 point-labeled branches and ColorId range **0..46**. Matching
+still uses **Hxy = Ht = 0.0125** and a threshold of **1 step**. Unmatched components
+retain their previous fallback colors unless explicitly overridden. Regions 1
+and 3 retain their pre-filter colors.
+
+Of region 2's 657 surviving components, **625 match the TTK reference**, **31 keep
+fallback colors**, and **one uses the manual override below**. Compared with the
+previous reference, 217 components / 1,744 points changed color. All automatic
+accept/reject decisions and accepted colors agree with an independent exhaustive
+search of all 363 reference branches, both with the matcher's samples and with
+every surviving point. Geometry and noncolor attributes are unchanged.
+
+The user-requested region-2 override **RegionId 342 → ColorId 39** is applied
+after automatic matching (`--color-override 342 39` in the wrapper). It affects
+150 points and 149 segments. `ManualColorOverride=1` identifies them, and
+`AutomaticColorId` retains the automatic result. Automatic matching flags and
+distances are not overridden: 32 components fail the threshold, of which one has
+this manual color and 31 keep fallback colors. The VTP, point CSV, match CSV,
+and JSON report all include the override.
+
+The corrected VTP/CSV replace the region-2 filtered outputs. Its additional arrays
+include `ColorIdBeforeObstacleRematch`, `ReferenceColorMatchedBeforeObstacleRematch`,
+`ReferenceRegionId` (-1 for unmatched), and `ReferenceMatchDistance`. The files
+`samples_tracking_all_critical_points_remove_obstacle_color_matches.csv` and
+`samples_tracking_all_critical_points_remove_obstacle_colors.json` record the
+assignments and changes, including the actual selected reference path. Previous
+colors and earlier audit records are saved in region 2's
+`colors_before_ttk_reference/` directory. `ttk_color_assignment_validation.json`
+records the current independent check; `validate_ttk_colors.py` reruns it with
+`pvpython` from the repository root. The recoloring tool's `--reference-vtp` option
+selects a reference without changing the original tracking metadata.
+
+Each region gets `samples_tracking_all_critical_points_regionid_colorid_remove_obstacle.vtp`
+and `samples_tracking_all_critical_points_points_remove_obstacle.csv`, plus the
+command and log. Original results are preserved. The wrapper validates outside
+point coverage, surviving line geometry/attributes, singleton cells, colors, and
+CSV/VTP agreement, then writes `remove_obstacle_summary.csv` in the output root.
+Pass a different results root as the wrapper's optional first argument.
+
+| Region | Removed obstacle points | Remaining points | Remaining segments | Singleton vertices |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 0 | 22,512 | 19,454 | 1,408 |
+| 2 | 22,976 | 5,387 | 4,730 | 264 |
+| 3 | 69,327 | 9,283 | 8,074 | 455 |
+
+Region 1 is entirely outside the obstacle: its minimum x is 0.15, larger than
+the obstacle radius 0.12. Its filtered outputs therefore retain all points.
+
+## Boussinesq MFA: 160 intervals per knot span
+
+Select this configuration with `bash critical_point_tracking_local.sh --dataset boussinesq_3d`.
+Its output is `build/local_tracking/boussinesq_3d/points_per_span_160/region_N/mfa/`.
+
+The model is `build/src/boussinesq_3d/boussinesq_3d.mfa`. Its actual knot-span
+counts are **(10, 30, 10)**, giving **dx = dy = 0.000625, dt = 0.0009375** at
+160 intervals per span. Partial spans receive proportional point counts;
+each bound snaps outward to the common domain-anchored grid.
+
+| Region | Requested x | Requested y | z = time | Grid (nx, ny, nt) |
+| --- | --- | --- | --- | --- |
+| 1 | [-0.1, 0.21] | [1.0, 1.4] | [0.3, 0.7] | 497 × 641 × 428 |
+| 2 | [0.1, 0.2] | [0.8, 1.0] | [0.7, 1.1] | 161 × 321 × 429 |
+| 3 | [0.1, 0.45] | [0.5, 0.8] | [1.2, 1.5] | 561 × 481 × 321 |
+
+Region 3's requested z maximum of **1.55** exceeds the model domain; the
+configuration uses **1.5**. Region 1 samples time from
+0.3 to 0.7003125; region 2 samples time from 0.699375 to 1.100625. Other
+bounds align with the grid. `samples.json` records requested and sampled bounds.
+
+The Boussinesq command performs sampling, per-slice critical-point extraction,
+per-type trajectory assignment, `RegionId` labeling, and reference `ColorId`
+assignment. No persistence or minimum-track-length filtering is applied.
+All detected minima, saddles, maxima, and unlinked points remain in the raw
+`samples_tracking_all_critical_points.vtp`. Coverage is checked for every slice
+and recorded in `samples_tracking_all_critical_points_coverage.csv`.
+
+The final colored file in each region is
+`samples_tracking_all_critical_points_regionid_colorid.vtp`. It follows the
+existing six-face boundary exclusion and retains every interior detection,
+including singletons. Reference colors come from
+`build/src/boussinesq_3d/boussinesq_3d_16_remove_obstacle_regionid_colorid.vtp`.
+Matching retains the reference scales **Hxy = 0.00694444, Ht = 0.0133929**,
+independent of the current model's sampling spacing. Unmatched paths receive
+seeded fallback colors and are marked `ReferenceColorMatched=0`.
+Use the reference's `ColorId` lookup table and fixed range **0..47** in ParaView; vertex cells
+display isolated detections alongside the lines.
+
+The completed 160-interval Boussinesq MFA run retained all **17,962 raw detections** and all
+**7,344 interior detections**, with exact coverage at every sampled time slice:
+
+| Region | Raw points | Interior points | Interior paths/singletons | Reference colors matched | Fallback colors |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 7,100 | 3,325 | 275 | 275 | 0 |
+| 2 | 5,447 | 1,633 | 161 | 161 | 0 |
+| 3 | 5,415 | 2,386 | 98 | 98 | 0 |
+
+`tracking_all_critical_points_summary.csv` indexes the final colored files.
+`results_validation.json` records the checked grid dimensions, exact point and
+per-slice coverage, and agreement of matched colors with the supplied reference.
+All 534 interior paths/singletons match reference colors; none use fallback colors.
+The accompanying `validate_results.py` reruns those checks with `pvpython` from
+the repository root. The earlier 16-interval results remain in `points_per_span_16/`.
+Block 1's previous z = 0.4–0.7 results are saved under
+`points_per_span_160/previous_region_1_z_0.4_0.7/region_1/mfa/`.
+All sampling, extraction, tracking, and coloring commands are logged in each
+region's directory and are rerunnable through the driver.
+
+## Previous Boussinesq CoordNet configuration
+
+Run `bash critical_point_tracking_local.sh --dataset boussinesq_3d_INR` to use
+the saved CoordNet boxes, ratio 80, and step-8 INR color reference. Its output is
+`build/local_tracking/boussinesq_3d_INR/ratio_80/region_N/inr/`.
+Configured INR boxes (original coordinates, z = time):
 
 | Region | x | y | z = time | Grid (nx, ny, nt) at ratio 80 |
 | --- | --- | --- | --- | --- |
-| 1 | [-0.05, 0.10] | [0.05, 0.22] | [0.81, 1.20] | 121 × 137 × 313 |
-| 2 | [0.25, 0.30] | [1.16, 1.26] | [0.28, 0.66] | 41 × 81 × 305 |
+| 1 | [-0.18, 0.50] | [0.05, 0.22] | [0.81, 1.20] | 545 × 137 × 313 |
+| 2 | [0.25, 0.50] | [1.16, 1.40] | [0.28, 0.66] | 201 × 193 × 305 |
 | 3 | [0.32, 0.40] | [1.62, 1.73] | [1.07, 1.30] | 65 × 89 × 185 |
+
+Region 2's requested upper x bound of 0.55 is clipped to the model-domain
+boundary at 0.50, as confirmed by the user. Model normalization is unchanged.
+Extraction and tracking apply no field smoothing, topological simplification,
+persistence threshold, or minimum track length. Every detected point remains
+in the raw trajectories, including unmatched points and boundary detections.
 
 `src/INRModel.h` and `CoordNet/Code/sample_compute_cp_by_slice.py` define
 Boussinesq's (10,30,15) blocks over a (1,3,1.5) domain extent. Each block is
@@ -46,22 +254,26 @@ including boundary points; the colored file applies the established six-face
 boundary exclusion. Per-slice coverage is checked and written to
 `samples_tracking_all_critical_points_coverage.csv`.
 
-The ratio-80 run retained all **8,435 raw detections** and all **2,437 interior
+The updated ratio-80 run retained all **14,721 raw detections** and all **5,350 interior
 detections**, with exact per-slice coverage:
 
 | Region | Raw points | Interior points | Interior paths/singletons | Reference colors matched | Fallback colors |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 | 3,506 | 356 | 23 | 23 | 0 |
-| 2 | 3,383 | 1,389 | 152 | 148 | 4 |
+| 1 | 7,647 | 2,102 | 181 | 179 | 2 |
+| 2 | 5,528 | 2,556 | 197 | 192 | 5 |
 | 3 | 1,546 | 692 | 46 | 46 | 0 |
 
-The four unmatched region-2 paths retain seeded fallback colors; they are marked
+The two unmatched region-1 paths and five unmatched region-2 paths retain seeded
+fallback colors; they are marked
 `ReferenceColorMatched=0`. Use the reference's `ColorId` lookup table and fixed
 range **0..47** in ParaView. Isolated points are vertex cells, so use Surface or
 Points representation to display them alongside the trajectory lines.
+`updated_results_validation.json` in the output root records per-region counts
+and checks for complete point coverage, unchanged sampled scalar values, and
+disabled persistence/track-length filtering.
 
-To run the previous vortex-street MFA workflow, pass
-`--dataset vortex_street_3d`; its output remains
+To run the previous vortex-street MFA workflow at its original density, pass
+`--dataset vortex_street_3d --points-per-span 160`; its output is
 `build/local_tracking/vortex_street_3d/points_per_span_160/region_N/mfa/`.
 
 Both supported datasets have coordinates **(x, y, time)**; your z bounds are time:
@@ -71,7 +283,7 @@ Both supported datasets have coordinates **(x, y, time)**; your z bounds are tim
 | boussinesq_3d | [-0.5, 0.5] | [-0.5, 2.5] | [0, 1.5] |
 | vortex_street_3d | [-0.5, 7.5] | [-0.5, 0.5] | [13.5, 15] |
 
-Configured vortex-street boxes (original coordinates):
+Configured vortex-street MFA boxes (original coordinates):
 
 | Region | x | y | z = time |
 | --- | --- | --- | --- |
@@ -86,9 +298,9 @@ Each region always gets a `region_N/BACKEND` subdirectory, including single-box 
 
 ## MFA points per span
 
-`--points-per-span 160` reads the scalar MFA model's actual nonzero knot spans.
-For each axis, with uniform physical span width W, use **h = W / 160**.
-The editable `points_per_span=160` is the sampling density: N equal intervals
+`--points-per-span N` reads the scalar MFA model's actual nonzero knot spans.
+For each axis, with uniform physical span width W, use **h = W / N**.
+The editable `points_per_span=160` is the default sampling density: N equal intervals
 per span, so S complete spans have `N*S + 1` grid points including both endpoints.
 Change that setting at the top of the script, or pass `--points-per-span N`,
 to use another density. The grid spacing is always exactly **W / N**.
@@ -157,8 +369,8 @@ bash critical_point_tracking_local.sh --dataset boussinesq_3d --backend both \
 ## Outputs
 
 Each region/backend writes a separate directory beneath `--output-dir`.
-The following trajectory outputs describe `--tracker legacy`; the default INR
-all-point outputs are listed under “Tracking every per-slice critical point.”
+The following trajectory outputs describe `--tracker legacy`; all-point outputs
+are listed under “Tracking every per-slice critical point.”
 
 - `samples.bin`: little-endian float64 values, layout (nt,ny,nx), x fastest.
 - `samples.json`: requested and sampled bounds, dimensions, spacing, sampling mode, point/span counts,
@@ -209,7 +421,7 @@ The driver now postprocesses trajectories after TTK. To process existing results
 without resampling or rerunning TTK:
 
 ```bash
-bash critical_point_tracking_local.sh --dataset vortex_street_3d --postprocess-only
+bash critical_point_tracking_local.sh --dataset vortex_street_3d --points-per-span 160 --postprocess-only
 ```
 
 It first removes every vertex on the sampled box's X/Y/Z min/max faces, including
@@ -221,9 +433,9 @@ capped at one quarter of the sampling spacing per axis.
 It then joins exactly coincident segment endpoints, runs
 `src/python/seperate_diffferent_branches.py`, then runs
 `src/python/seperate_branch_assign_color2.py`. Native `samples_tracking.vtp`
-and the reference are left unchanged. The default vortex-street reference is
+and the reference are left unchanged. The default vortex-street MFA reference is
 `build/src/vortex_street_3d/vortex_street_3d_16_remove_obstacle_regionid_colorid.vtp`.
-Boussinesq MFA uses `build/src/boussinesq_3d/boussinesq_3d_16_regionid_colorid.vtp`; override with
+Boussinesq MFA uses `build/src/boussinesq_3d/boussinesq_3d_16_remove_obstacle_regionid_colorid.vtp`; override with
 `--reference-vtp`. Use `--skip-postprocess` to stop after TTK.
 
 Matching uses the step-size-16 reference spacing, independently of sampling density:
@@ -313,7 +525,7 @@ bash critical_point_tracking_local.sh --track-all-critical-points
 ```
 
 Run `--critical-points-only` first if the references have not been generated.
-The default INR run (or `--tracker all`) automatically performs extraction,
+An INR run, Boussinesq MFA run, or `--tracker all` automatically performs extraction,
 tracking and coloring; no separate commands are required. `--tracking-only`
 reuses scalar samples and reruns extraction plus tracking. With `--tracker all`,
 `--postprocess-only` reuses saved detections and reruns assignment plus coloring.
@@ -323,8 +535,8 @@ implemented with SciPy's `linear_sum_assignment`; it does not invoke
 `TTKTrackingFromFields`. Minima, saddles, and maxima are matched separately
 between adjacent frames. Match costs are squared XY distances divided by the
 maximum displacement squared; unmatched birth/death costs are 0.5 each.
-The default maximum XY displacement is `--spatial-step-size` (0.00625 for vortex
-street); override it with `--tracking-max-displacement`. This controls links,
+The default maximum XY displacement is `--spatial-step-size` (0.0125 for INR,
+0.00625 for vortex-street MFA); override it with `--tracking-max-displacement`. This controls links,
 not which detections survive. It does not use scalar persistence, simplify the
 field, skip time slices, filter short tracks, or interpolate across missing frames.
 Unmatched and single-frame detections remain explicit vertex cells.
