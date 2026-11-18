@@ -1,5 +1,10 @@
 # Continuous-model fiber surfaces
 
+Filled range triangles are implemented for analytical fields and MFA in the
+new `fiber_volume_explicit` and `fiber_volume_mfa` executables. See
+[VOLUME.md](VOLUME.md) for the four-stage boundary/TetGen pipeline, examples,
+dependencies, output labels, validation, and tests. INR is deferred.
+
 This implements the **main single-segment method** in `summary_fiber.tex` for
 analytical fields and MFA. It evaluates the supplied continuous model directly;
 the discovery grid is not a volumetric interpolant. Polyline creases, range
@@ -26,7 +31,8 @@ If `spack` is unavailable, first source your installed Spack's
 or runs C++ executables. The targets are registered through `src/CMakeLists.txt`;
 enabling the isosurface executables is unnecessary.
 
-The ten tests cover derivatives and constrained correction, the truncated and
+The surface tests cover derivatives and constrained correction, shared-vertex
+intersection predicates, the truncated and
 closed spheres, planar and disconnected strips, current-format MFA loading and
 physical derivatives, proportional counts for both field types, parallel seed ordering,
 pipeline restarts, and CLI rejection/partial-result behavior. The MFA test writes

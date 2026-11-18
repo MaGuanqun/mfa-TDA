@@ -64,6 +64,9 @@ struct Segment {
 struct Options {
     double step = .2, min_step = .025, fiber_step = .15, spatial_tolerance = .015;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
+    // Optional stricter root solve; range/chord classification still uses the
+    // residual tolerance. Volume assembly uses this to avoid offset side seams.
+    double surface_solve_tolerance = 0;
     double min_angle_degrees = .1, max_normal_degrees = 55;
     // Count on the shortest physical axis for every field; zero is an alias for 7.
     int seed_grid = 7, iterations = 40, max_trace_steps = 10000;
@@ -71,7 +74,8 @@ struct Options {
     void validate(const Field& f, const Segment& segment) const {
         for (double x : {step, min_step, fiber_step, spatial_tolerance, residual_tolerance, derivative_tolerance})
             if (!std::isfinite(x) || x <= 0) throw std::invalid_argument("Steps and tolerances must be positive and finite");
-        if (min_step > step || seed_grid < 0 || seed_grid == 1 || iterations < 1 || max_trace_steps < 4 ||
+        if (!std::isfinite(surface_solve_tolerance) || surface_solve_tolerance<0 ||
+            min_step > step || seed_grid < 0 || seed_grid == 1 || iterations < 1 || max_trace_steps < 4 ||
             max_triangles < 4 || !std::isfinite(min_angle_degrees) || min_angle_degrees < 0 || min_angle_degrees >= 60 ||
             !std::isfinite(max_normal_degrees) || max_normal_degrees <= 0 || max_normal_degrees >= 90 ||
             residual_tolerance >= .01*segment.length)

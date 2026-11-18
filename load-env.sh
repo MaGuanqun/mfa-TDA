@@ -8,23 +8,34 @@ fi
 
 # activate the environment
 export SPACKENV=mfa-TDA-env
-spack env deactivate > /dev/null 2>&1
-spack env activate $SPACKENV
+spack env deactivate > /dev/null 2>&1 || true
+spack env activate "$SPACKENV" || return 1
 echo "activated spack environment $SPACKENV"
 
 
 echo "setting flags for building mfa-TDA"
-export MFA_PATH=$(spack location -i mfa)
-export TBB_PATH=$(spack location -i tbb)
-export EIGEN_PATH=$(spack location -i eigen)
-export TORCH_PATH=$(spack location -i libtorch)
+if ! MFA_PATH=$(spack location -i mfa) ||
+   ! TBB_PATH=$(spack location -i tbb) ||
+   ! EIGEN_PATH=$(spack location -i eigen) ||
+   ! TORCH_PATH=$(spack location -i libtorch); then
+    printf 'Could not locate the build dependencies in %s. Run: source ./create-env.sh\n' "$SPACKENV" >&2
+    return 1
+fi
+export MFA_PATH TBB_PATH EIGEN_PATH TORCH_PATH
+
+if ! TETGEN_PATH=$(spack location -i 'mfa_tda.tetgen@1.6.0') ||
+   ! EARCUT_PATH=$(spack location -i 'mfa_tda.earcut-hpp@2.2.4'); then
+    printf 'Volume dependencies are missing. Run: source ./create-env.sh\n' >&2
+    return 1
+fi
+export TETGEN_PATH EARCUT_PATH
 
 
 export Torch_DIR="$TORCH_PATH/share/cmake/Torch"
 export TBB_DIR="$TBB_PATH/lib/cmake/TBB"
 export TBB_ROOT="$TBB_PATH"
 
-export CMAKE_PREFIX_PATH="$TORCH_PATH${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+export CMAKE_PREFIX_PATH="$TETGEN_PATH:$EARCUT_PATH:$TORCH_PATH${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
 
 # Optional: extend your library path if you plan to run compiled executables
 # if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -49,6 +60,8 @@ echo "MFA_PATH        = $MFA_PATH"
 echo "TBB_PATH        = $TBB_PATH"
 echo "EIGEN_PATH      = $EIGEN_PATH"
 echo "TORCH_PATH      = $TORCH_PATH"
+echo "TETGEN_PATH     = $TETGEN_PATH"
+echo "EARCUT_PATH     = $EARCUT_PATH"
 echo "Torch_DIR = $Torch_DIR"
 if [[ "$OSTYPE" != "darwin"* ]]; then
     echo "CUDA_PATH       = $CUDA_PATH"

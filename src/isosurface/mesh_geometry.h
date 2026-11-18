@@ -103,7 +103,14 @@ template<class T> bool triangles_conflict(const std::vector<Point<T>>& v, const 
     auto crosses=[&](const Triangle& s,const Triangle& t,const Point<T>& n) {
         for(int i=0;i<3;++i) {
             const Point<T> p=v[s[i]], q=v[s[(i+1)%3]];
-            const T dp=n.dot(p-v[t[0]]), dq=n.dot(q-v[t[0]]);
+            // A topologically shared vertex lies exactly in both face planes.
+            // Recomputing its height from a different plane origin can leave a
+            // roundoff residual. On an almost parallel edge, dividing that
+            // residual by dp-dq invents an intersection away from the vertex.
+            const bool p_shared=std::find(shared.begin(),shared.end(),s[i])!=shared.end();
+            const bool q_shared=std::find(shared.begin(),shared.end(),s[(i+1)%3])!=shared.end();
+            const T dp=p_shared ? T(0) : n.dot(p-v[t[0]]);
+            const T dq=q_shared ? T(0) : n.dot(q-v[t[0]]);
             if(std::abs(dp)<=eps && inside(p,t) && !allowed(p)) return true;
             if((dp>eps && dq>eps)||(dp < -eps && dq < -eps)) continue;
             if(std::abs(dp-dq)>std::numeric_limits<T>::epsilon()*(q-p).norm()) {

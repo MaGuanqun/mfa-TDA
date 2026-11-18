@@ -19,6 +19,12 @@ Check the beginning of `mfa/packages/mfa/package.py`, make sure the file begins 
 from spack.package import *
 ```
 
+Also register the LibTorch package using [LibTorch-setting.md](LibTorch-setting.md),
+with a LibTorch build suitable for the new machine. The setup below uses Spack
+1.x and automatically registers this checkout's `spack-repo` in the environment.
+It contains checksum-pinned recipes for TetGen 1.6.0 and earcut.hpp 2.2.4; no
+separate checkout or manual header/library installation is needed for them.
+
 -----
 
 ## Setting up Spack environment
@@ -28,9 +34,25 @@ from spack.package import *
 ```
 git clone https://github.com/MaGuanqun/mfa-TDA.git
 cd /path/to/mfa-TDA
-source ./create-env.sh     # requires being in the same directory to work properly
+source ./create-env.sh
 source ./load-env.sh
 ```
+
+`env.yaml` lists all root dependencies. `create-env.sh` creates `mfa-TDA-env` if
+needed, adds missing specs to an existing environment, and installs dependencies.
+It preserves the existing environment and installed packages, so the same command
+also upgrades an older checkout's environment to include the volume dependencies:
+
+```bash
+source ./create-env.sh
+source ./load-env.sh
+```
+
+On another computer, clone this repository, register MFA and LibTorch as above,
+and run these commands again. Spack downloads and verifies the pinned archives
+and builds TetGen with that machine's compiler. Keep the checkout available: the
+environment records its local `spack-repo` path. The manifest pins these two
+volume libraries; the other dependencies are resolved by the local Spack setup.
 
 ### Subsequent times: load the Spack environment
 
@@ -42,6 +64,9 @@ Use `source` in the same terminal where you run CMake. Executing
 `./load-env.sh` cannot update the parent shell, and a separate IDE CMake process
 may not inherit these variables. Configure once from the activated terminal to
 cache the dependency paths in `build`, and use that build directory in the IDE.
+`load-env.sh` exports `TETGEN_PATH` and `EARCUT_PATH` and adds both installation
+prefixes to `CMAKE_PREFIX_PATH`. Volume targets then use the installed Spack
+headers and TetGen library without downloading sources during CMake configure.
 
 ----
 

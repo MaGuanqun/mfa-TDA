@@ -30,6 +30,8 @@ public:
     // The caller handles boundary events; no model evaluation occurs outside the box.
     bool surface(Vec& x, double bound, unsigned faces=0, bool membership=true) const {
         const Vec origin=x; field.box.fix(x,faces);
+        const double solve_tolerance=options.surface_solve_tolerance>0 ?
+            std::min(options.residual_tolerance,options.surface_solve_tolerance) : options.residual_tolerance;
         for (int it=0; it<options.iterations; ++it) {
             if (!field.box.contains(x) || (x-origin).norm()>bound) return false;
             const Range f=field.value(x); const Vec g=segment.gradient(field.jacobian(x));
@@ -38,7 +40,7 @@ public:
             Vec free=g; int free_coordinates=3;
             for (int d=0; d<3; ++d) if (faces & (3u<<(2*d))) { free[d]=0; --free_coordinates; }
             if (faces && free_coordinates && free.norm()<=options.derivative_tolerance) return false;
-            if (std::abs(phi)<=options.residual_tolerance) return !membership || member(x);
+            if (std::abs(phi)<=solve_tolerance) return !membership || member(x);
             if (free.norm()<=options.derivative_tolerance) return false;
             x -= phi/free.squaredNorm()*free;
             field.box.fix(x,faces);

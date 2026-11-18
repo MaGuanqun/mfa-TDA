@@ -13,7 +13,8 @@ source ./load-env.sh
 ```
 
 The script activates `mfa-TDA-env` and exports the dependency paths for MFA,
-Eigen, TBB, and LibTorch, along with compiler, linker, and runtime library paths.
+Eigen, TBB, LibTorch, TetGen, and earcut.hpp, along with compiler, linker, and
+runtime library paths.
 Use these settings for the build.
 
 Source the script in the **same shell** that runs CMake or the executable.
@@ -62,6 +63,6 @@ adding new compiled code.
 If CMake cannot find a dependency, check activation and the paths printed by
 `load-env.sh` before changing CMake files or hardcoding installation paths.
 
-`create-env.sh` is for environment provisioning. It removes and recreates
-`mfa-TDA-env`; do not run it as part of a normal build. Use the existing
-environment through `source ./load-env.sh`.
+`create-env.sh` is for environment provisioning. It creates or updates
+`mfa-TDA-env` without removing it; do not run it as part of a normal build. Use
+the existing environment through `source ./load-env.sh`.

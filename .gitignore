@@ -14,3 +14,5 @@
 !/critical_point_tracking_no_newton.sh
 !/feature_flow_fields_analytical.sh
 !/src/isosurface/tests/*.cmake
+
+/fiber-surface-tex

@@ -6,6 +6,37 @@
 using namespace fiber_surface;
 static void require(bool ok,const std::string& message) { if (!ok) throw std::runtime_error(message); }
 
+static void contacts() {
+    auto check=[](const std::vector<Vec>& vertices,Triangle a,Triangle b,bool expected) {
+        std::sort(a.begin(),a.end());
+        do {
+            std::sort(b.begin(),b.end());
+            do {
+                require(marching_triangles::triangles_conflict(vertices,a,b,2e-9)==expected,
+                        "Triangle contact classification depends on vertex order or misses an intersection");
+                require(marching_triangles::triangles_conflict(vertices,b,a,2e-9)==expected,
+                        "Triangle contact classification depends on argument order");
+            } while(std::next_permutation(b.begin(),b.end()));
+        } while(std::next_permutation(a.begin(),a.end()));
+    };
+    // Actual disconnected-volume facets. Each pair has a separating plane
+    // through its single shared vertex; there is no additional intersection.
+    const std::vector<Vec> vertices{
+        Vec(.66000537067963705,.092803544662036164,-.34999999996676262),
+        Vec(.61306546313914601,.062924631044974588,-.42500000000000043),
+        Vec(.6130654630691017,.062924631002032758,-.27500000000000041),
+        Vec(.66000535895896895,.092803536926332308,-.19999999999172802),
+        Vec(.76554159169867964,.16802696430942007,-.27500000000000041),
+        Vec(.6130654630517568,.062924630991399194,-.12500000000000039)};
+    check(vertices,{0,1,2},{3,4,0},false);
+    check(vertices,{3,2,5},{3,4,0},false);
+    // Sharing a vertex must not hide a real intersection beyond that vertex.
+    check({Vec(0,0,0),Vec(1,0,0),Vec(0,1,0),Vec(.25,.25,-1),Vec(.25,.25,1)},
+          {0,1,2},{0,3,4},true);
+    check({Vec(0,0,0),Vec(1,0,0),Vec(0,1,0),Vec(.6,.1,0),Vec(.1,.6,0)},
+          {0,1,2},{0,3,4},true);
+}
+
 static void seeds() {
     auto e=analytical_field("strip"); Options options;
     e.field.box.min=Vec(-.5,-1,-2); e.field.box.max=Vec(.5,1,2);
@@ -72,6 +103,7 @@ int main(int argc,char** argv) {
         const std::string name=argc>1?argv[1]:"sphere";
         if (name=="derivatives") { derivatives(); return 0; }
         if (name=="seeds") { seeds(); return 0; }
+        if (name=="contacts") { contacts(); return 0; }
         auto example=analytical_field(name); Options options;
         const Result r=Extractor(example.field,example.segment,options).run();
         const auto report=evaluate(r,example.field,example.segment,options);

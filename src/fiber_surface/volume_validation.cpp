@@ -1,0 +1,225 @@
+#include "volume.h"
+#include "corrector.h"
+#include <numeric>
+
+namespace fiber_surface {
+bool correct_volume_sample(Vec& x,int patch,const Field& f,const RangeTriangle& range,const Options& o) {
+    if(patch<1 || patch>9 || !f.box.contains(x))return false;
+    const Vec origin=x;
+    unsigned faces=f.box.faces(x,o.step*1e-9);
+    if(patch>=4)faces|=1u<<(patch-4);
+    f.box.fix(x,faces);
+    std::array<bool,3> active{};if(patch<=3)active[patch-1]=true;
+    const double tolerance=std::min(o.residual_tolerance,1e-10);
+    for(int it=0;it<o.iterations;++it) {
+        if(!f.box.contains(x) || (x-origin).norm()>o.spatial_tolerance)return false;
+        const Range value=f.value(x);const Jacobian jac=f.jacobian(x);
+        if(!value.allFinite() || !jac.allFinite())return false;
+        bool converged=true;
+        for(int k=0;k<3;++k) {
+            const double phi=range.sides[k].phi(value);
+            if(phi < -tolerance)active[k]=true;
+            if(active[k] && std::abs(phi)>tolerance)converged=false;
+        }
+        if(converged)return true;
+        std::vector<int> free;for(int d=0;d<3;++d)if(!(faces&(3u<<(2*d))))free.push_back(d);
+        int rows=int(std::count(active.begin(),active.end(),true));
+        if(free.empty() || rows>int(free.size()))return false;
+        Eigen::MatrixXd a(rows,free.size());Eigen::VectorXd residual(rows);int row=0;
+        for(int k=0;k<3;++k)if(active[k]) {
+            const Vec g=range.sides[k].gradient(jac);
+            for(size_t d=0;d<free.size();++d)a(row,d)=g[free[d]];
+            residual[row++]=-range.sides[k].phi(value);
+        }
+        Eigen::CompleteOrthogonalDecomposition<Eigen::MatrixXd> solve(a);solve.setThreshold(o.derivative_tolerance);
+        if(solve.rank()!=rows)return false;
+        const Eigen::VectorXd delta=solve.solve(residual);
+        if(!delta.allFinite())return false;
+        for(size_t d=0;d<free.size();++d)x[free[d]]+=delta[d];f.box.fix(x,faces);
+    }
+    return false;
+}
+bool inside_shell(const Vec& p,const Mesh& mesh,const std::vector<int>& faces) {
+    double angle=0;
+    for (int id:faces) {
+        const auto t=mesh.triangles[id];
+        const Vec a=mesh.vertices[t[0]]-p,b=mesh.vertices[t[1]]-p,c=mesh.vertices[t[2]]-p;
+        angle+=2*std::atan2(a.dot(b.cross(c)),a.norm()*b.norm()*c.norm()+a.dot(b)*c.norm()+b.dot(c)*a.norm()+c.dot(a)*b.norm());
+    }
+    return std::abs(angle)>2*std::acos(-1.);
+}
+namespace {
+double clearance(const Vec& p,const Mesh& m) {
+    double d=std::numeric_limits<double>::infinity();
+    for (auto t:m.triangles) d=std::min(d,(p-marching_triangles::closest_on_triangle(p,m.vertices[t[0]],m.vertices[t[1]],m.vertices[t[2]])).norm());
+    return d;
+}
+double ray_hit(const Vec& p,const Vec& n,const Mesh& m,int skip,double eps) {
+    double best=std::numeric_limits<double>::infinity();
+    for (size_t i=0;i<m.triangles.size();++i) if (int(i)!=skip) {
+        const auto t=m.triangles[i]; const Vec a=m.vertices[t[0]],u=m.vertices[t[1]]-a,v=m.vertices[t[2]]-a;
+        const Vec h=n.cross(v); const double det=u.dot(h);
+        if (std::abs(det)<1e-12*u.norm()*v.norm()) continue;
+        const Vec s=p-a,q=s.cross(u); const double x=s.dot(h)/det,y=n.dot(q)/det,d=v.dot(q)/det;
+        if (x>=-1e-10 && y>=-1e-10 && x+y<=1+1e-10 && d>eps) best=std::min(best,d);
+    }
+    return best;
+}
+}
+BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,const RangeTriangle& range,const Options& o) {
+    BoundaryAssessment r;
+    const double eps=o.step*1e-8;
+    r.topology=marching_triangles::validate_mesh(b.mesh.vertices,b.mesh.triangles,eps);
+    if (b.mesh.triangles.empty() || !r.topology.closed() || b.patches.size()!=b.mesh.triangles.size() ||
+        std::any_of(b.patches.begin(),b.patches.end(),[](int patch){return patch<1 || patch>9;})) {
+        b.unresolved.push_back({(f.box.min+f.box.max)/2,"Boundary is empty, open, nonmanifold, intersecting, or inconsistently labeled: "+r.topology.summary()}); return r;
+    }
+    // Reject before invoking field callbacks, which may only be defined on the
+    // model domain. Every convex facet sample then remains in the box as well.
+    for(const Vec& x:b.mesh.vertices) if(!f.box.contains(x)) {
+        ++r.constraint_failures;b.unresolved.push_back({x,"Boundary vertex lies outside the model domain"});return r;
+    }
+    // Growth caches are not part of the boundary's geometric definition and
+    // may be absent or stale after importing or editing its vertex/facet arrays.
+    Mesh rebuilt;rebuilt.vertices=b.mesh.vertices;
+    for(const auto& t:b.mesh.triangles)rebuilt.add(t);
+    b.mesh=std::move(rebuilt);
+    const auto& m=b.mesh;
+    auto member=[&](const Vec& p) { return f.box.contains(p) && range.contains(f.value(p)); };
+    for (size_t i=0;i<m.triangles.size();++i) {
+        const auto t=m.triangles[i]; const Vec a=m.vertices[t[0]],z=m.vertices[t[1]],c=m.vertices[t[2]],center=volume_centroid(a,z,c);
+        const Vec normal=(z-a).cross(c-a).normalized(); const int patch=b.patches[i];
+        if (patch<1 || patch>9) {++r.constraint_failures;continue;}
+        const auto samples=volume_triangle_samples(a,z,c);
+        for (const Vec& x:samples) {
+            if (!f.box.contains(x)) {++r.constraint_failures;continue;}
+            const Range value=f.value(x);
+            if (!value.allFinite()) {++r.constraint_failures;continue;}
+            double violation=0; for (const auto& s:range.sides) violation=std::max(violation,-s.phi(value));
+            r.inequality_violation=std::max(r.inequality_violation,violation);
+            Vec corrected=x;
+            if(!correct_volume_sample(corrected,patch,f,range,o))++r.constraint_failures;
+            else r.spatial_error=std::max(r.spatial_error,(x-corrected).norm());
+            if (patch<=3) {
+                const auto& s=range.sides[patch-1];
+                r.side_residual=std::max(r.side_residual,std::abs(s.phi(value)));
+            } else {
+                const int face=patch-4,d=face/2; const double limit=face%2?f.box.max[d]:f.box.min[d];
+                if (std::abs(x[d]-limit)>eps) ++r.constraint_failures;
+            }
+        }
+        Vec expected;
+        if (patch<=3) expected=-range.sides[patch-1].gradient(f.jacobian(center));
+        else { expected=Vec::Zero();expected[(patch-4)/2]=(patch-4)%2?1:-1; }
+        if (!expected.allFinite() || expected.norm()<=o.derivative_tolerance || normal.dot(expected)<=0) ++r.orientation_failures;
+        // Probe both sides of the planar facet at multiple distances. A raw
+        // model test is independent of winding and the mesh construction.
+        bool oriented=false;Vec probe=center;
+        if(correct_volume_sample(probe,patch,f,range,o)) {
+            std::vector<Vec> inward_normals;
+            for(int k=0;k<3;++k)if(k+1==patch || std::abs(range.sides[k].phi(f.value(probe)))<1e-8)
+                inward_normals.push_back(range.sides[k].gradient(f.jacobian(probe)).normalized());
+            const unsigned mask=f.box.faces(probe,eps);
+            for(int face=0;face<6;++face)if(mask&(1u<<face))inward_normals.push_back((face%2?-1.:1.)*Vec::Unit(face/2));
+            Eigen::MatrixXd constraints(inward_normals.size(),3);
+            for(size_t k=0;k<inward_normals.size();++k)constraints.row(k)=inward_normals[k].transpose();
+            Vec inward=constraints.completeOrthogonalDecomposition().solve(Eigen::VectorXd::Ones(inward_normals.size()));
+            if(inward.allFinite() && inward.norm()>0 && normal.dot(inward)<0) {
+                inward.normalize();
+                for (double scale:{1e-7,1e-6,1e-5,.0001,.001,.01,.02,.05,.1,.2,.4}) {
+                    const double distance=std::max(2*eps,scale*o.step);
+                    if (member(probe+distance*inward) && !member(probe-distance*inward)) {oriented=true;break;}
+                }
+            }
+        }
+        if (!oriented) {
+            ++r.orientation_failures;
+            b.unresolved.push_back({center,"No separated retained-side probes for patch "+std::to_string(patch)});
+        }
+    }
+    // Shared labels identify corner fibers and active box constraints. Test the
+    // regular-volume assumption explicitly, including range/box combinations.
+    std::vector<std::set<int>> labels(m.vertices.size());
+    for (size_t i=0;i<m.triangles.size();++i) for (int id:m.triangles[i]) labels[id].insert(b.patches[i]);
+    for (size_t i=0;i<m.vertices.size();++i) {
+        const Vec& x=m.vertices[i]; const auto j=f.jacobian(x); const auto value=f.value(x);
+        if(!j.allFinite() || !value.allFinite()) {++r.constraint_failures;continue;}
+        std::vector<Vec> gradients;
+        for (int label:labels[i]) {
+            if (label<=3) gradients.push_back(range.sides[label-1].gradient(j));
+            else gradients.push_back(Vec::Unit((label-4)/2));
+        }
+        for (int k=0;k<3;++k) if (labels[i].count(k+1) && labels[i].count((k+2)%3+1))
+            r.corner_residual=std::max(r.corner_residual,(value-range.corners[k]).norm());
+        Eigen::MatrixXd active(3,gradients.size());
+        for (size_t k=0;k<gradients.size();++k) active.col(k)=gradients[k].normalized();
+        bool regular=false;
+        if(active.allFinite()) {
+            Eigen::FullPivLU<Eigen::MatrixXd> lu(active);lu.setThreshold(o.derivative_tolerance);
+            regular=lu.rank()==int(gradients.size());
+        }
+        if (!regular) {
+            ++r.constraint_failures; b.unresolved.push_back({x,"Unsupported dependent active range/box constraints"});
+        }
+    }
+    for(const auto& entry:m.edges) {
+        const auto& use=entry.second;
+        const int first=b.patches[use.face],second=b.patches[use.second];
+        if(first>3 || second>3 || first==second)continue;
+        int corner=-1;
+        for(int k=0;k<3;++k)if((first==k+1 && second==(k+2)%3+1) || (second==k+1 && first==(k+2)%3+1))corner=k;
+        if(corner<0)continue;
+        const Vec p=volume_midpoint(m.vertices[entry.first.first],m.vertices[entry.first.second]);
+        r.corner_residual=std::max(r.corner_residual,(f.value(p)-range.corners[corner]).norm());
+    }
+    // Connected boundary shells, traversing side/cap seams as ordinary edges.
+    r.shells.assign(m.triangles.size(),-1); std::vector<std::vector<int>> components;
+    for (size_t seed=0;seed<m.triangles.size();++seed) if (r.shells[seed]<0) {
+        const int id=int(components.size()); components.emplace_back(); std::vector<int> stack{int(seed)};
+        r.shells[seed]=id;
+        while (!stack.empty()) {
+            const int face=stack.back();stack.pop_back(); components.back().push_back(face);
+            const auto t=m.triangles[face];
+            for (int k=0;k<3;++k) {
+                const auto& e=m.edges.at(edge_key(t[k],t[(k+1)%3])); const int other=e.face==face?e.second:e.face;
+                if (other>=0 && r.shells[other]<0) {r.shells[other]=id;stack.push_back(other);}
+            }
+        }
+        double volume=0; const Vec origin=m.vertices[m.triangles[seed][0]];
+        for (int face:components.back()) {const auto t=m.triangles[face];volume+=(m.vertices[t[0]]-origin).dot((m.vertices[t[1]]-origin).cross(m.vertices[t[2]]-origin))/6;}
+        r.signed_volumes.push_back(volume);
+    }
+    auto material=[&](const Vec& p) {int winding=0;for(size_t k=0;k<components.size();++k) if(inside_shell(p,m,components[k]))winding+=r.signed_volumes[k]>0?1:-1;return winding>0;};
+    for (size_t k=0;k<components.size();++k) {
+        const auto t=m.triangles[components[k][0]];
+        const Vec center=volume_centroid(m.vertices[t[0]],m.vertices[t[1]],m.vertices[t[2]]);
+        // Any point on this shell is strictly inside or outside every other
+        // shell because embeddedness has already excluded shell contacts.
+        int depth=0; for(size_t j=0;j<components.size();++j) if(j!=k && inside_shell(center,m,components[j])) ++depth;
+        if (std::abs(r.signed_volumes[k])<=eps*eps*eps || (r.signed_volumes[k]>0)!=(depth%2==0)) {
+            ++r.orientation_failures; b.unresolved.push_back({center,"Shell containment disagrees with retained-material orientation"});
+        }
+        if (r.signed_volumes[k]>=0) continue;
+        double best=0; Vec hole=Vec::Zero();
+        for (int face:components[k]) {
+            const auto q=m.triangles[face]; const Vec a=m.vertices[q[0]],z=m.vertices[q[1]],c=m.vertices[q[2]],p=volume_centroid(a,z,c),n=(z-a).cross(c-a).normalized();
+            const double hit=ray_hit(p,n,m,face,eps);
+            if (!std::isfinite(hit)) continue;
+            const Vec candidate=p+.5*hit*n;
+            if (!inside_shell(candidate,m,components[k]) || material(candidate) || member(candidate)) continue;
+            const double distance=clearance(candidate,m);
+            if (distance>std::max(best,10*eps)) {best=distance;hole=candidate;}
+        }
+        if (best>0) r.holes.push_back(hole);
+        else b.unresolved.push_back({center,"No verified ray-midpoint seed for cavity"});
+    }
+    // Independent empirical coverage, not a certification of absent components.
+    for (const Vec& p:discovery_grid(f.box,discovery_shape(f,o))) {
+        if (member(p)!=material(p) && clearance(p,m)>2*o.spatial_tolerance) ++r.coverage_misses;
+    }
+    if (r.constraint_failures || r.orientation_failures || r.coverage_misses)
+        b.unresolved.push_back({(f.box.min+f.box.max)/2,"Boundary model/retained-side/coverage validation failed"});
+    r.valid=b.unresolved.empty() && !r.constraint_failures && !r.orientation_failures && !r.coverage_misses;
+    return r;
+}
+} // namespace fiber_surface
