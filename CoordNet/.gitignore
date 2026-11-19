@@ -7,5 +7,6 @@ __pycache__/
 /Result
 /Code/inf*
 /Code/train*
+!/Code/fit_vortex_street_components.sh
 /Data
 /Code/logs

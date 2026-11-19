@@ -1,5 +1,6 @@
 import torch
 
+VORTEX_STREET_3D_DATASETS = ('vortex_street_3d', 'vortex_street_3d_u', 'vortex_street_3d_v')
 
 
 def range(function_name='expotential'):
@@ -20,7 +21,7 @@ def sample_size(function_name='expotential'):
         return (100, 100, 100)
     elif function_name == 'vortex_street':
         return (50, 80, 100)
-    elif function_name == 'vortex_street_3d':
+    elif function_name in VORTEX_STREET_3D_DATASETS:
         return (640, 80, 150)
     elif function_name == 'hurricane_isabel':
         return (500, 500, 100)

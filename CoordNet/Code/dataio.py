@@ -132,10 +132,10 @@ class ScalarDataSet():
 			self.dim = [100,80]
 			self.total_samples = 50
 			self.data_path = '../Data/vortex_street.bin'
-		elif self.dataset == 'vortex_street_3d':
-			self.dim = [640,80]
-			self.total_samples = 150
-			self.data_path = '../Data/vortex_street_3d.bin'
+		elif self.dataset in function.VORTEX_STREET_3D_DATASETS:
+			nx, ny, self.total_samples = function.sample_size(self.dataset)
+			self.dim = [nx, ny]
+			self.data_path = f'../Data/{self.dataset}.bin'
 		elif self.dataset == 'hurricane_isabel':
 			self.dim = [500,500]
 			self.total_samples =100
@@ -262,7 +262,10 @@ class ScalarDataSet():
 			self.data = np.asarray(data_list)
 			return
 
-		if self.dataset in ['vortex_street','vortex_street_3d','hurricane_isabel', 'fluid', 'boussinesq_3d','cylinder','cylinder2','cylinder3'] and self.application == 'super-spatial-temporal':
+		if self.application == 'super-spatial-temporal' and self.dataset in (
+			*function.VORTEX_STREET_3D_DATASETS, 'vortex_street', 'hurricane_isabel',
+			'fluid', 'boussinesq_3d', 'cylinder', 'cylinder2', 'cylinder3'
+		):
 			# Load entire dataset from single binary file
 			data_all = np.fromfile(self.data_path, dtype='<f4')
 			data_all = data_all.astype(np.float32)
@@ -428,7 +431,7 @@ class ScalarDataSet():
 		return train_loader
 
 	def span_num(self):
-		if self.dataset == "vortex_street_3d":
+		if self.dataset in function.VORTEX_STREET_3D_DATASETS:
 			return np.array([80,10,15])
 		elif self.dataset == "boussinesq_3d":
 			return np.array([10,30,15])
