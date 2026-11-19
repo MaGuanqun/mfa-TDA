@@ -1,5 +1,5 @@
 add_library(fiber_surface_core STATIC find_seeds.cpp trace_endpoint_fibers.cpp
-    march_surface.cpp stitch_surface.cpp evaluate_surface.cpp)
+    march_surface.cpp stitch_surface.cpp curve_surface.cpp evaluate_surface.cpp)
 target_link_libraries(fiber_surface_core PUBLIC Eigen3::Eigen TBB::tbb)
 target_compile_features(fiber_surface_core PUBLIC cxx_std_17)
 add_library(fiber_surface_pipeline STATIC pipeline_io.cpp model_io.cpp pipeline_cli.cpp)
@@ -22,7 +22,8 @@ install(TARGETS fiber_surface_explicit fiber_surface_mfa RUNTIME DESTINATION src
 option(FIBER_ENABLE_VOLUME "Build filled-range-triangle extraction (TetGen and earcut)" ON)
 if(FIBER_ENABLE_VOLUME)
     include(volume_dependencies/CMakeLists.txt)
-    add_library(fiber_volume_core STATIC volume_boundary.cpp volume_validation.cpp volume_tetgen.cpp volume_io.cpp)
+    add_library(fiber_volume_core STATIC volume_boundary.cpp volume_validation.cpp volume_tetgen.cpp volume_io.cpp
+        volume_ply.cpp)
     target_link_libraries(fiber_volume_core PUBLIC fiber_surface_core PRIVATE fiber_tetgen)
     target_include_directories(fiber_volume_core SYSTEM PRIVATE ${FIBER_EARCUT_INCLUDE_DIR})
     target_compile_definitions(fiber_volume_core PRIVATE TETLIBRARY)
@@ -61,7 +62,7 @@ if(BUILD_TESTING)
     set_tests_properties(fiber_surface_mfa_adapter PROPERTIES FIXTURES_SETUP fiber_surface_mfa_model)
     add_executable(fiber_surface_tests tests.cpp)
     target_link_libraries(fiber_surface_tests PRIVATE fiber_surface_core)
-    foreach(case derivatives seeds contacts sphere closed-sphere strip disconnected)
+    foreach(case derivatives seeds contacts polylines sphere closed-sphere strip disconnected)
         add_test(NAME fiber_surface_${case} COMMAND fiber_surface_tests ${case})
     endforeach()
     add_test(NAME fiber_surface_cli COMMAND ${CMAKE_COMMAND}

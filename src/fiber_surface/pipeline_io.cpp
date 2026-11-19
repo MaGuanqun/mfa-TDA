@@ -28,12 +28,19 @@ void atomic_write(const fs::path& path, const std::function<void(std::ostream&)>
     } catch (...) { std::error_code error; fs::remove(temporary,error); throw; }
 }
 void config_body(std::ostream& out, const RunConfig& c) {
-    out<<"FIBER_SURFACE_CONFIG "<<format_version<<"\nmodel "<<std::quoted(c.model)<<"\nexample "<<std::quoted(c.example)
+    out<<"FIBER_SURFACE_CONFIG "<<(c.curve.size()==1 ? 1 : 2)<<"\nmodel "<<std::quoted(c.model)<<"\nexample "<<std::quoted(c.example)
         <<"\nfirst "<<std::quoted(c.first)<<' '<<std::quoted(c.first_digest)
         <<"\nsecond "<<std::quoted(c.second)<<' '<<std::quoted(c.second_digest)
         <<"\nvariables "<<c.variable1<<' '<<c.variable2<<"\nblocks "<<c.block1<<' '<<c.block2
-        <<"\nbox_min "<<c.box.min.transpose()<<"\nbox_max "<<c.box.max.transpose()
-        <<"\nsegment_a "<<c.segment.a.transpose()<<"\nsegment_b "<<c.segment.b.transpose();
+        <<"\nbox_min "<<c.box.min.transpose()<<"\nbox_max "<<c.box.max.transpose();
+    if (c.curve.size()==1) {
+        const auto& s=c.curve.segments.front();
+        out<<"\nsegment_a "<<s.a.transpose()<<"\nsegment_b "<<s.b.transpose();
+    } else {
+        out<<"\npolyline "<<c.curve.size()+1<<'\n';
+        for (const auto& s:c.curve.segments) out<<s.a.transpose()<<'\n';
+        out<<c.curve.segments.back().b.transpose();
+    }
     const auto& o=c.options;
     out<<"\noptions "<<o.step<<' '<<o.min_step<<' '<<o.fiber_step<<' '<<o.spatial_tolerance<<' '
         <<o.residual_tolerance<<' '<<o.derivative_tolerance<<' '<<o.min_angle_degrees<<' '<<o.max_normal_degrees<<' '
@@ -63,9 +70,20 @@ public:
     bool boolean() { const int x=get<int>(); if (x!=0 && x!=1) fail("invalid boolean"); return x!=0; }
     void end() { word("END"); std::string extra; if (in_>>extra) fail("unexpected trailing data"); }
 };
-std::string dependencies(const fs::path& run, Stage stage) {
-    if (stage==Stage::fibers)
-        return digest(file_digest(run/"surface_seeds.dat")+file_digest(run/"endpoint_seeds.dat"));
+std::string artifact_signature(const fs::path& run, const RunConfig& c) {
+    const auto signature=config_signature(c);
+    return c.curve.size()==1 ? signature : digest(signature+run.filename().string());
+}
+std::string dependencies(const fs::path& run, const RangeCurve& curve, Stage stage, int side) {
+    if (stage==Stage::fibers) {
+        auto inputs=file_digest(run/"surface_seeds.dat")+file_digest(run/"endpoint_seeds.dat");
+        // The end of this patch takes its frozen fiber from the following patch's seeds.
+        if (curve.size()>1 && (curve.closed() || side+1<curve.size())) {
+            const auto next=patch_directory(run.parent_path(),curve,(side+1)%curve.size());
+            inputs+=file_digest(next/"endpoint_seeds.dat");
+        }
+        return digest(inputs);
+    }
     if (stage==Stage::marching)
         return digest(file_digest(state_path(run,Stage::fibers))+file_digest(run/"surface_seeds.dat"));
     if (stage==Stage::stitching) return file_digest(state_path(run,Stage::marching));
@@ -112,14 +130,23 @@ void write_config(const fs::path& run,const RunConfig& config) {
 }
 RunConfig read_config(const fs::path& run) {
     Reader in(run/"run.conf"); RunConfig c;
-    in.header("FIBER_SURFACE_CONFIG");
+    in.word("FIBER_SURFACE_CONFIG");
+    const int version=in.get<int>();
+    if (version!=1 && version!=2) in.fail("unsupported configuration version");
     in.word("model"); c.model=in.quoted(); in.word("example"); c.example=in.quoted();
     in.word("first"); c.first=in.quoted(); c.first_digest=in.quoted();
     in.word("second"); c.second=in.quoted(); c.second_digest=in.quoted();
     in.word("variables"); c.variable1=in.get<int>(); c.variable2=in.get<int>();
     in.word("blocks"); c.block1=in.get<int>(); c.block2=in.get<int>();
     in.word("box_min"); c.box.min=in.point(); in.word("box_max"); c.box.max=in.point();
-    in.word("segment_a"); const Range a=in.range(); in.word("segment_b"); const Range b=in.range(); c.segment=Segment(a,b);
+    if (version==1) {
+        in.word("segment_a"); const Range a=in.range(); in.word("segment_b"); c.curve=Segment(a,in.range());
+    } else {
+        in.word("polyline"); const size_t count=in.count();
+        std::vector<Range> points;
+        for (size_t i=0; i<count; ++i) points.push_back(in.range());
+        c.curve=RangeCurve(std::move(points));
+    }
     in.word("options"); auto& o=c.options;
     o.step=in.real(); o.min_step=in.real(); o.fiber_step=in.real(); o.spatial_tolerance=in.real();
     o.residual_tolerance=in.real(); o.derivative_tolerance=in.real(); o.min_angle_degrees=in.real(); o.max_normal_degrees=in.real();
@@ -131,7 +158,7 @@ fs::path state_path(const fs::path& run,Stage stage) {
     return run/name;
 }
 void write_seeds(const fs::path& run,const RunConfig& config,const Seeds& seeds) {
-    const auto signature=config_signature(config);
+    const auto signature=artifact_signature(run,config);
     atomic_write(run/"surface_seeds.dat",[&](std::ostream& out) {
         out<<"FIBER_SURFACE_SEEDS 2 surface "<<signature<<' '<<seeds.seconds<<' '<<seeds.starting_points<<' '
             <<seeds.grid_shape[0]<<' '<<seeds.grid_shape[1]<<' '<<seeds.grid_shape[2]<<' '<<seeds.surface.size()<<'\n';
@@ -162,7 +189,7 @@ void write_seeds(const fs::path& run,const RunConfig& config,const Seeds& seeds)
     });
 }
 Seeds read_seeds(const fs::path& run,const RunConfig& config) {
-    Seeds seeds; const auto signature=config_signature(config);
+    Seeds seeds; const auto signature=artifact_signature(run,config);
     for (bool endpoints:{false,true}) {
         Reader in(run/(endpoints?"endpoint_seeds.dat":"surface_seeds.dat"));
         in.word("FIBER_SURFACE_SEEDS"); const int version=in.get<int>();
@@ -199,10 +226,10 @@ void validate_seeds(const Seeds& seeds,const Field& field,const Segment& segment
             throw std::runtime_error("Invalid saved endpoint seed");
 }
 
-void write_checkpoint(const fs::path& run,const RunConfig& config,Stage stage,const Checkpoint& state) {
+void write_checkpoint(const fs::path& run,const RunConfig& config,Stage stage,const Checkpoint& state,int side) {
     const auto& r=state.result;
     atomic_write(state_path(run,stage),[&](std::ostream& out) {
-        out<<"FIBER_SURFACE_STATE 1 "<<int(stage)<<' '<<config_signature(config)<<' '<<dependencies(run,stage)<<'\n';
+        out<<"FIBER_SURFACE_STATE 1 "<<int(stage)<<' '<<artifact_signature(run,config)<<' '<<dependencies(run,config.curve,stage,side)<<'\n';
         out<<"vertices "<<r.mesh.vertices.size()<<'\n';
         for (size_t i=0; i<r.mesh.vertices.size(); ++i) out<<r.mesh.vertices[i].transpose()<<' '<<r.info[i].endpoint<<' '<<r.info[i].fiber<<' '<<r.info[i].faces<<'\n';
         out<<"triangles "<<r.mesh.triangles.size()<<'\n';
@@ -218,14 +245,14 @@ void write_checkpoint(const fs::path& run,const RunConfig& config,Stage stage,co
         out<<"discovery "<<r.fiber_seed_hits[0]<<' '<<r.fiber_seed_hits[1]<<' '<<r.surface_seed_hits<<"\nseconds "<<r.seconds<<"\nEND\n";
     });
 }
-Checkpoint read_checkpoint(const fs::path& run,const RunConfig& config,Stage stage) {
+Checkpoint read_checkpoint(const fs::path& run,const RunConfig& config,Stage stage,int side) {
     // Check the whole dependency chain, not just the immediately preceding file.
-    if (stage==Stage::marching) read_checkpoint(run,config,Stage::fibers);
-    if (stage==Stage::stitching) read_checkpoint(run,config,Stage::marching);
+    if (stage==Stage::marching) read_checkpoint(run,config,Stage::fibers,side);
+    if (stage==Stage::stitching) read_checkpoint(run,config,Stage::marching,side);
     Reader in(state_path(run,stage)); in.header("FIBER_SURFACE_STATE");
     if (in.get<int>()!=int(stage)) in.fail("wrong pipeline stage");
-    if (in.get<std::string>()!=config_signature(config)) in.fail("configuration mismatch; rerun this stage");
-    if (in.get<std::string>()!=dependencies(run,stage)) in.fail("upstream output changed; rerun this stage");
+    if (in.get<std::string>()!=artifact_signature(run,config)) in.fail("configuration mismatch; rerun this stage");
+    if (in.get<std::string>()!=dependencies(run,config.curve,stage,side)) in.fail("upstream output changed; rerun this stage");
     Checkpoint state; auto& r=state.result;
     in.word("vertices"); const size_t nv=in.count();
     for (size_t i=0; i<nv; ++i) {

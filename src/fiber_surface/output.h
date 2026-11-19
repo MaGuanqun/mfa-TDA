@@ -30,10 +30,10 @@ struct Report {
     }
 };
 
-Report evaluate(const Result& r, const Field& field, const Segment& segment, const Options& options);
+Report evaluate(const Result& r, const Field& field, const RangeCurve& curve, const Options& options);
 void write_outputs(const std::string& prefix, const Result& r, const Report& report,
-                   const Field& field, const Segment& segment, const Options& options);
-int evaluate_and_write(Result result, const Field& field, const Segment& segment,
+                   const Field& field, const RangeCurve& curve, const Options& options);
+int evaluate_and_write(Result result, const Field& field, const RangeCurve& curve,
                        const Options& options, const std::string& prefix);
-int run_and_write(const Field& field, const Segment& segment, const Options& options, const std::string& prefix);
+int run_and_write(const Field& field, const RangeCurve& curve, const Options& options, const std::string& prefix);
 } // namespace fiber_surface

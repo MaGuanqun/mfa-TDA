@@ -38,10 +38,23 @@ template<int N> Eigen::Matrix<double,N,1> coordinates(std::string str) {
     for (int i=0; i<N; ++i) if (!(in>>x[i]) || !std::isfinite(x[i])) throw std::invalid_argument("Expected "+std::to_string(N)+" finite comma-separated coordinates");
     std::string extra; if (in>>extra) throw std::invalid_argument("Too many coordinates"); return x;
 }
-inline void common_options(Arguments& args, Field& field, Segment& segment, Options& options) {
-    const auto a=args.take("--a"),b=args.take("--b");
-    if (a.empty()!=b.empty()) throw std::invalid_argument("Supply both --a and --b");
-    if (!a.empty()) segment=Segment(coordinates<2>(a),coordinates<2>(b));
+inline RangeCurve range_selection(Arguments& args, const Segment& fallback) {
+    if (args.has("--polyline")) {
+        if (args.has("--a") || args.has("--b")) throw std::invalid_argument("Choose either --polyline or --a and --b");
+        const auto input=args.take("--polyline");
+        if (input.empty() || input.back()==';') throw std::invalid_argument("Expected vertices in --polyline");
+        std::istringstream values(input);
+        std::vector<Range> points;
+        std::string point;
+        while (std::getline(values,point,';')) points.push_back(coordinates<2>(point));
+        return RangeCurve(std::move(points));
+    }
+    if (args.has("--a")!=args.has("--b")) throw std::invalid_argument("Supply both --a and --b");
+    if (!args.has("--a")) return fallback;
+    const Range a=coordinates<2>(args.take("--a"));
+    return Segment(a,coordinates<2>(args.take("--b")));
+}
+inline void common_options(Arguments& args, Field& field, Options& options) {
     const auto min=args.take("--min"),max=args.take("--max");
     if (min.empty()!=max.empty()) throw std::invalid_argument("Supply both --min and --max");
     if (!min.empty()) {
@@ -62,10 +75,16 @@ inline void common_options(Arguments& args, Field& field, Segment& segment, Opti
     options.max_trace_steps=args.integer("--max-trace-steps",options.max_trace_steps);
     const int limit=args.integer("--max-triangles",int(options.max_triangles));
     if (limit<4) throw std::invalid_argument("--max-triangles must be at least 4"); options.max_triangles=size_t(limit);
-    options.validate(field,segment);
+}
+inline RangeCurve surface_options(Arguments& args, Field& field, const Segment& fallback, Options& options) {
+    auto curve=range_selection(args,fallback);
+    common_options(args,field,options);
+    for (const auto& s:curve.segments) options.validate(field,s);
+    return curve;
 }
 inline void common_help() {
     std::cout<<"  --a u,v --b u,v        finite range segment\n"
+        <<"  --polyline 'u,v;u,v;...'  ordered range vertices; repeat the first to close\n"
         <<"  --min x,y,z --max x,y,z  spatial sub-box\n"
         <<"  --output PREFIX       OBJ, VTK, fiber VTK and JSON report\n"
         <<"  --step H --min-step H --fiber-step H (physical units)\n"
@@ -73,7 +92,7 @@ inline void common_help() {
         <<"  --seed-grid N         N seeds on the shortest axis; other counts = ceil(N * length / shortest)\n"
         <<"                        default 7 for both analytical and MFA fields; 0 also selects 7\n"
         <<"                        uses the selected physical box; maximum 1000000 starts\n"
-        <<"  --iterations N --max-trace-steps N --max-triangles N\n"
+        <<"  --iterations N --max-trace-steps N --max-triangles N (per segment)\n"
         <<"Exit 0: complete discovered mesh; 1: input/runtime error; 2: unresolved/invalid partial result.\n";
 }
 } // namespace fiber_surface

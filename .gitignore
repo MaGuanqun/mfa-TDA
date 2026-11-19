@@ -5,6 +5,7 @@
 *.run
 *.log
 *.sh
+!/fiber_volume.sh
 !/isosurface_explicit.sh
 *.cmake
 *.pyc
@@ -16,3 +17,4 @@
 !/src/isosurface/tests/*.cmake
 
 /fiber-surface-tex
+/paper

@@ -2,8 +2,8 @@
 
 The volume extractor first builds a closed triangle mesh around the selected
 spatial region, then fills that mesh with tetrahedra. The main entry point is
-`extract_volume()` in [volume_io.cpp](volume_io.cpp). The most substantial
-geometry work is in `assemble_volume_boundary()` in
+`extract_volume()` in [volume_io.cpp](volume_io.cpp). The side surfaces come from the shared polyline extractor in
+[curve_surface.cpp](curve_surface.cpp). Box-face caps are assembled in
 [volume_boundary.cpp](volume_boundary.cpp).
 
 This guide explains the current implementation and its function calls.
@@ -71,10 +71,12 @@ These are the main places to read:
 | [fiber_volume_explicit.cpp](fiber_volume_explicit.cpp) | Select an analytical example, parse options, and call `run_volume()`. |
 | [fiber_volume_mfa.cpp](fiber_volume_mfa.cpp) | Load MFA models and variables, construct a `Field`, and call the same runner. |
 | [volume_cli.h](volume_cli.h) | Parse the three range corners and reuse the common meshing options. |
-| [volume_boundary.cpp](volume_boundary.cpp) | Assemble side surfaces, shared corner fibers, and box caps. |
+| [curve_surface.cpp](curve_surface.cpp) | Extract the directed range loop and assemble shared corner fibers. |
+| [volume_boundary.cpp](volume_boundary.cpp) | Orient the loop’s side surfaces outward and triangulate the box caps. |
 | [volume_validation.cpp](volume_validation.cpp) | Check the boundary against geometry and the field; identify shells and cavity seeds. |
 | [volume_tetgen.cpp](volume_tetgen.cpp) | Call TetGen and independently assess the returned tetrahedra. |
 | [volume_io.cpp](volume_io.cpp) | Orchestrate the four stages and write meshes and the JSON report. |
+| [volume_ply.cpp](volume_ply.cpp) | Write and read the labeled binary64 PLY shared by the boundary and fill invocations. |
 | [volume_examples.h](volume_examples.h) | Analytical fields, range triangles, and reference volumes. |
 
 The volume implementation reuses `fiber_surface_core`, including
@@ -82,10 +84,10 @@ The volume implementation reuses `fiber_surface_core`, including
 [trace_endpoint_fibers.cpp](trace_endpoint_fibers.cpp),
 [march_surface.cpp](march_surface.cpp), and
 [stitch_surface.cpp](stitch_surface.cpp). Their `Extractor` class builds one
-finite-segment fiber surface at a time. The volume layer coordinates three
-such extractions and closes their contact with the box.
+finite-segment fiber surface at a time. The surface core joins the patches along their corner fibers. The volume
+layer closes their contact with the box.
 
-The [CMake configuration](CMakeLists.txt) compiles the four volume `.cpp` files
+The [CMake configuration](CMakeLists.txt) compiles the volume implementation files
 into `fiber_volume_core`, links it to `fiber_surface_core` and TetGen, and
 provides earcut headers for cap triangulation. Both volume executables link
 this same library. `FIBER_ENABLE_VOLUME` controls these targets, and the
@@ -163,7 +165,12 @@ volume assessment times in that order. A stage skipped by an early return
 keeps its initial zero time.
 
 `run_volume()` calls `extract_volume()`, writes the result with `write_volume()`,
-prints a short status, and returns `0` for complete or `2` for partial/invalid.
+prints a short status, and returns `0` when the requested stage passes or `2`
+for a partial/invalid result. With `--stage boundary`, extraction stops after
+boundary validation and the writer saves the labeled PLY. With `--stage fill`,
+`read_boundary_ply()` supplies the triangles, winding and patch IDs. Boundary
+validation then rebuilds adjacency and cavity seeds before calling TetGen.
+The repository example script runs these two modes in separate processes.
 Exceptions outside the filling catch, such as invalid options or output errors,
 reach the executable's `main()` catch and produce exit `1`.
 
@@ -172,11 +179,10 @@ reach the executable's `main()` catch and produce exit `1`.
 `surface_solve_tolerance = min(1e-10, residual_tolerance)`. This gives surface
 root solves a tighter tolerance than the chord classification may use.
 
-For each side `i`, it calls `find_seeds()` to discover surface seeds and seeds
-for both segment endpoints. It then passes only endpoint zero's seeds to
-`trace_endpoint_fibers()`, tracing the fiber `F(x) = q_i`. Thus each corner's
-fiber components are traced once, although endpoint seed searches occur for
-both endpoints of each side.
+`assemble_volume_boundary()` passes the closed curve `[q0,q1,q2,q0]` to
+`extract_curve()`. The surface core discovers surface seeds for every directed
+side and endpoint seeds for each distinct range vertex. It traces the
+components of each corner fiber once.
 
 The inherited tracer follows the normalized tangent
 `grad(f1) × grad(f2)` using RK4 prediction and Newton correction. It follows
@@ -184,35 +190,24 @@ both directions when needed, detects closed loops, and solves contacts with
 the box while fixing the contacted coordinates. Rank loss or a failed contact
 is recorded as an unresolved event.
 
-Three arrays connect this work to later surface marching:
+Each side takes the frozen traces at its two endpoints into a local `Result`.
+The two incident patches keep the same component order and sample order along
+a corner. After stitching, `join_curve_patches()` assigns the same global IDs
+to those samples and records the range-segment index on every triangle.
 
-| Local array | Purpose |
-| --- | --- |
-| `seeds[i]` | Discovery results for side `i`, including independent surface seeds. |
-| `corners[i]` | Traced components, sample positions, and contact information for `q_i`. |
-| `corner_ids[i]` | Mapping from that corner's local sample indices to the assembled boundary's vertex indices. |
-
-Each side needs the fibers at `q_i` and `q_(i+1)`. The code copies those two
-traces into a local `Result shared`, relabels their endpoint and component
-indices, and retains a local-to-global vertex map. Adjacent surfaces consequently
-refer to the same global vertex IDs along their common fiber. The marcher
-keeps these samples fixed and consumes their edges in the prescribed order.
-
-**The nested `finish(march(...))` call builds one side patch.** This line is
-the central reuse of the surface implementation:
+**Each segment uses the existing surface marcher.** The patch loop in
+`extract_curve()` runs the following steps.
 
 ```cpp
-Extractor extractor(f, range.sides[i], o);
-auto state = extractor.finish(extractor.march(seeds[i], std::move(shared)));
-auto& side = state.result;
+Extractor extractor(field,curve.segments[i],options);
+auto state=extractor.march(seeds[i],std::move(patches[i]));
+patches[i]=extractor.finish(std::move(state),true).result;
 ```
 
 `march()` initializes fronts from the supplied fiber edges, grows triangles,
-and then tries independent surface seeds that are not already covered. That
-last step discovers components that do not touch a range corner. `finish()`
-stitches and attempts local repairs, then records unfinished fronts and
-unattached fiber edges. The returned `Checkpoint` contains the resulting
-surface and its front bookkeeping; the volume code takes its `result`.
+and tries independent surface seeds to discover components away from range
+corners. `finish()` stitches the fronts, attempts local repairs and box
+contacts, and records unfinished fronts and unattached fiber edges.
 
 Within `Extractor::advance()`, a candidate grows across a front edge in the
 direction `edge × g_i`. The Hessian combination
@@ -239,10 +234,6 @@ their common box edge. It solves `phi_i = 0` with both box coordinates fixed
 and adds a triangle only after checking size, angles, orientation, sample
 corrections, topology, and intersections. It leaves traced corner fibers fixed.
 This repair is counted in `box_contact_triangles`.
-
-New side vertices on box faces are merged with existing boundary vertices
-within `step * 1e-7`; ordinary side-interior vertices are appended. The corner
-fiber IDs already have explicit shared mappings.
 
 **`cap()` closes the selected portions of each box face.** Three side patches
 alone need not enclose a volume: in the prism example, the top and bottom
@@ -505,6 +496,7 @@ a partial result:
 
 | Output | Useful contents |
 | --- | --- |
+| `P_boundary.ply` | Binary64 vertices, oriented faces and patch IDs for the fill stage. Written when the boundary is assembled. |
 | `P_boundary.obj` | Assembled triangles grouped by semantic patch. |
 | `P_boundary.vtk` | Boundary triangles with patch IDs, shell IDs, and incident patch masks. |
 | `P_boundary.poly` | Boundary PLC, unique facet markers, and cavity seeds; validation status must be checked before independently filling it. |
@@ -570,7 +562,7 @@ many pairs of primitives, so the implementation targets small to moderate
 meshes.
 
 To follow one extraction in a debugger, start at `extract_volume()`, step into
-`assemble_volume_boundary()` and its `finish(march(...))` call, inspect the
+`assemble_volume_boundary()` and `extract_curve()`, inspect the
 assembled `patches` and `unresolved`, then follow the two validation reports
 around `fill_volume()`. The planar prism is the clearest case because each
 range side, corner fiber, box cap, and expected volume has a simple geometric

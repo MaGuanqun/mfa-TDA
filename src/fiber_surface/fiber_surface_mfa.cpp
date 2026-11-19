@@ -15,8 +15,8 @@ int main(int argc,char** argv) {
         }
         const auto first=args.take("--first"),second=args.take("--second",first);
         if (first.empty()) throw std::invalid_argument("--first MFA file is required");
-        if (!args.has("--inspect") && (!args.has("--a") || !args.has("--b")))
-            throw std::invalid_argument("MFA extraction requires --a and --b range endpoints; use --inspect to sample the range first");
+        if (!args.has("--inspect") && !args.has("--polyline") && (!args.has("--a") || !args.has("--b")))
+            throw std::invalid_argument("MFA extraction requires --a and --b range endpoints or --polyline; use --inspect to sample the range first");
         const int variable1=args.integer("--variable1",0),variable2=args.integer("--variable2",first==second?1:0);
         const int block1=args.integer("--block1",-1),block2=args.integer("--block2",block1);
         auto model1=std::make_shared<marching_triangles::MfaModel>(first,world,block1);
@@ -24,7 +24,7 @@ int main(int argc,char** argv) {
         Field field=mfa_field(model1,model2,variable1,variable2); Segment segment; Options options;
         options.step=(field.box.max-field.box.min).minCoeff()/20;
         const auto output=args.take("--output","fiber_surface_mfa"); const bool inspect=!args.take("--inspect").empty();
-        common_options(args,field,segment,options); args.finish();
+        const auto curve=surface_options(args,field,segment,options); args.finish();
         if (inspect) {
             Range lo=Range::Constant(std::numeric_limits<double>::infinity()),hi=-lo;
             for (const Vec& x:discovery_grid(field.box,discovery_shape(field,options))) { const Range f=field.value(x); lo=lo.cwiseMin(f); hi=hi.cwiseMax(f); }
@@ -39,6 +39,6 @@ int main(int argc,char** argv) {
             }
             std::cout<<"Center finite-difference gradient relative error: "<<error<<'\n'; return error<1e-4 ? 0 : 2;
         }
-        return run_and_write(field,segment,options,output);
+        return run_and_write(field,curve,options,output);
     } catch (const std::exception& e) { std::cerr<<"fiber_surface_mfa: "<<e.what()<<'\n'; return 1; }
 }

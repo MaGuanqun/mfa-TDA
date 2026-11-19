@@ -25,48 +25,6 @@ int vertex(VolumeBoundary& b,const Vec& x,double eps) {
 void facet(VolumeBoundary& b,Triangle t,int label) {
     b.mesh.add(t); b.patches.push_back(label);
 }
-// A last short front can connect contacts on two different box faces without
-// reaching their shared box edge. Close only that explicit transverse contact,
-// solving the scalar constraint with BOTH box coordinates fixed. This is not an
-// arbitrary cap of an unfinished loop, and never changes frozen corner fibers.
-size_t finish_box_contacts(Result& r,const Field& f,const Segment& s,const Options& o) {
-    size_t count=0;Corrector corrector(f,s,o);
-    const auto fronts=r.mesh.boundary;const double eps=o.step*1e-9;
-    for(const auto& entry:fronts) {
-        if(r.mesh.triangles.size()>=o.max_triangles)break;
-        const auto e=entry.first;const int a=e.first,b=e.second;
-        if(!r.mesh.boundary.count(e) || r.fiber_edges.count(edge_key(a,b)))continue;
-        const unsigned fa=r.info[a].faces,fb=r.info[b].faces;
-        if(!fa || !fb || (fa&fb))continue;
-        const Vec mid=volume_midpoint(r.mesh.vertices[a],r.mesh.vertices[b]);Vec x=mid;
-        if(!corrector.surface(x,o.step,fa|fb) || (x-mid).norm()>o.step)continue;
-        bool nearby=false;for(const Vec& p:r.mesh.vertices)if((x-p).norm()<eps)nearby=true;
-        if(nearby)continue;
-        const int id=int(r.mesh.vertices.size());const Triangle t{b,a,id};r.mesh.vertices.push_back(x);
-        const Vec cross=(r.mesh.vertices[a]-r.mesh.vertices[b]).cross(x-r.mesh.vertices[b]);
-        bool valid=cross.norm()>eps*eps && cross.dot(s.gradient(f.jacobian(mid)))>0 && r.mesh.topology_ok(t);
-        for(int k=0;k<3 && valid;++k) {
-            const Vec p=r.mesh.vertices[t[k]],q=r.mesh.vertices[t[(k+1)%3]],z=r.mesh.vertices[t[(k+2)%3]];
-            const double angle=std::acos(std::clamp((q-p).normalized().dot((z-p).normalized()),-1.,1.))*180/std::acos(-1.);
-            if((q-p).norm()>2*o.step || angle<o.min_angle_degrees)valid=false;
-            Vec sample=volume_midpoint(p,q);const Vec original=sample;
-            const unsigned fp=t[k]==id ? fa|fb : r.info[t[k]].faces;
-            const unsigned fq=t[(k+1)%3]==id ? fa|fb : r.info[t[(k+1)%3]].faces;
-            if(!corrector.member(sample) || !corrector.surface(sample,o.spatial_tolerance,fp&fq) || (sample-original).norm()>o.spatial_tolerance)valid=false;
-        }
-        Vec centroid=volume_centroid(r.mesh.vertices[a],r.mesh.vertices[b],x);
-        if(valid && (!corrector.member(centroid) || !corrector.surface(centroid,o.spatial_tolerance)))valid=false;
-        for(const auto& old:r.mesh.triangles)if(valid && marching_triangles::triangles_conflict(r.mesh.vertices,t,old,eps))valid=false;
-        if(!valid){r.mesh.vertices.pop_back();continue;}
-        r.info.push_back({-1,-1,fa|fb});r.mesh.add(t);
-        r.box_edges.insert(edge_key(a,id));r.box_edges.insert(edge_key(b,id));
-        r.unresolved.erase(std::remove_if(r.unresolved.begin(),r.unresolved.end(),[&](const Event& issue){
-            return issue.reason=="Unfinished front: no valid growth or existing-vertex connection" && (issue.position-mid).norm()<10*eps;
-        }),r.unresolved.end());
-        ++count;
-    }
-    return count;
-}
 Range project(const Vec& x,int face) {
     const int d=face/2,u=(d+1)%3,v=(d+2)%3;
     return Range(x[u],(face%2?1.:-1.)*x[v]);
@@ -221,48 +179,18 @@ void compact(VolumeBoundary& b) {
 }
 } // namespace
 VolumeBoundary assemble_volume_boundary(const Field& f,const RangeTriangle& range,const Options& requested) {
-    Options o=requested;o.surface_solve_tolerance=std::min(1e-10,o.residual_tolerance);
     VolumeBoundary b;
-    std::array<Seeds,3> seeds;
-    std::array<Result,3> corners;
-    std::array<std::vector<int>,3> corner_ids;
-    for (int i=0;i<3;++i) {
-        seeds[i]=find_seeds(f,range.sides[i],o);
-        Seeds only; only.endpoints[0]=seeds[i].endpoints[0];
-        corners[i]=trace_endpoint_fibers(f,range.sides[i],o,only);
-        b.corner_components[i]=corners[i].fibers.size();
-        b.unresolved.insert(b.unresolved.end(),corners[i].unresolved.begin(),corners[i].unresolved.end());
-        for (const Vec& x:corners[i].mesh.vertices) { corner_ids[i].push_back(int(b.mesh.vertices.size())); b.mesh.vertices.push_back(x); }
-    }
-    for (int i=0;i<3;++i) {
-        Result shared; std::vector<int> ids;
-        for (int endpoint=0;endpoint<2;++endpoint) {
-            const int k=(i+endpoint)%3,offset=int(shared.mesh.vertices.size()),component=int(shared.fibers.size());
-            for (size_t j=0;j<corners[k].mesh.vertices.size();++j) {
-                shared.mesh.vertices.push_back(corners[k].mesh.vertices[j]);
-                auto info=corners[k].info[j]; info.endpoint=endpoint; info.fiber+=component; shared.info.push_back(info);
-                ids.push_back(corner_ids[k][j]);
-            }
-            for (auto fiber:corners[k].fibers) {fiber.endpoint=endpoint;for(int& v:fiber.vertices)v+=offset;shared.fibers.push_back(fiber);}
-            for (auto entry:corners[k].fiber_edges) shared.fiber_edges[{entry.first.first+offset,entry.first.second+offset}]=entry.second+component;
-        }
-        Extractor extractor(f,range.sides[i],o);
-        auto state=extractor.finish(extractor.march(seeds[i],std::move(shared)));
-        auto& side=state.result;
-        b.box_contact_triangles+=finish_box_contacts(side,f,range.sides[i],o);
-        for(const auto& issue:side.unresolved) {
-            // An inactive range edge is normal for a filled selection (even a
-            // wholly selected box). Coverage is checked independently below.
-            if(side.mesh.triangles.empty() && seeds[i].surface.empty() &&
-               issue.reason=="No regular surface discovered; finite search does not prove emptiness") continue;
-            b.unresolved.push_back(issue);
-        }
-        for (size_t j=ids.size();j<side.mesh.vertices.size();++j) {
-            const Vec& x=side.mesh.vertices[j];
-            if (side.info[j].faces) ids.push_back(vertex(b,x,o.step*1e-7));
-            else { ids.push_back(int(b.mesh.vertices.size())); b.mesh.vertices.push_back(x); }
-        }
-        for (const auto& t:side.mesh.triangles) facet(b,{ids[t[0]],ids[t[2]],ids[t[1]]},i+1);
+    const RangeCurve loop({range.corners[0],range.corners[1],range.corners[2],range.corners[0]});
+    const Options o=curve_options(loop,requested);
+    auto sides=extract_curve(f,loop,o);
+    b.mesh.vertices=std::move(sides.mesh.vertices);
+    b.unresolved=std::move(sides.unresolved);
+    b.box_contact_triangles=sides.box_contact_triangles;
+    for (const auto& fiber:sides.fibers) ++b.corner_components[fiber.endpoint];
+    for (size_t i=0; i<sides.mesh.triangles.size(); ++i) {
+        auto t=sides.mesh.triangles[i];
+        std::swap(t[1],t[2]); // The CCW curve normals point into the selected region.
+        facet(b,t,sides.face_segments[i]+1);
     }
     for (int face=0;face<6;++face) cap(b,f,range,o,face);
     compact(b);

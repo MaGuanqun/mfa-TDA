@@ -1,14 +1,27 @@
 # Continuous-model fiber surfaces
 
-Filled range triangles are implemented for analytical fields and MFA in the
-new `fiber_volume_explicit` and `fiber_volume_mfa` executables. See
-[VOLUME.md](VOLUME.md) for the four-stage boundary/TetGen pipeline, examples,
-dependencies, output labels, validation, and tests. INR is deferred.
+To extract a **filled volume**, set `default_model` at the top of `fiber_volume.sh`
+to `analytical` for the planar prism or `mfa` for the local Hurricane Isabel
+pressure/temperature models. Run the script from the repository root.
+It builds the fiber-surface patches, closes them with box-face caps,
+and saves the boundary as a binary PLY. A second process reads that PLY,
+validates it against the field, and fills it with TetGen.
 
-This implements the **main single-segment method** in `summary_fiber.tex` for
-analytical fields and MFA. It evaluates the supplied continuous model directly;
-the discovery grid is not a volumetric interpolant. Polyline creases, range
-crossings, cone tips, and neural-field adapters are outside this implementation.
+```bash
+./fiber_volume.sh
+```
+
+Use `./fiber_volume.sh mfa boundary` to stop and inspect `volume_boundary.ply`.
+Use `./fiber_volume.sh mfa fill` to resume from that file. Both stages also work
+with `analytical`. Open `volume_volume.vtk` in ParaView to inspect the tetrahedra.
+Results are under `build/fiber-volume-results/{analytical_prism,hurricane_isabel_3d}/`.
+See [the volume guide](VOLUME.md#run-the-two-stage-examples) for input paths,
+the PLY layout, and validation.
+
+The analytical and MFA extractors accept a directed segment or a simple open
+or closed polyline in range space. Each segment produces a surface patch.
+Adjacent patches share a single trace of the fiber at their common range
+vertex. The extractor evaluates the supplied continuous field directly.
 
 For `F=(F1,F2)` and `C=[a,b]`, the extractor uses
 `d=b-a`, `n=(-d2,d1)/|d|`, `w=d/|d|²`,
@@ -57,7 +70,7 @@ The default folders are `build/fiber-surface-results/analytical_<example>/`
 `FIBER_RESULTS_ROOT` overrides the results root, and `FIBER_DATASET` overrides
 the MFA dataset folder name. There are no step or log subfolders.
 
-Each dataset folder contains:
+Each single-segment dataset folder contains:
 
 - `run.conf`, `surface_seeds.dat`, `endpoint_seeds.dat`, both seed VTK files,
   and `seeds_report.json`.
@@ -70,7 +83,7 @@ Each dataset folder contains:
   `fibers`, `march`, `stitch`, and `evaluate`.
 
 Rerun one stage with, for example, `./fiber_surface_analytical.sh sphere stitch`
-or `./fiber_surface_mfa.sh evaluate`. Direct stage executables use this same flat
+or `./fiber_surface_mfa.sh evaluate`. For a single segment, direct stage executables use this same flat
 layout in `--run-dir`. Runs saved in the older numbered-folder layout need to
 be rerun from `seeds` or have their files moved to the names above before resuming.
 
@@ -88,6 +101,39 @@ The default is the summary's `F=(x²+y²+z²,z)`, `C=[(1,-2),(1,0.5)]`,
 Other `--example` values are `closed-sphere`, `strip`, and `disconnected`.
 `--a u,v --b u,v` overrides the segment; `--min x,y,z --max x,y,z` selects a
 sub-box. Use `--help` for solver, sampling, and triangle-budget settings.
+
+## Connected segments and triangle loops
+
+Pass ordered range vertices with `--polyline`. Repeat the first vertex to
+close the curve. These examples use `F(x,y,z)=(x,y)` in the strip example's
+box, where each range vertex lifts to a vertical line.
+
+```bash
+source ./load-env.sh
+build/src/fiber_surface/fiber_surface_explicit --example strip \
+  --polyline '1,0;0,0;0,1' --output build/elbow
+build/src/fiber_surface/fiber_surface_explicit --example strip \
+  --polyline '0,0;1,0;0,1;0,0' --output build/triangle_sides
+```
+
+The elbow has two rectangular patches meeting along the fiber at `(0,0)`.
+The triangle has three lateral faces with open rims where they meet the box.
+For the filled prism, use the volume executable, which takes the same sides,
+orients them outward, and adds the two box caps.
+
+The surface accepts either traversal direction. It removes consecutive
+duplicate vertices and collinear subdivisions along the same direction.
+Retracing, overlapping segments, and self-crossings are rejected.
+`--max-triangles` applies to each segment. In ParaView, color the mesh by
+the cell scalar `range_segment` to see the patches. The fiber file's
+`endpoint` label indexes the normalized range vertices listed in the JSON
+report. The point scalar `curve_parameter` is the zero-based segment index
+plus its local parameter, with the closing corner mapped to the start.
+
+`fiber_surface_mfa` and the staged `fiber_find_seeds` entry point accept the
+same option. For multi-segment runs, the staged executables store intermediate
+artifacts in `segment_0/`, `segment_1/`, and so on under `--run-dir`. Final
+mesh, fiber, and report files are written in the run directory.
 
 ## Hurricane Isabel MFA example
 
@@ -230,6 +276,7 @@ faces or ambiguous tangential contacts.
   New ordinary triangles use the Delaunay surface test. Boundary/stitching
   triangles use constraint, orientation, overlap, and intersection checks.
   `--min-step` is the weighted recovery threshold, not a hard minimum edge length.
+- `curve_surface.cpp` assembles directed patches with shared corner fibers.
 - `output.h`: independent reconstruction of topology and vertex links, raw
   model-agreement measurements, component labeling, OBJ/VTK/JSON export.
 

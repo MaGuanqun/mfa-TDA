@@ -24,7 +24,7 @@ LoadedField load_field(const RunConfig& config, bool restrict_box) {
         if (!loaded.field.box.contains(config.box.min) || !loaded.field.box.contains(config.box.max))
             throw std::runtime_error("Saved spatial box is outside the model domain");
         loaded.field.box=config.box;
-        config.options.validate(loaded.field,config.segment);
+        for (const auto& s:config.curve.segments) config.options.validate(loaded.field,s);
     }
     return loaded;
 }

@@ -34,7 +34,19 @@ public:
     Extractor(const Extractor&)=delete;
     Extractor& operator=(const Extractor&)=delete;
     Checkpoint march(const Seeds& seeds, Result fibers);
-    Checkpoint finish(Checkpoint state);
+    Checkpoint finish(Checkpoint state, bool curve_patch=false);
     Result run();
 };
+// Keep neighboring roots on their shared constraint even when chord slack is loose.
+inline Options curve_options(const RangeCurve& curve, Options options) {
+    if (curve.size()>1) {
+        const double tolerance=options.surface_solve_tolerance>0 ? options.surface_solve_tolerance : options.residual_tolerance;
+        options.surface_solve_tolerance=std::min(1e-10,tolerance);
+    }
+    return options;
+}
+std::vector<Seeds> find_curve_seeds(const Field&, const RangeCurve&, const Options&);
+std::vector<Result> trace_curve_fibers(const Field&, const RangeCurve&, const Options&, const std::vector<Seeds>&);
+Result join_curve_patches(const RangeCurve&, const std::vector<Result>&);
+Result extract_curve(const Field&, const RangeCurve&, const Options&);
 } // namespace fiber_surface

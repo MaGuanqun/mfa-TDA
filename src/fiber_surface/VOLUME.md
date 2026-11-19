@@ -61,6 +61,57 @@ cmake -S . -B build \
 `-DFIBER_ENABLE_VOLUME=OFF` disables only the new volume targets and their
 external dependencies.
 
+## Run the two-stage examples
+
+Set `default_model` at the top of `fiber_volume.sh` to `analytical` or `mfa`.
+From the repository root, run both stages for the selected model.
+
+```bash
+./fiber_volume.sh
+```
+
+An explicit model argument overrides the script setting for one run. To
+inspect the MFA boundary before filling it, run the two stages separately.
+
+```bash
+./fiber_volume.sh mfa boundary
+./fiber_volume.sh mfa fill
+```
+
+The script activates the Spack environment and builds the selected executable.
+The analytical case uses the planar prism. The MFA case uses
+`build/src/hurricane_isabel_3d/{Pf30_3d,TCf30_3d}.mfa`. Set `FIRST_MFA` and
+`SECOND_MFA` if the pressure and temperature files are elsewhere.
+The default output folders are `build/fiber-volume-results/analytical_prism/`
+and `build/fiber-volume-results/hurricane_isabel_3d/`. Set `FIBER_RESULTS_ROOT`
+to use a different root, and `FIBER_SKIP_BUILD=1` to reuse a build.
+
+The **boundary** stage calls the shared fiber-surface extractor on the three
+range edges, adds the necessary box-face caps, validates the assembled shell,
+and writes `volume_boundary.ply`. Its JSON report records `boundary_valid`.
+The tetrahedral output has zero cells at this point. The **fill** stage reads
+that exact PLY in a fresh process, checks it against the same field, range
+triangle, and box, reconstructs cavity seeds, runs TetGen, and checks the
+result. Open `volume_volume.vtk` for the tetrahedra and read `complete` and
+`volume` in `volume_report.json` for the final result. Reusing the prefix
+replaces the report and VTK files on each stage.
+
+The PLY stores three little-endian binary64 coordinates per vertex. Each face
+has a `list uchar int vertex_indices` with three zero-based indices in outward
+winding order and a `uchar patch` (1–3 for range edges, 4–9 for box faces).
+The reader expects this layout and the exporter's `fiber_volume_boundary`
+header comment, which records the validation flag, three corner-fiber counts,
+and the box-contact triangle count. Keep the original PLY for a restart since
+a viewer may drop the patch property or comment when resaving. The companion
+boundary VTK exposes the patch and shell labels for coloring in ParaView.
+
+Both volume executables accept `--stage boundary --output PREFIX` and
+`--stage fill --output PREFIX`. Fill defaults to `PREFIX_boundary.ply`.
+Use `--boundary-input FILE` to read a saved PLY from another path. Supply
+the same model and selection to both invocations. A direct executable run
+with the default `--stage all` passes the boundary to TetGen in memory and
+also exports the PLY.
+
 ## Analytical examples
 
 ```bash
@@ -175,6 +226,8 @@ comparisons prevent scale/translation-dependent false failures in these cases.
 
 For output prefix `P`:
 
+- `P_boundary.ply` is the binary64 boundary written by `all` and `boundary`
+  and consumed by `fill`.
 - `P_boundary.obj`, `P_boundary.vtk`: assembled triangle boundary.
 - `P_boundary.poly`: TetGen PLC, containing only boundary vertices, facets,
   and verified cavity seeds. Its comment refers to the validation report;
@@ -193,8 +246,9 @@ facets retain parent IDs and patch labels, even after TetGen subdivisions.
 
 The implementation:
 
-1. Traces each corner fiber once, shares its samples and IDs between adjacent
-   side marchers, and retains independent surface discovery. On box faces it
+1. Extracts the closed range polyline through the three corners with the shared
+   fiber-surface core. Each corner fiber is traced once. The two incident
+   surfaces share its mesh edges and vertices. On box faces it
    assembles oriented contact/perimeter graphs, checks for missed contacts by
    constrained face searches, and triangulates selected regions with holes.
    Collinear graph samples are restored after cap triangulation. A short front
@@ -221,8 +275,8 @@ assigned boundary and violated range constraints, preserving box constraints,
 and requires displacement within the spatial tolerance. Raw violations remain
 visible in the report. The target inequalities themselves are unchanged.
 
-Exit **0** means all four stages passed; **1** means invalid input or a runtime
-error; **2** means a partial or invalid result. Filling is blocked after failed
+Exit **0** means the requested stage passed. Exit **1** means invalid input or
+a runtime error, and **2** means a partial or invalid result. Filling is blocked after failed
 boundary validation. Reusing an output prefix replaces old tetrahedral outputs,
 including writing an empty volume if the new boundary fails validation.
 
@@ -231,8 +285,7 @@ with no discovered seed is treated as empirically inactive and checked through
 independent boundary/volume coverage searches; this is not a proof of emptiness.
 An entirely empty selection is reported unresolved. Singular contacts, dependent
 active constraints, unresolved fronts, and ambiguous face graphs are unsupported.
-The serial geometry checks target small to moderate meshes. The existing
-single-segment executables retain their open-boundary behavior.
+The serial geometry checks target small to moderate meshes. Curve-only selections end at their contacts with the spatial box.
 
 The default `disconnected` example now passes validation. Its earlier two
 reported boundary contacts were numerical false positives: recomputing a shared

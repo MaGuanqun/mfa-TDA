@@ -61,6 +61,18 @@ struct Segment {
     Hessian parameter_hessian(const std::array<Hessian, 2>& h) const { return w[0]*h[0]+w[1]*h[1]; }
 };
 
+// A simple directed range curve. A repeated first point closes the loop.
+struct RangeCurve {
+    std::vector<Segment> segments;
+    RangeCurve(const Segment& segment = {}) : segments{segment} {}
+    explicit RangeCurve(std::vector<Range> points);
+    int size() const { return static_cast<int>(segments.size()); }
+    bool closed() const { return segments.back().b == segments.front().a; }
+    int vertex_count() const { return size() + (closed() ? 0 : 1); }
+    int corner(int side, int endpoint) const { return (side + endpoint) % vertex_count(); }
+    const Range& point(int i) const { return i == size() ? segments.back().b : segments[i].a; }
+};
+
 struct Options {
     double step = .2, min_step = .025, fiber_step = .15, spatial_tolerance = .015;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
@@ -95,7 +107,11 @@ struct Result {
     std::map<Edge, int> fiber_edges;
     std::set<Edge> box_edges;
     std::vector<Event> unresolved;
-    std::array<int, 2> fiber_seed_hits{0,0};
+    std::vector<int> fiber_seed_hits{0,0};
+    // Assembled curves label each triangle with its zero-based range segment.
+    std::vector<int> face_segments;
+    int face_segment(int face) const { return face_segments.empty() ? 0 : face_segments[face]; }
+    size_t box_contact_triangles = 0;
     int surface_seed_hits = 0;
     double seconds = 0;
 };
@@ -115,7 +131,8 @@ struct Checkpoint {
     std::map<Edge,int> pending, fiber_uses;
 };
 
-Seeds find_seeds(const Field& field, const Segment& segment, const Options& options);
+Seeds find_seeds(const Field& field, const Segment& segment, const Options& options,
+                 bool discover_last_endpoint = true);
 Result trace_endpoint_fibers(const Field& field, const Segment& segment,
                              const Options& options, const Seeds& seeds);
 

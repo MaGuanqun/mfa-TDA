@@ -3,13 +3,18 @@
 #include <filesystem>
 
 namespace fiber_surface {
-VolumeResult extract_volume(const Field& f,const RangeTriangle& range,const Options& o) {
+VolumeResult extract_volume(const Field& f,const RangeTriangle& range,const Options& o,
+                            VolumeStage stage,const std::string& boundary_input) {
     for(const auto& s:range.sides)o.validate(f,s);
     VolumeResult r;
     auto timed=[&](int stage,auto work) {const auto start=std::chrono::steady_clock::now();work();r.seconds[stage]=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();};
-    timed(0,[&]{r.boundary=assemble_volume_boundary(f,range,o);});
+    if (stage==VolumeStage::fill)
+        r.boundary=read_boundary_ply(boundary_input);
+    else
+        timed(0,[&]{r.boundary=assemble_volume_boundary(f,range,o);});
     timed(1,[&]{r.boundary_report=validate_volume_boundary(r.boundary,f,range,o);});
     if(!r.boundary_report.valid){r.failed_stage="boundary_validation";return r;}
+    if(stage==VolumeStage::boundary)return r;
     try {timed(2,[&]{r.mesh=fill_volume(r.boundary,r.boundary_report);});}
     catch(const std::exception& e){r.failed_stage="volume_filling";r.boundary.unresolved.push_back({(f.box.min+f.box.max)/2,e.what()});return r;}
     timed(3,[&]{r.report=assess_volume(r.mesh,r.boundary,r.boundary_report,f,range,o);});
@@ -29,9 +34,11 @@ std::string json(const std::string& s) {
 std::ofstream output(const std::string& path) {std::ofstream out(path);if(!out)throw std::runtime_error("Cannot write "+path);out<<std::setprecision(17);out.exceptions(std::ios::badbit|std::ios::failbit);return out;}
 void points(std::ostream& out,const std::vector<Vec>& vertices) {out<<"POINTS "<<vertices.size()<<" double\n";for(const Vec& p:vertices)out<<p.transpose()<<'\n';}
 }
-void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f,const RangeTriangle& range,const Options& o) {
+void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f,const RangeTriangle& range,const Options& o,
+                  VolumeStage stage) {
     const auto parent=std::filesystem::path(prefix).parent_path();if(!parent.empty())std::filesystem::create_directories(parent);
     const auto& b=r.boundary;const auto& br=r.boundary_report;const auto& vr=r.report;
+    if (stage!=VolumeStage::fill) write_boundary_ply(prefix+"_boundary.ply", b, br.valid);
     {
         auto out=output(prefix+"_boundary.obj");for(const Vec& p:b.mesh.vertices)out<<"v "<<p.transpose()<<'\n';
         for(size_t i=0;i<b.mesh.triangles.size();++i){auto t=b.mesh.triangles[i];out<<"g patch_"<<b.patches[i]<<"\nf "<<t[0]+1<<' '<<t[1]+1<<' '<<t[2]+1<<'\n';}
@@ -68,7 +75,8 @@ void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f
     }
     {
         auto out=output(prefix+"_report.json");
-        out<<"{\n  \"complete\": "<<(r.complete()?"true":"false")<<",\n  \"failed_stage\": \""<<r.failed_stage<<"\",\n  \"tetgen_switches\": \"pV\",\n  \"coverage\": \"empirical, not certified\",\n  \"triangle\": [";
+        const char* stage_name=stage==VolumeStage::boundary?"boundary":stage==VolumeStage::fill?"fill":"all";
+        out<<"{\n  \"stage\": \""<<stage_name<<"\",\n  \"complete\": "<<(r.complete()?"true":"false")<<",\n  \"failed_stage\": \""<<r.failed_stage<<"\",\n  \"tetgen_switches\": \"pV\",\n  \"coverage\": \"empirical, not certified\",\n  \"triangle\": [";
         for(int i=0;i<3;++i){if(i)out<<',';out<<'['<<range.corners[i][0]<<','<<range.corners[i][1]<<']';}
         out<<"],\n  \"box_min\": ["<<f.box.min[0]<<','<<f.box.min[1]<<','<<f.box.min[2]<<"],\n  \"box_max\": ["<<f.box.max[0]<<','<<f.box.max[1]<<','<<f.box.max[2]<<"],\n";
         out<<"  \"step\": "<<o.step<<", \"fiber_step\": "<<o.fiber_step<<", \"spatial_tolerance\": "<<o.spatial_tolerance<<", \"residual_tolerance\": "<<o.residual_tolerance<<",\n";
@@ -87,8 +95,15 @@ void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f
         for(size_t i=0;i<b.unresolved.size();++i){if(i)out<<',';const auto& e=b.unresolved[i];out<<"{\"position\":["<<e.position[0]<<','<<e.position[1]<<','<<e.position[2]<<"],\"reason\":\""<<json(e.reason)<<"\"}";}out<<"]\n}\n";
     }
 }
-int run_volume(const Field& f,const RangeTriangle& range,const Options& o,const std::string& prefix) {
-    auto result=extract_volume(f,range,o);write_volume(prefix,result,f,range,o);
+int run_volume(const Field& f,const RangeTriangle& range,const Options& o,const std::string& prefix,
+               VolumeStage stage,const std::string& boundary_input) {
+    auto result=extract_volume(f,range,o,stage,boundary_input);
+    write_volume(prefix,result,f,range,o,stage);
+    if (stage==VolumeStage::boundary) {
+        std::cout<<"Boundary valid: "<<result.boundary_report.valid<<", triangles: "<<result.boundary.mesh.triangles.size()
+                 <<"\nBoundary: "<<prefix<<"_boundary.ply\nReport: "<<prefix<<"_report.json\n";
+        return result.boundary_report.valid?0:2;
+    }
     std::cout<<"Volume complete: "<<result.complete()<<", boundary triangles: "<<result.boundary.mesh.triangles.size()<<", tetrahedra: "<<result.mesh.cells.size()<<", volume: "<<std::setprecision(12)<<result.report.volume<<"\nReport: "<<prefix<<"_report.json\n";
     return result.complete()?0:2;
 }

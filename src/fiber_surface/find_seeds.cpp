@@ -3,7 +3,7 @@
 #include <tbb/parallel_for.h>
 
 namespace fiber_surface {
-Seeds find_seeds(const Field& field, const Segment& segment, const Options& options) {
+Seeds find_seeds(const Field& field, const Segment& segment, const Options& options, bool discover_last_endpoint) {
     options.validate(field,segment);
     const auto start=std::chrono::steady_clock::now();
     const auto shape=discovery_shape(field,options);
@@ -16,6 +16,7 @@ Seeds find_seeds(const Field& field, const Segment& segment, const Options& opti
     // Each worker owns its output slot. Compact in grid order after the join;
     // tracing/marching depend on this order when identifying covered components.
     for (int target=0; target<3; ++target) {
+        if (target==1 && !discover_last_endpoint) continue;
         std::vector<Vec> corrected(grid.size());
         std::vector<unsigned char> accepted(grid.size(),0);
         tbb::parallel_for(size_t(0),grid.size(),[&](size_t i) {

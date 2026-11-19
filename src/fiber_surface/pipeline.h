@@ -12,7 +12,7 @@ struct RunConfig {
     std::string first_digest, second_digest;
     int variable1=0, variable2=0, block1=-1, block2=-1;
     Box box;
-    Segment segment;
+    RangeCurve curve;
     Options options;
 };
 struct LoadedField {
@@ -29,9 +29,12 @@ RunConfig read_config(const fs::path& run);
 void write_seeds(const fs::path& run, const RunConfig& config, const Seeds& seeds);
 Seeds read_seeds(const fs::path& run, const RunConfig& config);
 void validate_seeds(const Seeds& seeds, const Field& field, const Segment& segment, const Options& options);
+inline fs::path patch_directory(const fs::path& run, const RangeCurve& curve, int side) {
+    return curve.size()==1 ? run : run/("segment_"+std::to_string(side));
+}
 fs::path state_path(const fs::path& run, Stage stage);
-void write_checkpoint(const fs::path& run, const RunConfig& config, Stage stage, const Checkpoint& state);
-Checkpoint read_checkpoint(const fs::path& run, const RunConfig& config, Stage stage);
+void write_checkpoint(const fs::path& run, const RunConfig& config, Stage stage, const Checkpoint& state, int side);
+Checkpoint read_checkpoint(const fs::path& run, const RunConfig& config, Stage stage, int side);
 void write_stage_visuals(const fs::path& run, Stage stage, const Checkpoint& state);
 void write_stage_report(const fs::path& run, Stage stage, const Checkpoint& state, double stage_seconds);
 int stage_main(Stage stage, int argc, char** argv);

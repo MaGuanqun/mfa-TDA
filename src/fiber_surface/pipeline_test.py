@@ -64,6 +64,21 @@ def main():
         assert not any(path.is_dir() for path in run.iterdir()), "Pipeline created output subdirectories"
         return mesh, report
 
+    def curve_pipeline(run, program, model, options, closed):
+        stage(1, run, ["--model", model, *options])
+        for step in [2, 3, 4, 5]:
+            stage(step, run)
+        mesh = (run / "surface.obj").read_bytes()
+        prefix = args.work / (run.name + "_reference")
+        invoke(program, [*options, "--output", prefix])
+        assert mesh == prefix.with_suffix(".obj").read_bytes()
+        assert (run / "surface.vtk").read_bytes() == prefix.with_suffix(".vtk").read_bytes()
+        report = json.loads((run / "report.json").read_text())
+        assert report["closed"] is closed and report["complete"] and len(report["range_vertices"]) == 3
+        stage(4, run)
+        stage(5, run)
+        assert mesh == (run / "surface.obj").read_bytes()
+
     if args.fixture:
         # Copy only the small synthetic test model; never mutate real datasets.
         model = args.work / "sphere model.mfa"
@@ -84,6 +99,11 @@ def main():
         seed_report = json.loads((anisotropic / "seeds_report.json").read_text())
         assert seed_report["discovery_grid_shape"] == [5, 10, 10]
         assert seed_report["starting_points"] == 500
+        curve_pipeline(args.work / "mfa elbow", "fiber_surface_mfa", "mfa",
+                       ["--first", model, "--variable1", "0", "--variable2", "1",
+                        "--polyline", "1,-2;1,0.5;2,0.5", "--min", "-2,-2,-2", "--max", "2,2,2",
+                        "--step", "0.2", "--fiber-step", "0.1", "--residual-tolerance", "0.005"],
+                       closed=False)
         original = model.read_bytes()
         try:
             model.write_bytes(original + b"changed")
@@ -125,6 +145,21 @@ def main():
             prefix = args.work / (name + "_reference")
             invoke("fiber_surface_explicit", ["--example", name, "--output", prefix])
             assert mesh == prefix.with_suffix(".obj").read_bytes(), f"Staged {name} changed geometry"
+        run = args.work / "triangle loop"
+        options = ["--example", "strip", "--polyline", "0,0;1,0;0,1;0,0"]
+        curve_pipeline(run, "fiber_surface_explicit", "analytical", options, closed=True)
+        # Patch zero must detect changed corner seeds owned by patch one.
+        neighbor = run / "segment_1" / "endpoint_seeds.dat"
+        original = neighbor.read_bytes()
+        try:
+            neighbor.write_bytes(original + b"\n")
+            error = stage(5, run, expected=1)
+            assert "segment_0/fibers.state" in error and "upstream output changed" in error
+        finally:
+            neighbor.write_bytes(original)
+        for path in ["0,0", "0,0;1,0;", "0,0;1,1;0,1;1,0", "0,0;nan,0"]:
+            invoke("fiber_surface_explicit", ["--polyline", path], expected=1)
+        invoke("fiber_surface_explicit", [*options, "--a", "0,0", "--b", "1,0"], expected=1)
         run = args.work / "sphere"
         target = run / "marching.state"
         original = target.read_text()

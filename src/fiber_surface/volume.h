@@ -57,14 +57,20 @@ struct VolumeResult {
     bool complete() const { return failed_stage.empty() && boundary_report.valid && report.valid; }
 };
 
+enum class VolumeStage { all, boundary, fill };
+void write_boundary_ply(const std::string& path, const VolumeBoundary&, bool valid);
+VolumeBoundary read_boundary_ply(const std::string& path);
 VolumeBoundary assemble_volume_boundary(const Field&, const RangeTriangle&, const Options&);
 BoundaryAssessment validate_volume_boundary(VolumeBoundary&, const Field&, const RangeTriangle&, const Options&);
 VolumeMesh fill_volume(const VolumeBoundary&, const BoundaryAssessment&);
 VolumeAssessment assess_volume(const VolumeMesh&, const VolumeBoundary&, const BoundaryAssessment&,
                                const Field&, const RangeTriangle&, const Options&);
-VolumeResult extract_volume(const Field&, const RangeTriangle&, const Options&);
-void write_volume(const std::string&, const VolumeResult&, const Field&, const RangeTriangle&, const Options&);
-int run_volume(const Field&, const RangeTriangle&, const Options&, const std::string&);
+VolumeResult extract_volume(const Field&, const RangeTriangle&, const Options&,
+                            VolumeStage stage=VolumeStage::all, const std::string& boundary_input={});
+void write_volume(const std::string&, const VolumeResult&, const Field&, const RangeTriangle&, const Options&,
+                  VolumeStage stage=VolumeStage::all);
+int run_volume(const Field&, const RangeTriangle&, const Options&, const std::string& prefix,
+               VolumeStage stage=VolumeStage::all, const std::string& boundary_input={});
 // Winding membership of a closed shell, used for containment and coverage.
 bool inside_shell(const Vec&, const Mesh&, const std::vector<int>& faces);
 bool correct_volume_sample(Vec&, int patch, const Field&, const RangeTriangle&, const Options&);

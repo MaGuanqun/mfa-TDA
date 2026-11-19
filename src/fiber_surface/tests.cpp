@@ -69,6 +69,41 @@ static void seeds() {
     require(rejected,"Excessive grid allocation must be rejected");
 }
 
+static void polylines() {
+    const Field field=analytical_field("strip").field;
+    const Range a(0,0), b(1,0), c(0,1), d(1,1);
+    const Options options;
+    for (const auto& points:std::vector<std::vector<Range>>{{b,a,c},{a,b,c,a},{a,c,d,b,a}}) {
+        const RangeCurve curve(points);
+        const Result surface=extract_curve(field,curve,options);
+        const auto report=evaluate(surface,field,curve,options);
+        require(report.complete(surface) && report.components==1,"Disconnected or incomplete curve surface");
+        require(report.topology.euler_characteristic==(curve.closed()?0:1),"Incorrect open/closed surface topology");
+        require(surface.fibers.size()==size_t(curve.vertex_count()),"Duplicate or missing corner fibers");
+        double length=0;
+        for (const auto& segment:curve.segments) length+=segment.length;
+        require(std::abs(report.area-4*length)<1e-9,"Expected one full-height strip per segment");
+        for (const auto& [edge,component]:surface.fiber_edges) {
+            const int k=surface.fibers[component].endpoint;
+            const auto& use=surface.mesh.edges.at(edge);
+            const bool crease=curve.closed() || (k>0 && k<curve.size());
+            require((use.second>=0)==crease,"Incorrect number of triangles at a shared fiber");
+            if (crease) {
+                const int left=(k+curve.size()-1)%curve.size();
+                require(std::set<int>{surface.face_segment(use.face),surface.face_segment(use.second)}==
+                        std::set<int>{left,k},"Incorrect patches joined at crease");
+            }
+        }
+    }
+    const RangeCurve simplified({a,a,Range(.5,0),b,c,a});
+    require(simplified.closed() && simplified.size()==3,"Failed to remove redundant vertices");
+    for (const auto& invalid:std::vector<std::vector<Range>>{{a,a},{a,b,a},{a,b,Range(.5,0),c},{a,d,b,c},{a,b,c,a,d}}) {
+        bool rejected=false;
+        try { RangeCurve curve(invalid); } catch (const std::invalid_argument&) { rejected=true; }
+        require(rejected,"Degenerate or self-intersecting range curve accepted");
+    }
+}
+
 static void derivatives() {
     const auto e=analytical_field("sphere"); const Vec p(.2,-.4,.7); const Segment s(Range(.1,.2),Range(2,.6));
     const auto j=e.field.jacobian(p); const auto h=e.field.hessians(p); const double delta=1e-5;
@@ -103,6 +138,7 @@ int main(int argc,char** argv) {
         const std::string name=argc>1?argv[1]:"sphere";
         if (name=="derivatives") { derivatives(); return 0; }
         if (name=="seeds") { seeds(); return 0; }
+        if (name=="polylines") { polylines(); return 0; }
         if (name=="contacts") { contacts(); return 0; }
         auto example=analytical_field(name); Options options;
         const Result r=Extractor(example.field,example.segment,options).run();
