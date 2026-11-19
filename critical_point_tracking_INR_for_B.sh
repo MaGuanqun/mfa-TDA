@@ -7,6 +7,10 @@ write_vtk="./build/src/convert/write_vtk"
 tracking_INR="./build/src/critical_point_tracking/critical_point_tracking_INR"
 
 degenerate_case_INR="./build/src/critical_point_tracking/degenerate_case_INR"
+degenerate_case_INR_multi_threshold="./build/src/critical_point_tracking/degenerate_case_INR_multi_threshold"
+
+
+
 test_derivatives="./build/src/critical_point_tracking/test_derivatives"
 
 convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
@@ -19,14 +23,15 @@ control_point_smoothing="./build/src/critical_point_tracking/control_point_smoot
 
 count_betti_num="./src/contour/count_betti_num.py"
 convert_obj_domain=./src/critical_point_tracking/convert_obj_back_to_domain.py
+filter_points="./src/python/filter_point.py"
 
 
-step_size="32"
-t_sample_ratio="32"
+step_size="8"
+t_sample_ratio="8"
 root_finding_epsilon="1e-10"
 J_threshold="1e-6"
 
-for data_type in "vortex_street_3d" #"vortex_street_3d" #"boussinesq_3d"
+for data_type in "vortex_street_3d" "boussinesq_3d" #"vortex_street_3d" #"boussinesq_3d"
 do
     echo "Processing data type: ${data_type}"
     # data_type="boussinesq_3d" #boussinesq_3d
@@ -90,41 +95,67 @@ do
     fi
 
 
-    # step_size="64"
+
+initial_point_num_in_a_block="8"
+
+# for J_threshold in "1e-1" #"1e-4" "1e-5" "1e-6" "1e-7" "1e-8"
+# do
+#     echo "degenerate case with threshold: ${J_threshold}"
+#     # Binary links to system Open MPI; ParaView's mpiexec is MPICH and breaks under SLURM.
+#     # With srun --ntasks=1 --cpus-per-task=8, SLURM reports 1 slot; --oversubscribe
+#     # allows -np 8 on those CPUs. --mca plm isolated avoids SLURM PMI.
+#     /usr/bin/mpiexec.openmpi --mca plm isolated --oversubscribe -np 8 \
+#         "${degenerate_case_INR_multi_threshold}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}" -o "${initial_point_num_in_a_block}"
+# done
 
 
-    # "${degenerate_case_INR}" -f "${data_type}" -b "${degenerate_point_INR}" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -g "${root_finding_epsilon}" -m "${input_model}"
 
 
-    # step_size="64"
-    # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
+
+# for index in "2" "3" "4" "5" "6" "7" "8"
+# do 
+#     "${convert_root_to_vtk}" -f "${degenerate_point_INR}8_8_${index}.dat" -o "${degenerate_point_INR}8_8_${index}.csv" -j 0 -t 0
+# done
 
 
-    for step_size in "64" 
+
+    step_size="8"
+    # # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}"
+
+    for accuracy in "6" "7" "9" "10" "11" "12" "13"
     do
-        "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
-    
+    # echo "tracking with step size: ${step_size}"
+        # /usr/bin/mpiexec.openmpi --mca plm isolated --oversubscribe -np 8 \
+        # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}_${initial_point_num_in_a_block}_6.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 1 -j "${boundary_point_INR}" -o "${initial_point_num_in_a_block}" -d 1
+
+        # "${convert_root_to_vtk}" -f "${boundary_point_INR}_${initial_point_num_in_a_block}-${accuracy}_${step_size}.dat" -o "${boundary_point_INR}_${initial_point_num_in_a_block}_${step_size}.csv" -j 0 -t 0
+
+        # python ./src/python/remove_obstacle.py --data "${data_type}" --input_csv "${boundary_point_INR}_${initial_point_num_in_a_block}_${step_size}.csv" --output_csv "${boundary_point_INR}${step_size}_${initial_point_num_in_a_block}_remove_obstacle.csv" --for_our_csv 1
+
+        python "${filter_points}" -i "${boundary_point_INR}${step_size}_${initial_point_num_in_a_block}_remove_obstacle.csv"
+
     done
 
 
-    for step_size in "2"
-    do
-        # "${convert_root_to_vtk}" -f "${degenerate_point_INR}${step_size}.dat" -o "${degenerate_point_INR}_${step_size}.csv" -j 0 -t 1 
-        # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 1 
+    # for step_size in "8"
+    # do
+    #     # "${convert_root_to_vtk}" -f "${degenerate_point_INR}${step_size}_${initial_point_num_in_a_block}_6.dat" -o "${degenerate_point_INR}_${step_size}_${initial_point_num_in_a_block}_6.csv" -j 0 -t 0 
 
-        echo "smoothing with step size: ${step_size}"
-    #     t_sample_ratio="${step_size}"
-        # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
-        # source ~/enter/etc/profile.d/conda.sh
-        # conda activate mfa
-    #     python $convert_obj_domain --obj "${tracking_result}_${step_size}.obj" --function "${data_type}"
-        # pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
+    #     # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 1 
 
-        # source /home/u1435513-gma/enter/etc/profile.d/conda.sh
-        # conda activate mfa
-        # export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
-        # python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
-    done
+    #     echo "smoothing with step size: ${step_size}"
+    # #     t_sample_ratio="${step_size}"
+    #     # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+    #     source ~/enter/etc/profile.d/conda.sh
+    #     conda activate mfa
+    # #     python $convert_obj_domain --obj "${tracking_result}_${step_size}.obj" --function "${data_type}"
+    #     pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
+
+    #     # source /home/u1435513-gma/enter/etc/profile.d/conda.sh
+    #     # conda activate mfa
+    #     # export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
+    #     # python "${count_betti_num}" "${tracking_result}_${step_size}.obj"
+    # done
 
 
 for step_size in "2" "4" "8" "16" "32"

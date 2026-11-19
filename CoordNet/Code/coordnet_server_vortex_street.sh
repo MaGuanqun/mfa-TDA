@@ -46,7 +46,7 @@ convert_obj_domain=../../src/critical_point_tracking/convert_obj_back_to_domain.
 
 # python data_preprocessing.py
 # 
-python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000 #--resume_epoch 270
+# python main.py --train 'train' --dataset $function_name --application $application --factor 1 --omega_0 $omega --init $init_feature --num_res $num_res --active $activate --num_epochs $num_epoch --lap_weight 0.0 --batch_size 16000 #--resume_epoch 270
 
 # source ~/.bashrc
 

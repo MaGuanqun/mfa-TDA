@@ -218,6 +218,9 @@ fi
 
 
 
+/usr/bin/mpiexec.openmpi --mca plm isolated --oversubscribe -np 1 \
+"${hessian_determinant}" -i "${input_model}" -n "${data_type}" -p "${degenerate_point}_INR${step_size}_${step_size}_6.dat" -s 1 -m fd
+
 
 # "${hessian_determinant}" -i "${input_model}" -n "${data_type}" -p "${degenerate_point}_INR${step_size}_${step_size}_6.dat" -s 1 -m autograd
 
@@ -248,7 +251,12 @@ fi
 #     --dataset vortex_street_3d \
 #     --repr inr
 
-for step_size in 16
+# DIY/MPI_Init under srun: launch as Open MPI singleton (TBB does the threading).
+# /usr/bin/mpiexec.openmpi --mca plm isolated --oversubscribe -np 1 \
+#   "${hessian_determinant}" -i "${input_model}" -n "${data_type}" -p "${degenerate_point}_INR${step_size}_${step_size}_6.dat" -s 1 -m autograd
+
+
+for step_size in 8
 do
     # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
 #     # # gdb --args 
@@ -292,7 +300,7 @@ done
 
 
 
-for step_size in 16
+for step_size in 8
 do
 #step size
     if [ "${step_size}" = "16" ]; then
@@ -418,6 +426,7 @@ done
 #     spatial_step_size="0.01388888"
 #     t_step_size="0.0220588"
 # fi
+
 
 
 

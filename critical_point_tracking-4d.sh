@@ -1,4 +1,7 @@
 #!/bin/bash
+
+export LD_LIBRARY_PATH=/home/asmak/Documents/Applications/ParaView-5.13.0-RC2-MPI-Linux-Python3.10-x86_64/lib/mesa:$LD_LIBRARY_PATH
+
 echo "Start Runing Script"
 analytical="./build/src/encode/analytical/analytical"
 
@@ -116,9 +119,21 @@ raw_data_file="./build/src/ori_data/vorts/vorts_list.txt"
 # step_size=96
 # for J_threshold in "1e-2" # "1e-3" "1e-4" "1e-5" "1e-6" "1e-7" "1e-8"
 # do  
-# echo "degenerate case with threshold: ${J_threshold}"
-# "${degenerate_case}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# # echo "degenerate case with threshold: ${J_threshold}"
+# "${degenerate_case_multi_threshold}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 0
+
 # done
+
+# step_size=16
+
+# for step_size in 16 2 3 4 6 8 12 24 32
+# do
+#     # echo "tracking with root finding epsilon: ${root_finding_epsilon}"
+#     echo "tracking with step size: ${step_size}"
+#     "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}_6.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}" -c 0 -d 0
+# done
+
 # done
 
 
@@ -139,9 +154,11 @@ do
     # for root_finding_epsilon in "1e-6" #"1e-7" "1e-8" "1e-9" "1e-10" "1e-11" "1e-12" "1e-13"
     # do
     echo "test"
-    # echo "tracking with step size: ${step_size}"
-    # "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}"
+    echo "tracking with step size: ${step_size}"
+    # "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}" -c 0 -d 1
     
+
+    # pvpython ./src/python/merge_obj_edge_type_4d.py -i "${tracking_result}_${step_size}.obj.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result}_4d_${step_size}.vtp"
     
     # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 0
 
@@ -218,27 +235,139 @@ do
 
 # python ./src/python/point_at_certain_time4d.py --input "${tracking_result}_4d_${step_size}.vtp" --output "${tracking_result}_4d_${step_size}_66.75.vtp" --t 66.75 --type-array EdgeValues
 
-    # pvpython "${count_betti_num}" "${tracking_result}_${step_size}.vtp"
+    # pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result}_${step_size}.vtp"
 
-    # upsample_ratio="${step_size}-${step_size}-${step_size}"
+    # pvpython "${count_betti_num}" "${tracking_result}_4d_${step_size}.vtp"
 
+
+
+    if [ "${step_size}" = "16" ]; then
+        spatial_step_size=0.52917
+        t_step_size=0.55625
+        num_knot=161
+    elif [ "${step_size}" = "8" ]; then
+        spatial_step_size=1.0584
+        t_step_size=1.1125
+        num_knot=81
+    elif [ "${step_size}" = "4" ]; then
+        spatial_step_size=2.116667
+        t_step_size=2.225
+        num_knot=41
+    elif [ "${step_size}" = "2" ]; then
+        spatial_step_size=4.233334
+        t_step_size=4.45
+        num_knot=21
+    elif [ "${step_size}" = "3" ]; then
+        spatial_step_size=2.822223
+        t_step_size=2.966667
+        num_knot=31
+    elif [ "${step_size}" = "6" ]; then
+        spatial_step_size=1.411112
+        t_step_size=1.483334
+        num_knot=61
+    elif [ "${step_size}" = "12" ]; then
+        spatial_step_size=0.705556
+        t_step_size=0.741667
+        num_knot=121
+    fi
+
+    echo "spatial step size: ${spatial_step_size}"
+    echo "t step size: ${t_step_size}"
+
+# # t_step_size2=0.0125
+
+    old_mfa_file="./build/src/${save_folder}_old/${data_type}.mfa"
+
+    python ./src/critical_point_tracking/matching_ratio_4d_clean.py "${tracking_result}_4d_${step_size}.vtp" "${old_mfa_file}_${step_size}_{index}.csv" "${t_step_size}" "${spatial_step_size}" --num-knots "${num_knot}" --header
 
     # pvpython ./src/python/remove_obstacle.py -i "${tracking_result}_${step_size}.vtp" -o "${tracking_result}_${step_size}_remove_obstacle.vtp" --data "${data_type}"
     # #     echo "remove obstacle/n"
     # pvpython "${count_betti_num}" "${tracking_result}_${step_size}_remove_obstacle.vtp"
 
-    # "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}_${step_size}.bin" -m 3 -d 4 -u "${upsample_ratio}" -g 0 -z 0 -b 1 #-s "${block}"
-    # python ./src/critical_point_tracking/binary_time_data_convert_mfa.py -i "${mfa_file}_${step_size}.bin" -o "${mfa_file}_${step_size}.vti" -f "${data_type}" --float_type float64 --step_size "${step_size}"
-    # source ~/enter/etc/profile.d/conda.sh
-    # conda activate mfa_env
-    # python ./src/critical_point_tracking/time_data_convert.py -i "${mfa_file}_${step_size}.vtk" -o "${mfa_file}_${step_size}.vti"
-    # pvpython ./src/critical_point_tracking/extract_all_critical_points.py -i "${mfa_file}_${step_size}.vti" -o "${mfa_file}_${step_size}.csv"
+    # for t_slice in $(seq 21 159)
+    # do
+    #     rm -f "${mfa_file}_${step_size}.bin_${t_slice}.vti"
+    # done
+    # "${write_vtk}" -f "${mfa_file}" -t "${mfa_file}_${step_size}.bin" -m 4 -d 5 -u "${upsample_ratio}" -g 0 -z 0 -b 1 #-s "${block}"
 
-    # pvpython ./src/critical_point_tracking/mfa_bin_critical_point.py --cpp_exe "${write_slice_bin}" --chunk_size 20 --step_size "${step_size}" --float_type 'float64' --function "${data_type}" --server 0 --output_csv "${mfa_file}_${step_size}.csv" --mfa_file "${mfa_file}"
+    # for t_slice in $(seq 141 160)
+    # do
+    #     source ~/enter/etc/profile.d/conda.sh
+    #     conda activate mfa
 
-# done
-    done
-# done
+        # python ./src/critical_point_tracking/binary_time_data_convert_3d.py -i "${mfa_file}_${step_size}.bin_${t_slice}.bin" -o "${mfa_file}_${step_size}.bin_${t_slice}.vti" -f "${data_type}" --step_size "${step_size}" --float_type float64
+
+        # rm -f "${mfa_file}_${step_size}.bin_${t_slice}.bin"
+        # pvpython ./src/critical_point_tracking/extract_all_critical_points_3d.py -i "${mfa_file}_${step_size}.bin_${t_slice}.vti" -o "${mfa_file}_${step_size}_${t_slice}.csv" -s 1
+
+        # # delete the temporary vti for this slice
+        # rm -f "${mfa_file}_${step_size}.bin_${t_slice}.vti"
+        
+
+        
+
+        # pvpython ./src/critical_point_tracking/mfa_bin_critical_point.py --cpp_exe "${write_slice_bin}" --chunk_size 20 --step_size "${step_size}" --float_type 'float64' --function "${data_type}" --server 0 --output_csv "${mfa_file}_${step_size}.csv" --mfa_file "${mfa_file}"
+
+    # done
+
+
+
+
+
+    # for t_slice in $(seq 77 80)
+    # do
+    # #     source ~/enter/etc/profile.d/conda.sh
+    # #     conda activate mfa
+
+        # python ./src/critical_point_tracking/binary_time_data_convert_3d.py -i "${mfa_file}_${step_size}.bin_${t_slice}.bin" -o "${mfa_file}_${step_size}.bin_${t_slice}.vti" -f "${data_type}" --step_size "${step_size}" --float_type float64
+
+        # pvpython ./src/python/extract_vti_contour.py -i "${mfa_file}_${step_size}.bin_${t_slice}.vti" -o "${mfa_file}_${step_size}.contour_${t_slice}.vtp"
+
+
+    #     pvpython ./src/critical_point_tracking/extract_all_critical_points_3d.py -i "${mfa_file}_${step_size}.bin_${t_slice}.vti" -o "${mfa_file}_${step_size}_${t_slice}.csv" -s 1
+
+    #     # # delete the temporary vti for this slice
+    #     rm -f "${mfa_file}_${step_size}.bin_${t_slice}.vti"
+
+
+        
+
+    #     # pvpython ./src/critical_point_tracking/mfa_bin_critical_point.py --cpp_exe "${write_slice_bin}" --chunk_size 20 --step_size "${step_size}" --float_type 'float64' --function "${data_type}" --server 0 --output_csv "${mfa_file}_${step_size}.csv" --mfa_file "${mfa_file}"
+
+    # done
+
+
+
+# # t_step_size2=0.01
+
+
+
+    # for t_slice in $(seq 131 160)
+    # do
+    # #     source ~/enter/etc/profile.d/conda.sh
+    # #     conda activate mfa
+
+    #     python ./src/critical_point_tracking/binary_time_data_convert_3d.py -i "${mfa_file}_${step_size}.bin_${t_slice}.bin" -o "${mfa_file}_${step_size}.bin_${t_slice}.vti" -f "${data_type}" --step_size "${step_size}" --float_type float64
+
+    #     rm -f "${mfa_file}_${step_size}.bin_${t_slice}.bin"
+    #     pvpython ./src/critical_point_tracking/extract_all_critical_points_3d.py -i "${mfa_file}_${step_size}.bin_${t_slice}.vti" -o "${mfa_file}_${step_size}_${t_slice}.csv" -s 1
+
+    #     # # delete the temporary vti for this slice
+    #     rm -f "${mfa_file}_${step_size}.bin_${t_slice}.vti"
+
+
+        
+
+    #     # pvpython ./src/critical_point_tracking/mfa_bin_critical_point.py --cpp_exe "${write_slice_bin}" --chunk_size 20 --step_size "${step_size}" --float_type 'float64' --function "${data_type}" --server 0 --output_csv "${mfa_file}_${step_size}.csv" --mfa_file "${mfa_file}"
+
+    # done
+done
+
+        source ~/enter/etc/profile.d/conda.sh
+        conda activate mfa
+
+# python ./src/critical_point_tracking/process_4d.py -b "${mfa_file}_${step_size}.bin" -p "${mfa_file}_${step_size}_" -o "${mfa_file}_${step_size}_update_"
+
 
 # for step_size in "2" "4" "8" "16" "32" "64"
 # do
@@ -351,7 +480,7 @@ do
 
 # # source ~/enter/etc/profile.d/conda.sh
 # # conda activate siren
-# # python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}.vtp" "${mfa_file}_${step_size}.csv" "${spatial_step_size}" "${t_step_size}" --header
+
 
 # # python ./src/python/remove_obstacle.py --data "${data_type}" --input_csv "${mfa_file}_${step_size}.csv" --output_csv "${mfa_file}_${step_size}_remove_obstacle.csv"
 
@@ -406,6 +535,7 @@ do
 
 # "${derivative_control_point}" -f "${smoothed_mfa_file}" -o "${smoothed_control_points}"
 
+# J_threshold="1e-2"
 # "${degenerate_case}" -f "${smoothed_mfa_file}" -b "${smoothed_degenerate_point}" -z "${t_sample_ratio}" -s "${step_size}" -a "${smoothed_control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
 # "${convert_root_to_vtk}" -f "${smoothed_degenerate_point}" -o "${smoothed_degenerate_point}.csv" -i "${smoothed_mfa_file}" -d 0 -t 0
@@ -425,33 +555,33 @@ do
 ##########################################################
 # directly work on raw explicit function
 
-for step_size in 4
-do
-    "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}_${step_size}.dat" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# for step_size in 2 3 4 6 8 12 16 24 32 48 64 96
+# do
+#     "${degenerate_case_explicit}" -f "${data_type}" -b "${degenerate_point_original}_${step_size}.dat" -z "${step_size}" -s "${step_size}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
 
-#     "${convert_root_to_vtk}" -f "${degenerate_point_original}_${step_size}.dat" -o "${degenerate_point_original}.csv" -j 0 -t 0
+# #     "${convert_root_to_vtk}" -f "${degenerate_point_original}_${step_size}.dat" -o "${degenerate_point_original}.csv" -j 0 -t 0
 
-# #     # gdb --args 
-    "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}_${step_size}" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}_${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv"
-
-
-source ~/enter/etc/profile.d/conda.sh
-conda activate mfa_env
-
-    python ./src/python/create_cube.py
+# # #     # gdb --args 
+#     "${tracking_explicit}" -f "${data_type}" -b "${ori_tracking_result}_${step_size}" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_original}_${step_size}.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv"
 
 
-source ~/enter/etc/profile.d/conda.sh
-conda activate mfa
+# # source ~/enter/etc/profile.d/conda.sh
+# # conda activate mfa_env
 
-    # pvpython ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${ori_tracking_result_w_type}_${step_size}.vtp"
+#     # python ./src/python/create_cube.py
+
+
+# source ~/enter/etc/profile.d/conda.sh
+# conda activate mfa
+
+#     pvpython ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${ori_tracking_result_w_type}_${step_size}.vtp"
 
 
 # pvpython ./src/python/seperate_diffferent_branches.py --input-vtp "${ori_tracking_result_w_type}_${step_size}.vtp" --output-vtp "${ori_tracking_result_w_type}_${step_size}_colorid.vtp" --seed 0
 # pvpython ./src/python/point_at_certain_time.py --input "${ori_tracking_result_w_type}_${step_size}.vtp" --output "${ori_tracking_result_w_type}_${step_size}_2.76.vtp" --z 2.76 --type-array EdgeValues
 
 #     pvpython "${count_betti_num}" "${ori_tracking_result_w_type}_${step_size}.vtp"
-done
+# done
 
 
 #  python ./src/critical_point_tracking/time_data_convert.py -i "${ori_raw_data}.vtk" -o "${ori_raw_data}.vti"

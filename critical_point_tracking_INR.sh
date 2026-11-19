@@ -1,4 +1,5 @@
 #!/bin/bash
+export LD_LIBRARY_PATH=/home/asmak/Documents/Applications/ParaView-5.13.0-RC2-MPI-Linux-Python3.10-x86_64/lib/mesa:$LD_LIBRARY_PATH
 echo "Start Runing Script"
 
 
@@ -109,7 +110,7 @@ initial_point_num_in_a_block="8"
 
 
 
-    mpiexec -n 8 "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}_${initial_point_num_in_a_block}_6.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}" -o "${initial_point_num_in_a_block}" -d 0
+    # mpiexec -n 8 "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}_${initial_point_num_in_a_block}_6.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}" -o "${initial_point_num_in_a_block}" -d 0
 
 
 
@@ -131,75 +132,135 @@ initial_point_num_in_a_block="8"
 
     # done
 
+    step_size="8"
+    # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+
+
+#     for step_size in "2" "3" "4" "6" "8" "12" "16" "24" "32" "48" "64" "96"
+#     do
+#         echo "smoothing with step size: ${step_size}"
+#     #     t_sample_ratio="${step_size}"
+#         # "${tracking_INR}" -f "${data_type}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -x "${root_finding_epsilon}" -s "${degenerate_point_INR}${step_size}.dat" -p "${point_itr_threshold}" -i "${input_model}" -e "${edge_type_file}_${step_size}.csv" -c 0 -j "${boundary_point_INR}"
+
+
+# # pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
+#         # pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}.vtp"
+#         # pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp"
+# # pvpython ./src/python/remove_obstacle.py -i "${tracking_result_w_type}_${step_size}.vtp" -o "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" --data "${data_type}"
+#     done
+
 
     # source /home/u1435513-gma/enter/etc/profile.d/conda.sh
     # conda activate mfa
     # export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CONDA_PREFIX/lib"
-    # for step_size in "96" #"48" "24" "12" "6" "3"
+    # for step_size in "16" #"48" "24" "12" "6" "3"
     # do
-    #     pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
-    #     pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}.vtp"
 
-    #     pvpython ./src/python/remove_obstacle.py -i "${tracking_result_w_type}_${step_size}.vtp" -o "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" --data "${data_type}"
-    # #     echo "remove obstacle/n"
-    #     pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp"
+
+
+
+#         pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result_w_type}_${step_size}.vtp"
+# # #         pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}.vtp"
+
+
+
+
+# pvpython ./src/python/assign_component_id_to_point_3d.py --input-vtp "${tracking_result_w_type}_${step_size}.vtp" --output-vtp "${tracking_result_w_type}_${step_size}_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+
+
+# # 
+#         pvpython ./src/python/remove_obstacle.py -i "${tracking_result_w_type}_${step_size}.vtp" -o "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" --data "${data_type}"
+# # #     #     echo "remove obstacle/n"
+
+
+# pvpython ./src/python/assign_component_id_to_point_3d.py --input-vtp "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" --output-vtp "${tracking_result_w_type}_${step_size}_remove_obstacle_regionid.vtp" --region-array-name "RegionId" --data-mode "binary"
+
+
+pvpython ./src/python/seperate_diffferent_branches.py -i "${tracking_result_w_type}_${step_size}_regionid.vtp" -o "${tracking_result_w_type}_${step_size}_regionid_colorid.vtp"
+
+
+pvpython ./src/python/seperate_diffferent_branches.py -i "${tracking_result_w_type}_${step_size}_remove_obstacle_regionid.vtp" -o "${tracking_result_w_type}_${step_size}_remove_obstacle_regionid_colorid.vtp"
+
+# #              pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp"
 
     # done
 
+    
 
-# for step_size in "64"
-# do
 
-# if [ "${step_size}" = "32" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.003125" 
-#         t_step_size="0.003125"
-# elif [ "${step_size}" = "16" ]; then
-#         spatial_step_size="0.00625" 
-#         t_step_size="0.00625"
-# elif [ "${step_size}" = "8" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.0125" 
-#         t_step_size="0.0125"
-# elif [ "${step_size}" = "64" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.0015625" 
-#         t_step_size="0.0015625"
-# elif [ "${step_size}" = "4" ]; then
-#     # if [ "${data_type}" = "vortex_street_3d" ]; then
-#         spatial_step_size="0.025" 
-#         t_step_size="0.025"
-# elif [ "${step_size}" = "2" ]; then
-#         spatial_step_size="0.05" 
-#         t_step_size="0.05"
-# elif [ "${step_size}" = "3" ]; then
-#         spatial_step_size="0.0333333" 
-#         t_step_size="0.0333333"
-# elif [ "${step_size}" = "6" ]; then
-#         spatial_step_size="0.0166666" 
-#         t_step_size="0.0166666"
-# elif [ "${step_size}" = "12" ]; then
-#         spatial_step_size="0.0083333" 
-#         t_step_size="0.0083333"
-# elif [ "${step_size}" = "24" ]; then
-#         spatial_step_size="0.00416666" 
-#         t_step_size="0.00416666"
-# elif [ "${step_size}" = "48" ]; then
-#         spatial_step_size="0.00208333" 
-#         t_step_size="0.00208333"
-# elif [ "${step_size}" = "96" ]; then
-#         spatial_step_size="0.00104166" 
-#         t_step_size="0.00104166"
-# fi
+for step_size in "2" "3" "4" "6" "8" "12" "16" "24" "32" "48" "64" "96"
+do
+
+if [ "${step_size}" = "32" ]; then
+    # if [ "${data_type}" = "vortex_street_3d" ]; then
+        spatial_step_size="0.003125" 
+        t_step_size="0.003125"
+elif [ "${step_size}" = "16" ]; then
+        spatial_step_size="0.00625" 
+        t_step_size="0.00625"
+elif [ "${step_size}" = "8" ]; then
+    # if [ "${data_type}" = "vortex_street_3d" ]; then
+        spatial_step_size="0.0125" 
+        t_step_size="0.0125"
+elif [ "${step_size}" = "64" ]; then
+    # if [ "${data_type}" = "vortex_street_3d" ]; then
+        spatial_step_size="0.0015625" 
+        t_step_size="0.0015625"
+elif [ "${step_size}" = "4" ]; then
+    # if [ "${data_type}" = "vortex_street_3d" ]; then
+        spatial_step_size="0.025" 
+        t_step_size="0.025"
+elif [ "${step_size}" = "2" ]; then
+        spatial_step_size="0.05" 
+        t_step_size="0.05"
+elif [ "${step_size}" = "3" ]; then
+        spatial_step_size="0.0333333" 
+        t_step_size="0.0333333"
+elif [ "${step_size}" = "6" ]; then
+        spatial_step_size="0.0166666" 
+        t_step_size="0.0166666"
+elif [ "${step_size}" = "12" ]; then
+        spatial_step_size="0.0083333" 
+        t_step_size="0.0083333"
+elif [ "${step_size}" = "24" ]; then
+        spatial_step_size="0.00416666" 
+        t_step_size="0.00416666"
+elif [ "${step_size}" = "48" ]; then
+        spatial_step_size="0.00208333" 
+        t_step_size="0.00208333"
+elif [ "${step_size}" = "96" ]; then
+        spatial_step_size="0.00104166" 
+        t_step_size="0.00104166"
+fi
+
+# # echo "computing matching ratio for step size: ${step_size}"
+csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}.csv"
+csv_file_with_regionid="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_regionid.csv"
+
+csv_file_remove_obstacle="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle.csv"
+
 
 # echo "computing matching ratio for step size: ${step_size}"
-# csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}.csv"
-# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
-# echo "remove obstacle/n"
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}.vtp" "${csv_file_from_model}" "${spatial_step_size}" "${t_step_size}" --header
+
+
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "${csv_file_remove_obstacle}" "${spatial_step_size}" "${t_step_size}" --header
+
+
+# pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}.vtp"
+
+# pvpython "${count_betti_num}" "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp"
+
+# # rm -rf "${tracking_result_w_type}_${step_size}_regionid.vtp"
+
+# python ./src/python/assign_component_id_to_csv.py --input-vtp "${tracking_result_w_type}_${step_size}_regionid.vtp" --input-csv "${csv_file_from_model}" --output-csv "${csv_file_with_regionid}" --region-array "RegionId" --workers 8 #--max-time-diff ${t_step_size}
 
 # csv_file_from_model="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle.csv"
+# csv_file_with_regionid_remove_obstacle="./CoordNet/Result/$data_type/vti_critical_points-5-${step_size}_remove_obstacle_regionid.csv"
 
-# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "$csv_file_from_model" "${spatial_step_size}" "${t_step_size}" --header
+# python ./src/python/assign_component_id_to_csv.py --input-vtp "${tracking_result_w_type}_${step_size}_remove_obstacle_regionid.vtp" --input-csv "${csv_file_from_model}" --output-csv "${csv_file_with_regionid_remove_obstacle}" --region-array "RegionId" --workers 8
+# # # # # 
+# python ./src/critical_point_tracking/matching_ratio.py "${tracking_result_w_type}_${step_size}_remove_obstacle.vtp" "$csv_file_with_regionid_remove_obstacle" "${spatial_step_size}" "${t_step_size}" --header
 
 done
 

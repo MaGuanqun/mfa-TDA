@@ -206,9 +206,6 @@ pvpython ./src/python/seperate_ttk_trajectory.py \
 
 # "${gradient_norm}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle.ply" -s 1
 
-# "${gradient_norm}" -f "${mfa_file}" -p "${tracking_result}_${step_size}_sfff_remove_obstacle.ply" -s 1
-
-
 # "${hessian_determinant}" -f "${mfa_file}" -p "${degenerate_point}${step_size}.dat" -s 1
 
 
@@ -240,10 +237,14 @@ pvpython ./src/python/seperate_ttk_trajectory.py \
 #   --distance-mode mean
 
 
-# # Default: 3D matching
-
-
-
+# DIY needs MPI_Init even for TBB-only work; under srun use system Open MPI
+# singleton launch (ParaView/MPICH and bare exec hit SLURM PMI errors).
+# export TBB_NUM_THREADS="${TBB_NUM_THREADS:-${SLURM_CPUS_PER_TASK:-8}}"
+# /usr/bin/mpiexec.openmpi --mca plm isolated --oversubscribe -np 1 \
+#   ./build/src/feature_flow_fields/gradient_norm_csv_slices \
+#   -f ./build/src/vortex/vortex.mfa \
+#   -p ./build/src/vortex_old/vortex.mfa_16 \
+#   -a 0 -b 160
 
 for step_size in 16
 do

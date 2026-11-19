@@ -1,4 +1,6 @@
 #!/bin/bash
+export LD_LIBRARY_PATH=/home/asmak/Documents/Applications/ParaView-5.13.0-RC2-MPI-Linux-Python3.10-x86_64/lib/mesa:$LD_LIBRARY_PATH
+
 echo "Start Runing Script"
 
 pvpython2=/usr/local/bin/pvpython
@@ -20,6 +22,8 @@ derivative_control_point="./build/src/critical_point/derivative_control_point"
 
 degenerate_case="./build/src/critical_point_tracking/degenerate_case"
 degenerate_case_explicit="./build/src/critical_point_tracking/degenerate_case_explicit"
+
+degenerate_case_multi_threshold="./build/src/critical_point_tracking/degenerate_case_multi_threshold"
 
 convert_root_to_vtk="./build/src/critical_point/convert_root_to_vtk"
 
@@ -79,6 +83,11 @@ smoothed_ttk_critical_point_file="./build/src/${save_folder}/ttk_${data_type}_cp
 
 
 ttk_tracking="./src/critical_point_tracking/ttk_tracking.py"
+
+boundary_point_INR="./build/src/${save_folder}/${data_type}_boundary"
+
+filter_points="./src/python/filter_point.py"
+
 
 
 #the reshold should be really small to raw explicit function
@@ -172,6 +181,124 @@ do
 
 done
 
+# step_size=96
+# J_threshold="1e-2"
+# # for J_threshold in "1e-2" # "1e-3" "1e-4" "1e-5" "1e-6" "1e-7" "1e-8"
+# # do  
+# # # echo "degenerate case with threshold: ${J_threshold}"
+# "${degenerate_case_multi_threshold}" -f "${mfa_file}" -b "${degenerate_point}" -z "${step_size}" -s "${step_size}" -a "${control_points}" -j "${J_threshold}" -p "${point_itr_threshold}" -g "${root_finding_epsilon}"
+# # done
+# # # done
+
+step_size=16
+
+
+
+for step_size in 16
+do
+    # "${convert_root_to_vtk}" -f "${degenerate_point}${step_size}.dat" -o "${degenerate_point}_${step_size}.csv" -j 0 -t 0
+    # # gdb --args 
+    # for root_finding_epsilon in "1e-10" #"1e-7" "1e-8" "1e-9" "1e-10" "1e-11" "1e-12" "1e-13"
+    # do
+    # echo "tracking with step size: ${step_size}"
+    # "${tracking}" -f "${mfa_file}" -b "${tracking_result}_${step_size}.obj" -z "${step_size}" -g "${step_size}"  -a "${control_points}" -x "${root_finding_epsilon}" -s "${degenerate_point}${step_size}_6.dat" -p "${point_itr_threshold}" -e "${edge_type_file}_${step_size}.csv" -j "${boundary_point_INR}" -c 0 -d 0
+    
+    
+    # "${convert_root_to_vtk}" -f "${boundary_point_INR}${step_size}.dat" -o "${boundary_point_INR}${step_size}.csv" -j 0 -t 0
+
+    # python ./src/python/remove_obstacle.py --data "${data_type}" --input_csv "${boundary_point_INR}${step_size}.csv" --output_csv "${boundary_point_INR}${step_size}_remove_obstacle.csv" --for_our_csv 1
+
+
+    # python "${filter_points}" -i "${boundary_point_INR}${step_size}_remove_obstacle.csv"
+    # source ~/enter/etc/profile.d/conda.sh
+    # conda activate mfa
+    # python $convert_obj_domain --csv "${degenerate_point}_${step_size}.csv" --function "${data_type}" --obj "${tracking_result}_${step_size}.obj"
+
+
+#//////////////////////////////////////////////////////////////
+
+    # pvpython ./src/python/merge_obj_edge_type.py -i "${tracking_result}_${step_size}.obj.obj" -j "${edge_type_file}_${step_size}.csv" -o "${tracking_result}_${step_size}.vtp"
+
+
+    # # # upsample_ratio="${step_size}-${step_size}-${step_size}"
+
+
+    # pvpython ./src/python/remove_obstacle.py -i "${tracking_result}_${step_size}.vtp" -o "${tracking_result}_${step_size}_remove_obstacle.vtp" --data "${data_type}" --removed_vtp "${tracking_result}_${step_size}_useless_obstacle.vtp"
+
+
+    pvpython ./src/python/seperate_diffferent_branches.py --input-vtp "${tracking_result}_${step_size}_useless_obstacle.vtp" --output-vtp "${tracking_result}_${step_size}_useless_obstacle_colorid.vtp" --seed 2
+
+    pvpython ./src/python/assign_component_id_to_point_3d.py --input-vtp "${tracking_result}_${step_size}_useless_obstacle_colorid.vtp" --output-vtp "${tracking_result}_${step_size}_useless_obstacle_regionid_colorid.vtp" --region-array-name "RegionId" --data-mode "binary"
+
+
+    python src/python/merge_vtp.py --input_a "${tracking_result}_${step_size}_useless_obstacle_regionid_colorid.vtp" --input_b "${tracking_result}_${step_size}_remove_obstacle_regionid_colorid.vtp" --output "${tracking_result}_${step_size}_overall_obstacle_regionid_colorid.vtp"
+
+
+    python ./src/python/assign_component_id_to_csv.py --input-vtp "${tracking_result}_${step_size}_overall_obstacle_regionid_colorid.vtp" --input-csv "${mfa_file}_${step_size}.csv" --output-csv "${tracking_result}_${step_size}_overall_regionid_colorid.csv" --region-array "ColorId" --workers 8
+
+#seed: boussinesq: 2, vortex_street_3d: 8645
+
+    # pvpython ./src/python/seperate_diffferent_branches.py --input-vtp "${tracking_result}_${step_size}_remove_obstacle.vtp" --output-vtp "${tracking_result}_${step_size}_remove_obstacle_colorid.vtp" --seed 8645
+
+
+    # pvpython ./src/python/assign_component_id_to_point_3d.py --input-vtp "${tracking_result}_${step_size}_remove_obstacle_colorid.vtp" --output-vtp "${tracking_result}_${step_size}_remove_obstacle_regionid_colorid.vtp" --region-array-name "RegionId" --data-mode "binary"
+
+
+
+    # python ./src/python/assign_component_id_to_csv.py --input-vtp "${tracking_result}_${step_size}_remove_obstacle_regionid_colorid.vtp" --input-csv "${mfa_file}_${step_size}_remove_obstacle.csv" --output-csv "${mfa_file}_${step_size}_remove_obstacle_regionid_colorid.csv" --region-array "ColorId" --workers 8
+
+#//////////////////////////////////////////////////////////////
+
+# boussinesq: 248,249,128,141,96
+# vortex_street_3d: 329 438 108 134 140
+
+# for index in 329 438 108 134 140
+# do 
+
+# pvpython ./src/python/compute_connected_components.py -i "${tracking_result}_${step_size}_remove_obstacle_regionid_colorid.vtp" -o "${tracking_result}_trajectory_${step_size}_remove_obstacle_regionid_colorid" --num_k 1 --start_k ${index} --server 1 --selection_mode region_id #sorted
+
+# done
+
+# pvpython src/python/combine_trajectory.py --dir "./build/src/${save_folder}" --indices "329,438,108,134,140" --pattern "${data_type}_trajectory_${step_size}_remove_obstacle_regionid_colorid_cc{i}.vtp" --output "${tracking_result}_trajectory_${step_size}_combine.vtp"
+
+
+if [ "${data_type}" = "vortex_street_3d" ]; then
+    spatial_step_size="0.00625" 
+    t_step_size="0.00520833"
+    find_distance="0.02"
+elif [ "${data_type}" = "boussinesq_3d" ]; then
+    spatial_step_size="0.00694444"
+    t_step_size="0.0133929"
+    find_distance="0.002"
+fi
+
+
+
+
+# python ./src/python/find_common_points.py --input-vtp "${tracking_result}_trajectory_${step_size}_combine.vtp" --input-csv "${mfa_file}_${step_size}_remove_obstacle_regionid_colorid.csv" --output-csv "${tracking_result}_trajectory_${step_size}_remove_obstacle_regionid_colorid_matching.csv" --distance "${find_distance}"
+
+#//////////////////////////////////////////////////////////////
+
+# boussinesq: 
+# pick slices: 104~107
+# time:  0.981132,0.990566,1.0, 1.00943
+
+# vortex_street_3d: 
+# pick slices: 131~133
+# time:  
+
+# for z in 13.6464 # 13.6516 13.6568 13.662
+# do
+# pvpython ./src/python/point_at_certain_time.py --input "${tracking_result}_trajectory_${step_size}_combine.vtp" --output "${tracking_result}_trajectory_${step_size}_combine_${z}.vtp" --z ${z} --type-array EdgeValues
+
+# python ./src/python/find_common_points.py --input-vtp "${tracking_result}_trajectory_${step_size}_combine_${z}.vtp" --input-csv "${mfa_file}_${step_size}_remove_obstacle_regionid_colorid.csv" --output-csv "${tracking_result}_trajectory_${step_size}_remove_obstacle_regionid_colorid_matching_${z}.csv" --distance "${find_distance}" --k "${z}"
+
+# done
+
+
+
+done
+
 # for step_size in "2" "4" "8" "16" "32" "64"
 # do
 
@@ -179,7 +306,7 @@ done
 
 
 
-for step_size in 16
+for step_size in 2 3 4 6 8 12 16 24 32 48 64 96
 do
 #step size
     if [ "${step_size}" = "16" ]; then
@@ -281,13 +408,18 @@ do
     fi
     echo "step size $step_size"
 
-# source ~/enter/etc/profile.d/conda.sh
-# conda activate siren
+# # source ~/enter/etc/profile.d/conda.sh
+# # conda activate siren
+echo "computing matching ratio for step size: ${step_size}"
 # python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}.vtp" "${mfa_file}_${step_size}.csv" "${spatial_step_size}" "${t_step_size}" --header
+
+# python ./src/python/assign_component_id_to_csv.py --input-vtp "${tracking_result}_${step_size}_regionid_colorid.vtp" --input-csv "${mfa_file}_${step_size}.csv" --output-csv "${mfa_file}_${step_size}_regionid_colorid.csv" --region-array "ColorId" --workers 8
 
 # python ./src/python/remove_obstacle.py --data "${data_type}" --input_csv "${mfa_file}_${step_size}.csv" --output_csv "${mfa_file}_${step_size}_remove_obstacle.csv"
 
 # python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}_remove_obstacle.vtp" "${mfa_file}_${step_size}_remove_obstacle.csv" "${spatial_step_size}" "${t_step_size}" --header
+
+# python ./src/python/assign_component_id_to_csv.py --input-vtp "${tracking_result}_${step_size}_remove_obstacle_regionid_colorid.vtp" --input-csv "${mfa_file}_${step_size}_remove_obstacle.csv" --output-csv "${mfa_file}_${step_size}_remove_obstacle_regionid_colorid.csv" --region-array "ColorId" --workers 8
 
 # INR_tracking_result="./build/src/${save_folder}_INR/${data_type}"
 
@@ -295,6 +427,11 @@ do
 # t_step_size2=0.0125
 
 # python ./src/critical_point_tracking/matching_ratio.py "${tracking_result}_${step_size}.vtp" "${INR_tracking_result}_8.vtp" "${spatial_step_size2}" "${t_step_size2}" --header
+
+
+#  pvpython "${count_betti_num}" "${tracking_result}_${step_size}.vtp"
+
+#  pvpython "${count_betti_num}" "${tracking_result}_${step_size}_remove_obstacle.vtp"
 
 
 done
@@ -371,8 +508,8 @@ done
 # 
 
 
-source ~/enter/etc/profile.d/conda.sh
-conda activate mfa
+# source ~/enter/etc/profile.d/conda.sh
+# conda activate mfa
 
     # pvpython ./src/python/merge_obj_edge_type.py -i "${ori_tracking_result}_${step_size}.obj" -j "${edge_type_file}_${step_size}.csv" -o "${ori_tracking_result_w_type}_${step_size}.vtp"
 
@@ -383,6 +520,8 @@ conda activate mfa
 # pvpython ./src/python/point_at_certain_time.py --input "${ori_tracking_result_w_type}_${step_size}_colorid.vtp" --output "${ori_tracking_result_w_type}_${step_size}_1.6.vtp" --z 1.6 --type-array EdgeValues
 
 # pvpython ./src/python/point_at_certain_time.py --input "${ori_tracking_result_w_type}_${step_size}_colorid.vtp" --output "${ori_tracking_result_w_type}_${step_size}_0.6.vtp" --z 0.6 --type-array EdgeValues
+
+# pvpython ./src/python/point_at_certain_time.py --input "${ori_tracking_result_w_type}_${step_size}.vtp" --output "${ori_tracking_result_w_type}_${step_size}_2.76.vtp" --z 2.76 --type-array EdgeValues
 
 #     pvpython "${count_betti_num}" "${ori_tracking_result_w_type}_${step_size}.vtp"
 # done
