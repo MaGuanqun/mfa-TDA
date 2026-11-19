@@ -16,6 +16,8 @@ p.add_argument('--no-cuda', action='store_true', default=False,
 # General training options
 p.add_argument('--data_type',type=str,default='s')
 p.add_argument('--batch_size', type=int, default=32000)
+p.add_argument('--vectorized_batches', action='store_true',
+               help='Fetch whole shuffled batches by tensor indexing during super-spatial-temporal training.')
 p.add_argument('--lr', type=float, default=1e-5, help='learning rate. default=1e-4')
 p.add_argument('--num_epochs', type=int, default=400,
                help='Number of epochs to train for.')

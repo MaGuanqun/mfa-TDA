@@ -8,6 +8,6 @@ for component in u v; do
     python -u main.py --train train --dataset "$dataset" \
         --application super-spatial-temporal --num_res 5 --active sine \
         --init 64 --num_epochs 300 --omega_0 30.0 \
-        --factor 1 --batch_size 16000 --lap_weight 0.0 \
+        --factor 1 --batch_size 16000 --vectorized_batches --lap_weight 0.0 \
         | tee "../Exp/$dataset/training.log"
 done

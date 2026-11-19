@@ -5,7 +5,7 @@ import skimage
 from skimage.transform import resize
 from skimage.io import imread, imsave
 from skimage import data,img_as_float
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler
 import torch.nn.functional as F
 import os
 import function
@@ -14,6 +14,7 @@ class ScalarDataSet():
 	def __init__(self,args):
 		self.dataset = args.dataset
 		self.batch_size = args.batch_size
+		self.vectorized_batches = getattr(args, 'vectorized_batches', False)
 		self.application = args.application
 		self.interval = args.interval
 		self.scale = args.scale
@@ -427,6 +428,10 @@ class ScalarDataSet():
 			training_data_output = torch.FloatTensor(self.data[indices])
 
 		data = torch.utils.data.TensorDataset(training_data_input, training_data_output)
+		if self.application == 'super-spatial-temporal' and self.vectorized_batches:
+			# Let TensorDataset index both tensors with a full batch of shuffled indices.
+			batches = BatchSampler(RandomSampler(data), self.batch_size, drop_last=False)
+			return DataLoader(data, sampler=batches, batch_size=None)
 		train_loader = DataLoader(dataset=data, batch_size=self.batch_size, shuffle=True)
 		return train_loader
 
