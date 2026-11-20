@@ -28,12 +28,15 @@ void atomic_write(const fs::path& path, const std::function<void(std::ostream&)>
     } catch (...) { std::error_code error; fs::remove(temporary,error); throw; }
 }
 void config_body(std::ostream& out, const RunConfig& c) {
-    out<<"FIBER_SURFACE_CONFIG "<<(c.curve.size()==1 ? 1 : 2)<<"\nmodel "<<std::quoted(c.model)<<"\nexample "<<std::quoted(c.example)
+    const int version=c.model=="coordnet" ? 3 : (c.curve.size()==1 ? 1 : 2);
+    out<<"FIBER_SURFACE_CONFIG "<<version<<"\nmodel "<<std::quoted(c.model)<<"\nexample "<<std::quoted(c.example)
         <<"\nfirst "<<std::quoted(c.first)<<' '<<std::quoted(c.first_digest)
         <<"\nsecond "<<std::quoted(c.second)<<' '<<std::quoted(c.second_digest)
         <<"\nvariables "<<c.variable1<<' '<<c.variable2<<"\nblocks "<<c.block1<<' '<<c.block2
         <<"\nbox_min "<<c.box.min.transpose()<<"\nbox_max "<<c.box.max.transpose();
-    if (c.curve.size()==1) {
+    if (version==3)
+        out<<"\ndomain_min "<<c.training_box.min.transpose()<<"\ndomain_max "<<c.training_box.max.transpose();
+    if (version==1) {
         const auto& s=c.curve.segments.front();
         out<<"\nsegment_a "<<s.a.transpose()<<"\nsegment_b "<<s.b.transpose();
     } else {
@@ -132,13 +135,17 @@ RunConfig read_config(const fs::path& run) {
     Reader in(run/"run.conf"); RunConfig c;
     in.word("FIBER_SURFACE_CONFIG");
     const int version=in.get<int>();
-    if (version!=1 && version!=2) in.fail("unsupported configuration version");
+    if (version<1 || version>3) in.fail("unsupported configuration version");
     in.word("model"); c.model=in.quoted(); in.word("example"); c.example=in.quoted();
+    if ((version==3)!=(c.model=="coordnet")) in.fail("CoordNet requires a saved training domain");
     in.word("first"); c.first=in.quoted(); c.first_digest=in.quoted();
     in.word("second"); c.second=in.quoted(); c.second_digest=in.quoted();
     in.word("variables"); c.variable1=in.get<int>(); c.variable2=in.get<int>();
     in.word("blocks"); c.block1=in.get<int>(); c.block2=in.get<int>();
     in.word("box_min"); c.box.min=in.point(); in.word("box_max"); c.box.max=in.point();
+    if (version==3) {
+        in.word("domain_min"); c.training_box.min=in.point(); in.word("domain_max"); c.training_box.max=in.point();
+    }
     if (version==1) {
         in.word("segment_a"); const Range a=in.range(); in.word("segment_b"); c.curve=Segment(a,in.range());
     } else {

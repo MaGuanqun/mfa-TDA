@@ -33,6 +33,28 @@ inline void volume_options(Arguments& args,Field& field,RangeTriangle& triangle,
     common_options(args,field,options);
     for(const auto& s:triangle.sides)options.validate(field,s);
 }
+inline int run_model_volume(Arguments& args, Field& field, const std::string& default_prefix) {
+    Options options;
+    options.step=(field.box.max-field.box.min).minCoeff()/20;
+    const bool inspect=!args.take("--inspect").empty();
+    if (inspect && (args.has("--stage") || args.has("--boundary-input")))
+        throw std::invalid_argument("--inspect cannot be combined with a volume stage");
+    const auto files=volume_files(args,default_prefix);
+    RangeTriangle triangle;
+    volume_options(args,field,triangle,options,!inspect);
+    args.finish();
+    if (inspect) {
+        Range lo=Range::Constant(std::numeric_limits<double>::infinity()),hi=-lo;
+        for (const Vec& x:discovery_grid(field.box,discovery_shape(field,options))) {
+            const Range y=field.value(x);
+            lo=lo.cwiseMin(y);
+            hi=hi.cwiseMax(y);
+        }
+        std::cout<<std::setprecision(17)<<"Sampled range min: "<<lo.transpose()<<" max: "<<hi.transpose()<<'\n';
+        return 0;
+    }
+    return run_volume(field,triangle,options,files.prefix,files.stage,files.boundary_input);
+}
 inline void volume_help() {
     std::cout<<"  --q0 u,v --q1 u,v --q2 u,v  counterclockwise range triangle\n"
         <<"  --min x,y,z --max x,y,z      spatial sub-box\n"

@@ -12,6 +12,7 @@ struct RunConfig {
     std::string first_digest, second_digest;
     int variable1=0, variable2=0, block1=-1, block2=-1;
     Box box;
+    Box training_box; // CoordNet normalization domain, independent of the selected box.
     RangeCurve curve;
     Options options;
 };

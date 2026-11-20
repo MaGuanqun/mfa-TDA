@@ -5,6 +5,8 @@
 *.run
 *.log
 *.sh
+!/fiber_surface_coordnet.sh
+!/src/fiber_surface/run_pipeline.sh
 !/fiber_volume.sh
 !/isosurface_explicit.sh
 *.cmake

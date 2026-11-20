@@ -70,6 +70,7 @@ These are the main places to read:
 | [volume.h](volume.h) | Public functions and data structures shared by the volume stages. |
 | [fiber_volume_explicit.cpp](fiber_volume_explicit.cpp) | Select an analytical example, parse options, and call `run_volume()`. |
 | [fiber_volume_mfa.cpp](fiber_volume_mfa.cpp) | Load MFA models and variables, construct a `Field`, and call the same runner. |
+| [fiber_volume_coordnet.cpp](fiber_volume_coordnet.cpp) | Load two scalar TorchScript models with the shared CoordNet field adapter and call the volume runner. |
 | [volume_cli.h](volume_cli.h) | Parse the three range corners and reuse the common meshing options. |
 | [curve_surface.cpp](curve_surface.cpp) | Extract the directed range loop and assemble shared corner fibers. |
 | [volume_boundary.cpp](volume_boundary.cpp) | Orient the loop’s side surfaces outward and triangulate the box caps. |
@@ -89,7 +90,7 @@ layer closes their contact with the box.
 
 The [CMake configuration](CMakeLists.txt) compiles the volume implementation files
 into `fiber_volume_core`, links it to `fiber_surface_core` and TetGen, and
-provides earcut headers for cap triangulation. Both volume executables link
+provides earcut headers for cap triangulation. All three volume executables link
 this same library. `FIBER_ENABLE_VOLUME` controls these targets, and the
 directory is active in [src/CMakeLists.txt](../CMakeLists.txt).
 

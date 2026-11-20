@@ -38,6 +38,11 @@ template<int N> Eigen::Matrix<double,N,1> coordinates(std::string str) {
     for (int i=0; i<N; ++i) if (!(in>>x[i]) || !std::isfinite(x[i])) throw std::invalid_argument("Expected "+std::to_string(N)+" finite comma-separated coordinates");
     std::string extra; if (in>>extra) throw std::invalid_argument("Too many coordinates"); return x;
 }
+inline Box coordnet_training_box(Arguments& args) {
+    if (!args.has("--domain-min") || !args.has("--domain-max"))
+        throw std::invalid_argument("Supply the full CoordNet training box with --domain-min and --domain-max");
+    return {coordinates<3>(args.take("--domain-min")), coordinates<3>(args.take("--domain-max"))};
+}
 inline RangeCurve range_selection(Arguments& args, const Segment& fallback) {
     if (args.has("--polyline")) {
         if (args.has("--a") || args.has("--b")) throw std::invalid_argument("Choose either --polyline or --a and --b");
@@ -90,7 +95,7 @@ inline void common_help() {
         <<"  --step H --min-step H --fiber-step H (physical units)\n"
         <<"  --spatial-tolerance E --residual-tolerance E --derivative-tolerance E\n"
         <<"  --seed-grid N         N seeds on the shortest axis; other counts = ceil(N * length / shortest)\n"
-        <<"                        default 7 for both analytical and MFA fields; 0 also selects 7\n"
+        <<"                        default 7 for all fields; 0 also selects 7\n"
         <<"                        uses the selected physical box; maximum 1000000 starts\n"
         <<"  --iterations N --max-trace-steps N --max-triangles N (per segment)\n"
         <<"Exit 0: complete discovered mesh; 1: input/runtime error; 2: unresolved/invalid partial result.\n";

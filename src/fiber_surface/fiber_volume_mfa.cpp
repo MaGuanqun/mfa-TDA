@@ -17,18 +17,7 @@ int main(int argc,char** argv) {
         const int b1=args.integer("--block1",-1),b2=args.integer("--block2",b1);
         auto m1=std::make_shared<marching_triangles::MfaModel>(first,world,b1);
         auto m2=first==second && b1==b2?m1:std::make_shared<marching_triangles::MfaModel>(second,world,b2);
-        auto field=mfa_field(m1,m2,v1,v2);Options options;options.step=(field.box.max-field.box.min).minCoeff()/20;
-        const bool inspect=!args.take("--inspect").empty();
-        if (inspect && (args.has("--stage") || args.has("--boundary-input")))
-            throw std::invalid_argument("--inspect cannot be combined with a volume stage");
-        const auto files=volume_files(args,"fiber_volume_mfa");
-        RangeTriangle triangle;
-        volume_options(args,field,triangle,options,!inspect);args.finish();
-        if(inspect) {
-            Range lo=Range::Constant(std::numeric_limits<double>::infinity()),hi=-lo;
-            for(const Vec& x:discovery_grid(field.box,discovery_shape(field,options))) {const Range y=field.value(x);lo=lo.cwiseMin(y);hi=hi.cwiseMax(y);}
-            std::cout<<std::setprecision(17)<<"Sampled range min: "<<lo.transpose()<<" max: "<<hi.transpose()<<'\n';return 0;
-        }
-        return run_volume(field,triangle,options,files.prefix,files.stage,files.boundary_input);
+        auto field=mfa_field(m1,m2,v1,v2);
+        return run_model_volume(args,field,"fiber_volume_mfa");
     }catch(const std::exception& e){std::cerr<<"fiber_volume_mfa: "<<e.what()<<'\n';return 1;}
 }

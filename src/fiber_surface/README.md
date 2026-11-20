@@ -1,8 +1,10 @@
 # Continuous-model fiber surfaces
 
-To extract a **filled volume**, set `default_model` at the top of `fiber_volume.sh`
-to `analytical` for the planar prism or `mfa` for the local Hurricane Isabel
-pressure/temperature models. Run the script from the repository root.
+To extract a **filled volume** from the vortex-street CoordNet models, run the
+script below from the repository root. The settings at the top of the script
+select the two models, the local box in `(x,y,time)`, and a triangle in
+normalized `(u,v)`. Set `default_model` to `analytical` for the planar prism
+or `mfa` for the Hurricane Isabel pressure/temperature models.
 It builds the fiber-surface patches, closes them with box-face caps,
 and saves the boundary as a binary PLY. A second process reads that PLY,
 validates it against the field, and fills it with TetGen.
@@ -11,14 +13,14 @@ validates it against the field, and fills it with TetGen.
 ./fiber_volume.sh
 ```
 
-Use `./fiber_volume.sh mfa boundary` to stop and inspect `volume_boundary.ply`.
-Use `./fiber_volume.sh mfa fill` to resume from that file. Both stages also work
-with `analytical`. Open `volume_volume.vtk` in ParaView to inspect the tetrahedra.
-Results are under `build/fiber-volume-results/{analytical_prism,hurricane_isabel_3d}/`.
+Use `./fiber_volume.sh coordnet boundary` to stop and inspect `volume_boundary.ply`.
+Use `./fiber_volume.sh coordnet fill` to resume from that file. Both stages also work
+with `analytical` and `mfa`. Open `volume_volume.vtk` in ParaView to inspect the tetrahedra.
+The default CoordNet results are under `build/fiber-volume-results/vortex_street_3d_2_variables/`.
 See [the volume guide](VOLUME.md#run-the-two-stage-examples) for input paths,
 the PLY layout, and validation.
 
-The analytical and MFA extractors accept a directed segment or a simple open
+The analytical, MFA, and CoordNet extractors accept a directed segment or a simple open
 or closed polyline in range space. Each segment produces a surface patch.
 Adjacent patches share a single trace of the fiber at their common range
 vertex. The extractor evaluates the supplied continuous field directly.
@@ -62,11 +64,12 @@ in one folder per dataset:
 ```bash
 ./fiber_surface_analytical.sh all
 ./fiber_surface_mfa.sh
+./fiber_surface_coordnet.sh
 ```
 
-The default folders are `build/fiber-surface-results/analytical_<example>/`
-(with underscores replacing hyphens) and
-`build/fiber-surface-results/hurricane_isabel_3d/`.
+The scripts write under `build/fiber-surface-results/` in
+`analytical_<example>/` (with underscores replacing hyphens),
+`hurricane_isabel_3d/`, and `vortex_street_3d_2_variables/`, respectively.
 `FIBER_RESULTS_ROOT` overrides the results root, and `FIBER_DATASET` overrides
 the MFA dataset folder name. There are no step or log subfolders.
 
@@ -135,6 +138,32 @@ same option. For multi-segment runs, the staged executables store intermediate
 artifacts in `segment_0/`, `segment_1/`, and so on under `--run-dir`. Final
 mesh, fiber, and report files are written in the run directory.
 
+## Vortex street CoordNet example
+
+Run `./fiber_surface_coordnet.sh` with no arguments. Edit the variables at the
+top of the script to change the two checkpoints, training and extraction boxes,
+range segment or polyline, and mesh settings. The script activates Spack, builds
+the stage executables, and runs all five stages. Open `surface.vtk` for the
+mesh or `surface_fibers.vtk` for the endpoint fibers.
+
+The default pair in `CoordNet/Exp/vortex_street_3d_2_variables/` predicts
+independently normalized velocity components. The example holds the predicted
+`u` at 0.402 and selects `v` from -0.344 to -0.296 in a small box around
+`(x,y,t) = (0.4,0.15,14)`. Range endpoints and the residual tolerance use the
+network outputs directly. To select a velocity in original data units, convert
+each component with its own training extrema using
+`q = 2 * (velocity - min) / (max - min) - 1`.
+
+For other pairs, supply two differentiable scalar TorchScript modules that take
+a float64 tensor of shape `[1,3]` on CPU. The seed stage accepts
+`--model coordnet --first U.pt --second V.pt`. Set `--domain-min` and
+`--domain-max` to the full physical training bounds in `(x,y,t)` order.
+The adapter follows critical-point tracking's convention of normalizing each
+axis to `[-1,1]` and passing `(t,y,x)` to the networks. It differentiates
+through this mapping to compute both Jacobian rows and both full Hessians.
+Use `--min` and `--max` to crop the mesh. Later stages recover both boxes and
+the two model file digests from `run.conf`.
+
 ## Hurricane Isabel MFA example
 
 `--first` supplies F1 and `--second` supplies F2. The supplied files are separate
@@ -198,7 +227,7 @@ cross-block stitching is not implemented.
 
 ## Seed counts and parallel discovery
 
-Both analytical and MFA fields use `--seed-grid N` to set the seed count on the
+All three field types use `--seed-grid N` to set the seed count on the
 shortest physical axis (default `N=7`). Each other axis uses
 `ceil(N * length[d] / shortest_length)`, based on the selected spatial box.
 For example, lengths `1:2:4` and `N=7` produce `7 x 14 x 28` starts. MFA degree
@@ -266,6 +295,7 @@ faces or ambiguous tangential contacts.
 
 - `field.h`, `analytical_field.h`, `mfa_field.h`: physical-coordinate field
   interface, segment derivatives including Hessians, examples, and MFA adapter.
+- `coordnet_field.cpp` implements the same field interface with LibTorch autograd.
 - `corrector.h`: minimum-norm scalar/fiber discovery, phase-plane fiber Newton,
   and simultaneous box face/edge/corner correction, with domain guards.
 - `trace.h`: fixed-step RK4/Newton tracing in both directions, loop/component

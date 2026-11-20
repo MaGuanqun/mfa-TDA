@@ -2,7 +2,7 @@
 
 This implements the four regular-volume stages in
 `fiber-surface-tex/summary_fiber.tex`, “Extension to filled range triangles:
-volume extraction,” for analytical fields and MFA. INR is deferred.
+volume extraction,” for analytical, MFA, and CoordNet fields.
 
 For counterclockwise range vertices `q0,q1,q2`, the selected set is
 `{x in box : n_i dot (F(x)-q_i) >= 0 for i=0,1,2}`, where `n_i` is the inward
@@ -22,7 +22,7 @@ cmake --build build -j 3
 ctest --test-dir build -R '^fiber_(surface|volume)_' --output-on-failure
 ```
 
-The new targets are `fiber_volume_explicit`, `fiber_volume_mfa`,
+The volume targets include `fiber_volume_explicit`, `fiber_volume_mfa`, `fiber_volume_coordnet`,
 `fiber_volume_tests`, `fiber_volume_review_tests`, and `fiber_volume_mfa_tests`. Run MFA executables with one
 MPI rank; MPI must be allowed to initialize local sockets.
 
@@ -63,8 +63,9 @@ external dependencies.
 
 ## Run the two-stage examples
 
-Set `default_model` at the top of `fiber_volume.sh` to `analytical` or `mfa`.
-From the repository root, run both stages for the selected model.
+Run both stages for the vortex-street CoordNet pair from the repository root.
+Set `default_model` at the top of `fiber_volume.sh` to `analytical` or `mfa`
+to change the no-argument example.
 
 ```bash
 ./fiber_volume.sh
@@ -82,8 +83,8 @@ The script activates the Spack environment and builds the selected executable.
 The analytical case uses the planar prism. The MFA case uses
 `build/src/hurricane_isabel_3d/{Pf30_3d,TCf30_3d}.mfa`. Set `FIRST_MFA` and
 `SECOND_MFA` if the pressure and temperature files are elsewhere.
-The default output folders are `build/fiber-volume-results/analytical_prism/`
-and `build/fiber-volume-results/hurricane_isabel_3d/`. Set `FIBER_RESULTS_ROOT`
+Each model writes under `build/fiber-volume-results/` in its own directory
+(`vortex_street_3d_2_variables/`, `analytical_prism/`, or `hurricane_isabel_3d/`). Set `FIBER_RESULTS_ROOT`
 to use a different root, and `FIBER_SKIP_BUILD=1` to reuse a build.
 
 The **boundary** stage calls the shared fiber-surface extractor on the three
@@ -105,12 +106,41 @@ and the box-contact triangle count. Keep the original PLY for a restart since
 a viewer may drop the patch property or comment when resaving. The companion
 boundary VTK exposes the patch and shell labels for coloring in ParaView.
 
-Both volume executables accept `--stage boundary --output PREFIX` and
+All three volume executables accept `--stage boundary --output PREFIX` and
 `--stage fill --output PREFIX`. Fill defaults to `PREFIX_boundary.ply`.
 Use `--boundary-input FILE` to read a saved PLY from another path. Supply
 the same model and selection to both invocations. A direct executable run
 with the default `--stage all` passes the boundary to TetGen in memory and
 also exports the PLY.
+
+## CoordNet example
+
+The script loads the two float64 TorchScript checkpoints in
+`CoordNet/Exp/vortex_street_3d_2_variables/`. Edit `q0`, `q1`, and `q2`
+in counterclockwise order to select a filled triangle in the models'
+independently normalized velocity components. The output measures volume in
+the physical `(x,y,time)` domain.
+
+The default triangle has vertices `(0.402,-0.344)`, `(0.429,-0.320)`, and
+`(0.402,-0.296)`. In the local box around `(0.4,0.15,14)`, the example
+produced one closed shell with 176 boundary triangles and 212 tetrahedra.
+Their summed volume was `1.90144e-6`. The largest sampled boundary correction
+was `1.47e-4` in domain coordinates, within the spatial tolerance of `4.5e-4`.
+
+For another scalar model pair, change `first_coordnet`, `second_coordnet`,
+and the **full training box** (`domain_min`, `domain_max`). The shared surface
+and volume adapter uses these bounds to normalize coordinates and pass them to
+the models in `(time,y,x)` order. Change `box_min` and `box_max` to crop the
+extraction. Keep the same models, boxes, and range triangle when resuming a fill.
+
+```bash
+./fiber_volume.sh coordnet boundary
+./fiber_volume.sh coordnet fill
+```
+
+To sample the output range when choosing a triangle, run `fiber_volume_coordnet`
+with `--inspect`, the model paths (`--first`, `--second`), the training bounds
+(`--domain-min`, `--domain-max`), and the desired crop (`--min`, `--max`).
 
 ## Analytical examples
 
@@ -299,8 +329,8 @@ two-component volume. Its exact volume is `17/3 - 3*sqrt(3)`.
 
 `volume_boundary.cpp`, `volume_validation.cpp`, `volume_tetgen.cpp`, and
 `volume_io.cpp` implement the four stages and outputs. `volume_examples.h`
-contains the analytical benchmarks; `volume_cli.h` shares CLI parsing between
-the two entry points. `volume_tests.cpp`, `volume_review_tests.cpp`,
+contains the analytical benchmarks. `volume_cli.h` shares CLI parsing across
+the three entry points. `volume_tests.cpp`, `volume_review_tests.cpp`,
 `volume_mfa_tests.cpp`, and `volume_cli_test.py` cover reference volumes,
 cap holes/cavities, coordinate transformations, invalid input, missing/duplicate
 cells, incorrect facet markers, and partial-result handling.

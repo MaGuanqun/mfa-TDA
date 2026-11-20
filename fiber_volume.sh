@@ -1,9 +1,27 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Edit these settings, then run ./fiber_volume.sh with no arguments.
+default_model=coordnet        # coordnet, mfa, or analytical
+default_stage=all             # all, boundary, or fill
+coordnet_dataset=vortex_street_3d_2_variables
+model_dir="CoordNet/Exp/$coordnet_dataset"
+first_coordnet="$model_dir/u-super-spatial-temporal-64-5-float64.pt"
+second_coordnet="$model_dir/v-super-spatial-temporal-64-5-float64.pt"
+domain_min=-0.5,-0.5,13.5     # Full training box in physical (x,y,time).
+domain_max=7.5,0.5,15
+box_min=0.38,0.133,13.988     # Local extraction box in the same coordinates.
+box_max=0.42,0.167,14.012
+q0=0.402,-0.344               # Counterclockwise triangle in normalized (u,v).
+q1=0.429,-0.320
+q2=0.402,-0.296
+coordnet_mesh=(--step 0.006 --fiber-step 0.004 --spatial-tolerance 0.00045
+               --residual-tolerance 0.0002 --seed-grid 3 --max-triangles 4000)
+
 usage() {
     cat <<'EOF'
-Usage: ./fiber_volume.sh analytical|mfa [all|boundary|fill]
+Usage: ./fiber_volume.sh [coordnet|analytical|mfa [all|boundary|fill]]
+  coordnet     Vortex street u and v TorchScript models, local (x,y,time) box
   analytical   Planar triangular prism, exact volume 0.5
   mfa          Hurricane Isabel pressure and temperature, local spatial box
   all          Run boundary then fill in separate processes (default)
@@ -17,12 +35,22 @@ EOF
 }
 
 if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
-if (( $# < 1 || $# > 2 )); then usage >&2; exit 1; fi
-stage=${2:-all}
+if (( $# > 2 )); then usage >&2; exit 1; fi
+stage=${2:-$default_stage}
 case "$stage" in all|boundary|fill) ;; *) usage >&2; exit 1;; esac
 fiber_repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$fiber_repo"
-case "$1" in
+case "${1:-$default_model}" in
+    coordnet)
+        target=fiber_volume_coordnet
+        dataset=$coordnet_dataset
+        options=(--first "$first_coordnet" --second "$second_coordnet"
+                 --domain-min "$domain_min" --domain-max "$domain_max"
+                 --min "$box_min" --max "$box_max" --q0 "$q0" --q1 "$q1" --q2 "$q2"
+                 "${coordnet_mesh[@]}")
+        # Seed discovery already runs in parallel across independent model queries.
+        export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+        ;;
     analytical)
         target=fiber_volume_explicit
         dataset=analytical_prism

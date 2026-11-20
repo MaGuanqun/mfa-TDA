@@ -11,15 +11,22 @@ RunConfig initial_config(Arguments& args) {
     c.model=args.take("--model","analytical");
     if (c.model=="analytical") {
         c.example=args.take("--example","sphere"); c.curve=analytical_field(c.example).segment;
-    } else if (c.model=="mfa") {
-        c.example.clear(); c.first=args.take("--first"); c.second=args.take("--second",c.first);
-        if (c.first.empty()) throw std::invalid_argument("--first is required for MFA");
-        if (!args.has("--polyline") && (!args.has("--a") || !args.has("--b"))) throw std::invalid_argument("MFA seeds require --polyline or --a and --b range endpoints");
+    } else if (c.model=="mfa" || c.model=="coordnet") {
+        c.example.clear(); c.first=args.take("--first");
+        if (c.first.empty()) throw std::invalid_argument("--first is required for "+c.model);
+        if (!args.has("--polyline") && (!args.has("--a") || !args.has("--b")))
+            throw std::invalid_argument("Supply --polyline or --a and --b range endpoints");
+        c.second=args.take("--second",c.model=="mfa" ? c.first : "");
+        if (c.second.empty()) throw std::invalid_argument("--second is required for "+c.model);
         c.first=fs::absolute(c.first).lexically_normal().string(); c.second=fs::absolute(c.second).lexically_normal().string();
-        c.variable1=args.integer("--variable1",0); c.variable2=args.integer("--variable2",c.first==c.second?1:0);
-        c.block1=args.integer("--block1",-1); c.block2=args.integer("--block2",c.block1);
+        if (c.model=="coordnet") {
+            c.training_box=coordnet_training_box(args);
+        } else {
+            c.variable1=args.integer("--variable1",0); c.variable2=args.integer("--variable2",c.first==c.second?1:0);
+            c.block1=args.integer("--block1",-1); c.block2=args.integer("--block2",c.block1);
+        }
         c.first_digest=file_digest(c.first); c.second_digest=file_digest(c.second);
-    } else throw std::invalid_argument("--model must be analytical or mfa");
+    } else throw std::invalid_argument("--model must be analytical, mfa or coordnet");
     return c;
 }
 void evaluation_manifest(const fs::path& run,const RunConfig& config) {
@@ -44,6 +51,8 @@ int stage_main(Stage stage,int argc,char** argv) {
                 std::cout<<"  --model analytical --example sphere|closed-sphere|strip|disconnected\n"
                     <<"  --model mfa --first FILE [--second FILE] --a u,v --b u,v\n"
                     <<"  --variable1 N --variable2 N --block1 N --block2 N\n"
+                    <<"  --model coordnet --first U.pt --second V.pt --domain-min x,y,t --domain-max x,y,t\n"
+                    <<"    Use float64 scalar exports and range endpoints in model-output units.\n"
                     <<"  All resolved parameters are saved in run.conf.\n";
                 common_help();
             } else std::cout<<"Reads run.conf and preceding stage files. To change parameters, restart at find_seeds.\n";
@@ -55,7 +64,7 @@ int stage_main(Stage stage,int argc,char** argv) {
         if (stage==Stage::seeds) {
             auto config=initial_config(args);
             auto loaded=load_field(config,false);
-            if (config.model=="mfa") config.options.step=(loaded.field.box.max-loaded.field.box.min).minCoeff()/20;
+            if (config.model!="analytical") config.options.step=(loaded.field.box.max-loaded.field.box.min).minCoeff()/20;
             config.curve=surface_options(args,loaded.field,config.curve.segments.front(),config.options);
             args.finish();
             config.box=loaded.field.box;
