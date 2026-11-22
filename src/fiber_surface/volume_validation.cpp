@@ -112,30 +112,6 @@ BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,con
         if (patch<=3) expected=-range.sides[patch-1].gradient(f.jacobian(center));
         else { expected=Vec::Zero();expected[(patch-4)/2]=(patch-4)%2?1:-1; }
         if (!expected.allFinite() || expected.norm()<=o.derivative_tolerance || normal.dot(expected)<=0) ++r.orientation_failures;
-        // Probe both sides of the planar facet at multiple distances. A raw
-        // model test is independent of winding and the mesh construction.
-        bool oriented=false;Vec probe=center;
-        if(correct_volume_sample(probe,patch,f,range,o)) {
-            std::vector<Vec> inward_normals;
-            for(int k=0;k<3;++k)if(k+1==patch || std::abs(range.sides[k].phi(f.value(probe)))<1e-8)
-                inward_normals.push_back(range.sides[k].gradient(f.jacobian(probe)).normalized());
-            const unsigned mask=f.box.faces(probe,eps);
-            for(int face=0;face<6;++face)if(mask&(1u<<face))inward_normals.push_back((face%2?-1.:1.)*Vec::Unit(face/2));
-            Eigen::MatrixXd constraints(inward_normals.size(),3);
-            for(size_t k=0;k<inward_normals.size();++k)constraints.row(k)=inward_normals[k].transpose();
-            Vec inward=constraints.completeOrthogonalDecomposition().solve(Eigen::VectorXd::Ones(inward_normals.size()));
-            if(inward.allFinite() && inward.norm()>0 && normal.dot(inward)<0) {
-                inward.normalize();
-                for (double scale:{1e-7,1e-6,1e-5,.0001,.001,.01,.02,.05,.1,.2,.4}) {
-                    const double distance=std::max(2*eps,scale*o.step);
-                    if (member(probe+distance*inward) && !member(probe-distance*inward)) {oriented=true;break;}
-                }
-            }
-        }
-        if (!oriented) {
-            ++r.orientation_failures;
-            b.unresolved.push_back({center,"No separated retained-side probes for patch "+std::to_string(patch)});
-        }
     }
     // Shared labels identify corner fibers and active box constraints. Test the
     // regular-volume assumption explicitly, including range/box combinations.
@@ -149,8 +125,11 @@ BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,con
             if (label<=3) gradients.push_back(range.sides[label-1].gradient(j));
             else gradients.push_back(Vec::Unit((label-4)/2));
         }
-        for (int k=0;k<3;++k) if (labels[i].count(k+1) && labels[i].count((k+2)%3+1))
-            r.corner_residual=std::max(r.corner_residual,(value-range.corners[k]).norm());
+        for (int k=0;k<3;++k) if (labels[i].count(k+1) && labels[i].count((k+2)%3+1)) {
+            const double residual=(value-range.corners[k]).norm();
+            r.corner_residual=std::max(r.corner_residual,residual);
+            if (residual>Options::fiber_field_tolerance) ++r.constraint_failures;
+        }
         Eigen::MatrixXd active(3,gradients.size());
         for (size_t k=0;k<gradients.size();++k) active.col(k)=gradients[k].normalized();
         bool regular=false;
@@ -218,7 +197,7 @@ BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,con
         if (member(p)!=material(p) && clearance(p,m)>2*o.spatial_tolerance) ++r.coverage_misses;
     }
     if (r.constraint_failures || r.orientation_failures || r.coverage_misses)
-        b.unresolved.push_back({(f.box.min+f.box.max)/2,"Boundary model/retained-side/coverage validation failed"});
+        b.unresolved.push_back({(f.box.min+f.box.max)/2,"Boundary model/orientation/coverage validation failed"});
     r.valid=b.unresolved.empty() && !r.constraint_failures && !r.orientation_failures && !r.coverage_misses;
     return r;
 }

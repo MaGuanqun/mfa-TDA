@@ -27,6 +27,7 @@ class Extractor {
     void grow();
     void stitch();
     void repair();
+    void snap_box_slivers();
     bool covered(const Vec& seed) const;
     bool seed_triangle(const Vec& p);
 public:
@@ -37,7 +38,7 @@ public:
     Checkpoint finish(Checkpoint state, bool curve_patch=false);
     Result run();
 };
-// Keep neighboring roots on their shared constraint even when chord slack is loose.
+// Use a tighter surface root solve where neighboring patches meet.
 inline Options curve_options(const RangeCurve& curve, Options options) {
     if (curve.size()>1) {
         const double tolerance=options.surface_solve_tolerance>0 ? options.surface_solve_tolerance : options.residual_tolerance;

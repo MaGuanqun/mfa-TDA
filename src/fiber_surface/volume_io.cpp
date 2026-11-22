@@ -80,6 +80,7 @@ void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f
         for(int i=0;i<3;++i){if(i)out<<',';out<<'['<<range.corners[i][0]<<','<<range.corners[i][1]<<']';}
         out<<"],\n  \"box_min\": ["<<f.box.min[0]<<','<<f.box.min[1]<<','<<f.box.min[2]<<"],\n  \"box_max\": ["<<f.box.max[0]<<','<<f.box.max[1]<<','<<f.box.max[2]<<"],\n";
         out<<"  \"step\": "<<o.step<<", \"fiber_step\": "<<o.fiber_step<<", \"spatial_tolerance\": "<<o.spatial_tolerance<<", \"residual_tolerance\": "<<o.residual_tolerance<<",\n";
+        out<<"  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance<<", \"fiber_plane_tolerance\": "<<o.fiber_plane_tolerance()<<",\n";
         out<<"  \"boundary_vertices\": "<<b.mesh.vertices.size()<<", \"boundary_triangles\": "<<b.mesh.triangles.size()<<", \"box_contact_triangles\": "<<b.box_contact_triangles<<",\n  \"tet_vertices\": "<<r.mesh.vertices.size()<<", \"tetrahedra\": "<<r.mesh.cells.size()<<",\n";
         out<<"  \"corner_fiber_components\": ["<<b.corner_components[0]<<','<<b.corner_components[1]<<','<<b.corner_components[2]<<"],\n  \"shell_signed_volumes\": [";
         for(size_t i=0;i<br.signed_volumes.size();++i){if(i)out<<',';out<<br.signed_volumes[i];}out<<"],\n  \"hole_seeds\": [";

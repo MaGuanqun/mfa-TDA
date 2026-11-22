@@ -122,10 +122,12 @@ independently normalized velocity components. The output measures volume in
 the physical `(x,y,time)` domain.
 
 The default triangle has vertices `(0.402,-0.344)`, `(0.429,-0.320)`, and
-`(0.402,-0.296)`. In the local box around `(0.4,0.15,14)`, the example
-produced one closed shell with 176 boundary triangles and 212 tetrahedra.
-Their summed volume was `1.90144e-6`. The largest sampled boundary correction
-was `1.47e-4` in domain coordinates, within the spatial tolerance of `4.5e-4`.
+`(0.402,-0.296)`. At the default marching step of `0.006`, all three corner
+fibers are traced. Two fronts near the lower time boundary remain open,
+which prevents the cap from closing. The boundary stage exports 164 triangles
+with 14 open edges and stops before tetrahedralization. Reducing only
+`--step` to `0.005` closes the shell with 292 boundary triangles. TetGen
+then fills it with 363 tetrahedra.
 
 For another scalar model pair, change `first_coordnet`, `second_coordnet`,
 and the **full training box** (`domain_min`, `domain_max`). The shared surface
@@ -159,9 +161,15 @@ The planar example is exactly the paper's `F=(x,y)`,
 translated unit right triangle, so its exact volume is `1`.
 
 Both default to step `0.2`, fiber step `0.15`, and spatial tolerance `0.015`.
-The curved example defaults to range tolerance `0.005` so the existing segment
-marcher accepts curved fiber chords. Surface roots are solved more tightly than
-this classification tolerance. Use `--step`, `--fiber-step`,
+As in the MFA and CoordNet examples, corner fibers use an absolute field
+tolerance of `1e-9` and an interior plane tolerance of `1e-6 * fiber_step`.
+On the curved prism, a chord along the fiber of `(0,0)` maps at its midpoint
+to `(-Δz²/8,-Δz²/8)`, where `Δz` is the difference in endpoint heights.
+This midpoint falls outside the segment interval on both axis-aligned sides.
+The side marcher records that value and tests each traced vertex against
+its assigned range corner. The two side patches can therefore share the chord.
+Volume validation separately checks a local correction at the chord midpoint.
+Use `--step`, `--fiber-step`,
 `--spatial-tolerance`, `--residual-tolerance`, and `--seed-grid` for resolution
 studies. Smaller steps do not guarantee successful front closure on every field;
 failed fronts are reported, and filling is blocked.

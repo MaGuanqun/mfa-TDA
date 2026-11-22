@@ -14,6 +14,17 @@ using marching_triangles::Triangle;
 using marching_triangles::Edge;
 using marching_triangles::edge_key;
 
+inline Vec edge_midpoint(const Mesh& mesh, int u, int v) {
+    const auto [i,j]=edge_key(u,v);
+    const Vec& a=mesh.vertices[i];
+    return a+(mesh.vertices[j]-a)/2;
+}
+
+inline Vec face_centroid(const Mesh& mesh, const Triangle& t) {
+    const Vec& a=mesh.vertices[t[0]];
+    return a+((mesh.vertices[t[1]]-a)+(mesh.vertices[t[2]]-a))/3;
+}
+
 struct Box {
     Vec min = Vec::Constant(-2), max = Vec::Constant(2);
     bool contains(const Vec& x) const {
@@ -54,7 +65,8 @@ struct Segment {
         n = Range(-d[1], d[0])/length; w = d/d.squaredNorm();
     }
     double phi(const Range& f) const { return n.dot(f-a); }
-    double parameter(const Range& f) const { return w.dot(f-a); }
+    double parameter(const Range& f) const { return d.dot(f-a)/d.squaredNorm(); }
+    static bool contains_parameter(double tau) { return 0 <= tau && tau <= 1; }
     Vec gradient(const Jacobian& j) const { return j.transpose()*n; }
     Vec parameter_gradient(const Jacobian& j) const { return j.transpose()*w; }
     Hessian hessian(const std::array<Hessian, 2>& h) const { return n[0]*h[0]+n[1]*h[1]; }
@@ -74,15 +86,16 @@ struct RangeCurve {
 };
 
 struct Options {
+    static constexpr double fiber_field_tolerance = 1e-9;
     double step = .2, min_step = .025, fiber_step = .15, spatial_tolerance = .015;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
-    // Optional stricter root solve; range/chord classification still uses the
-    // residual tolerance. Volume assembly uses this to avoid offset side seams.
+    // Optional tighter residual tolerance for surface roots on adjacent patches.
     double surface_solve_tolerance = 0;
     double min_angle_degrees = .1, max_normal_degrees = 55;
     // Count on the shortest physical axis for every field; zero is an alias for 7.
     int seed_grid = 7, iterations = 40, max_trace_steps = 10000;
     size_t max_triangles = 30000;
+    double fiber_plane_tolerance() const { return 1e-6 * fiber_step; }
     void validate(const Field& f, const Segment& segment) const {
         for (double x : {step, min_step, fiber_step, spatial_tolerance, residual_tolerance, derivative_tolerance})
             if (!std::isfinite(x) || x <= 0) throw std::invalid_argument("Steps and tolerances must be positive and finite");

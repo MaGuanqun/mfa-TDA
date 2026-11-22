@@ -8,11 +8,14 @@ public:
     const Segment& segment;
     const Options& options;
     Corrector(const Field& f, const Segment& s, const Options& o) : field(f), segment(s), options(o) {}
-    double slack() const { return options.residual_tolerance/segment.length; }
-    bool member(const Vec& x) const {
+    bool member(const Vec& x, int traced_endpoint=-1) const {
         if (!field.box.contains(x)) return false;
-        const Range f=field.value(x); const double s=segment.parameter(f);
-        return f.allFinite() && s >= -slack() && s <= 1+slack();
+        const Range value=field.value(x);
+        if (traced_endpoint==0 || traced_endpoint==1) {
+            const Range& q=traced_endpoint==0 ? segment.a : segment.b;
+            return (value-q).norm()<=Options::fiber_field_tolerance;
+        }
+        return segment.contains_parameter(segment.parameter(value));
     }
     bool regular(const Jacobian& j) const {
         if (!j.allFinite()) return false;
@@ -47,24 +50,20 @@ public:
         }
         return false;
     }
-    // Discovery uses bounded, damped least squares. Only a regular root is a seed.
+    // Seed discovery uses a full minimum-norm Newton step.
     bool fiber_seed(Vec& x, const Range& q) const {
-        const double trust=(field.box.max-field.box.min).norm()/4;
-        const double solve_tolerance=std::min(options.residual_tolerance,1e-11*std::max(1.,q.norm()));
+        if (!field.box.contains(x)) return false;
+        Range r=field.value(x)-q;
         for (int it=0; it<options.iterations; ++it) {
-            if (!field.box.contains(x)) return false;
-            const Range r=field.value(x)-q; const Jacobian j=field.jacobian(x);
+            const Jacobian j=field.jacobian(x);
             if (!r.allFinite() || !regular(j)) return false;
-            if (r.norm()<=solve_tolerance) return true;
-            Vec delta=-j.transpose()*(j*j.transpose()).ldlt().solve(r);
-            if (!delta.allFinite()) return false;
-            if (delta.norm()>trust) delta*=trust/delta.norm();
-            bool improved=false;
-            for (int k=0; k<24; ++k,delta*=.5) {
-                const Vec y=x+delta;
-                if (field.box.contains(y) && (field.value(y)-q).norm()<r.norm()) { x=y; improved=true; break; }
-            }
-            if (!improved) return false;
+            if (r.norm()<=Options::fiber_field_tolerance) return true;
+            const Vec trial=x-j.transpose()*(j*j.transpose()).ldlt().solve(r);
+            if (!field.box.contains(trial)) return false;
+            const Range next_r=field.value(trial)-q;
+            if (!next_r.allFinite() || next_r.norm()>=r.norm()) return false;
+            x=trial;
+            r=next_r;
         }
         return false;
     }
@@ -72,16 +71,13 @@ public:
     // the phase equation; QR also handles overdetermined edge/corner contacts.
     bool fiber(Vec& x, const Range& q, const Vec& phase, const Vec& anchor, double bound, unsigned faces=0) const {
         const Vec origin=x, fixed_anchor=anchor; field.box.fix(x,faces);
-        // Resolve component identity more accurately than the permitted chord
-        // error when an application uses a loose range-space sampling tolerance.
-        const double solve_tolerance=std::min(options.residual_tolerance,1e-11*std::max(1.,q.norm()));
         for (int it=0; it<options.iterations; ++it) {
             if (!field.box.contains(x) || (x-origin).norm()>bound) return false;
             const Range r=field.value(x)-q; const Jacobian j=field.jacobian(x);
             if (!r.allFinite() || !regular(j)) return false;
             if (!faces) {
                 const double p=phase.dot(x-fixed_anchor);
-                if (r.norm()<=solve_tolerance && std::abs(p)<=std::min(solve_tolerance,options.fiber_step*1e-8)) return true;
+                if (r.norm()<=Options::fiber_field_tolerance && std::abs(p)<=options.fiber_plane_tolerance()) return true;
                 Hessian a; a.topRows<2>()=j; a.row(2)=phase.transpose();
                 Eigen::FullPivLU<Hessian> lu(a); lu.setThreshold(options.derivative_tolerance);
                 if (!lu.isInvertible()) return false;
@@ -89,12 +85,12 @@ public:
             } else {
                 std::vector<int> free;
                 for (int d=0; d<3; ++d) if (!(faces & (3u<<(2*d)))) free.push_back(d);
-                if (free.empty()) return r.norm()<=solve_tolerance;
+                if (free.empty()) return r.norm()<=Options::fiber_field_tolerance;
                 Eigen::MatrixXd a(2,free.size());
                 for (size_t d=0; d<free.size(); ++d) a.col(d)=j.col(free[d]);
                 Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(a); qr.setThreshold(options.derivative_tolerance);
                 if (qr.rank()!=int(free.size())) return false; // transversality on the face/edge
-                if (r.norm()<=solve_tolerance) return true;
+                if (r.norm()<=Options::fiber_field_tolerance) return true;
                 const Eigen::VectorXd delta=qr.solve(-r);
                 if (!delta.allFinite()) return false;
                 for (size_t d=0; d<free.size(); ++d) x[free[d]]+=delta[d];

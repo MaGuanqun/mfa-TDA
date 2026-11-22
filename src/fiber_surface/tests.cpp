@@ -6,6 +6,40 @@
 using namespace fiber_surface;
 static void require(bool ok,const std::string& message) { if (!ok) throw std::runtime_error(message); }
 
+static void box_sliver() {
+    auto example=analytical_field("strip");
+    example.field.box.min.z()=0;
+    example.field.value=[](const Vec& x) { return Range(x.x(),x.y()-x.z()); };
+    example.field.jacobian=[](const Vec&) { Jacobian j; j << 1,0,0, 0,1,-1; return j; };
+    const Options options;
+    const unsigned lower_z=1u<<4;
+    auto finish=[&](double height,const Vec& apex) {
+        Checkpoint state;
+        auto& r=state.result;
+        r.mesh.vertices={Vec(.2,0,0),Vec(.25,height,height),Vec(.3,0,0),apex};
+        r.info.resize(4);
+        r.info[0].faces=r.info[2].faces=lower_z;
+        r.mesh.add({0,3,1});
+        r.mesh.add({1,3,2});
+        return Extractor(example.field,example.segment,options).finish(std::move(state)).result;
+    };
+    const Vec apex(.25,.07,.07);
+    const auto snapped=finish(1e-5,apex);
+    require(snapped.mesh.vertices==std::vector<Vec>{Vec(.2,0,0),Vec(.25,0,0),Vec(.3,0,0),apex} &&
+            snapped.mesh.triangles==std::vector<Triangle>{{0,3,1},{1,3,2}},
+            "Correct the sliver tip on both the box face and the side surface, preserving connectivity");
+    require(snapped.info[1].faces==lower_z && snapped.box_edges.count({0,1}) && snapped.box_edges.count({1,2}),
+            "Both sides of the tip must be available to the cap");
+    const auto interior=finish(.003,apex);
+    require(interior.mesh.vertices[1]==Vec(.25,.003,.003) && !interior.info[1].faces,
+            "Spatial tolerance alone must not move an interior point onto the face");
+    // Moving the tip onto this apex would collapse both existing facets.
+    const auto blocked=finish(1e-5,Vec(.25,0,0));
+    require(blocked.mesh.vertices[1]==Vec(.25,1e-5,1e-5) && !blocked.info[1].faces &&
+            !blocked.box_edges.count({0,1}) && !blocked.box_edges.count({1,2}),
+            "A rejected move must restore the vertex and leave both edges unresolved");
+}
+
 static void contacts() {
     auto check=[](const std::vector<Vec>& vertices,Triangle a,Triangle b,bool expected) {
         std::sort(a.begin(),a.end());
@@ -53,6 +87,13 @@ static void seeds() {
     require(discovery_shape(e.field,options)==SeedShape{3,6,10},"Noninteger aspect ratio rounds up");
     e.field.box.max[2]=2;
     Corrector corrector(e.field,e.segment,options);
+    // A linear strip reaches its fiber in one update, even for a step across the box.
+    Options one_update=options;
+    one_update.iterations=2; // Initial point and the point after one Newton step.
+    Corrector full_step(e.field,e.segment,one_update);
+    Vec corner(-.5,1,0);
+    require(full_step.fiber_seed(corner,Range(.5,-1)) && corner==Vec(.5,-1,0),
+            "Seed discovery must take the full in-domain Newton step");
     Seeds reference;
     for (int endpoint=0; endpoint<2; ++endpoint)
         for (Vec p:grid) if (corrector.fiber_seed(p,endpoint ? e.segment.b : e.segment.a)) reference.endpoints[endpoint].push_back(p);
@@ -104,6 +145,129 @@ static void polylines() {
     }
 }
 
+static void segment_sampling() {
+    const auto strip=analytical_field("strip");
+    Options options;
+    options.residual_tolerance=.005;
+    Corrector corrector(strip.field,strip.segment,options);
+    Samples samples;
+    for (double tau : {std::nextafter(0.,-1.), 0., .5, 1., std::nextafter(1.,2.)}) {
+        const Vec x(tau,0,0);
+        const bool inside=0<=tau && tau<=1;
+        require(corrector.member(x)==inside,"Exact closed segment interval in marching");
+        const auto before=samples.violations;
+        samples.add(x,strip.field,strip.segment);
+        require(samples.violations-before==size_t(!inside),"Exact closed segment interval in reporting");
+    }
+    const Segment oblique(Range(0,0),Range(1,58));
+    for (const int endpoint : {0,1}) {
+        const double sign=endpoint==0 ? -1. : 1.;
+        const Vec near(endpoint+sign*5e-10,0,0);
+        require(corrector.member(near,endpoint) && !corrector.member(near),
+                "Only a traced vertex may use the endpoint field residual");
+        require(!corrector.member(Vec(endpoint+sign*2e-9,0,0),endpoint),
+                "Traced vertices must satisfy the fiber field tolerance");
+    }
+    require(oblique.parameter(oblique.b)==1,"The exact far endpoint must have parameter one");
+
+    // On z=y² the seed triangle's chord samples lie off the surface, but x stays in range.
+    Field field=strip.field;
+    field.value=[](const Vec& p) { return Range(p.x(),p.z()-p.y()*p.y()); };
+    field.jacobian=[](const Vec& p) { Jacobian j; j<<1,0,0,0,-2*p.y(),1; return j; };
+    field.hessians=[](const Vec&) {
+        Hessian h=Hessian::Zero(); h(1,1)=-2;
+        return std::array<Hessian,2>{Hessian::Zero(),h};
+    };
+    options.spatial_tolerance=1e-12;
+    options.residual_tolerance=1e-9;
+    options.max_triangles=4;
+    Seeds seeds;
+    seeds.surface.emplace_back(.5,0,0);
+    const Result patch=Extractor(field,strip.segment,options).march(seeds,{}).result;
+    const Report report=evaluate(patch,field,strip.segment,options);
+    require(!patch.mesh.triangles.empty() && report.midpoints.maximum>1e-4 && report.centroids.maximum>1e-4,
+            "Curved patch must accept in-range chord samples without projecting them");
+    require(!report.vertices.violations && !report.midpoints.violations && !report.centroids.violations,
+            "All accepted triangle samples must be in range");
+
+    // In the plane z=0, exclude a small disk around the origin. Position the
+    // equilateral seed triangle so only one midpoint or only its centroid is in the disk.
+    field=analytical_field("sphere").field;
+    options.min_step=options.step; // Try exactly one triangle size.
+    options.residual_tolerance=.005;
+    const Segment annulus(Range(.001,0),Range(1,0));
+    for (const double x : {0., std::sqrt(3.)*options.step/6}) {
+        seeds.surface={Vec(x,-options.step/2,0)};
+        const auto state=Extractor(field,annulus,options).march(seeds,{});
+        if (x==0) {
+            require(!state.result.mesh.triangles.empty(),"An out-of-range midpoint alone must permit the seed triangle");
+            const auto sampled=evaluate(state.result,field,annulus,options);
+            require(sampled.midpoints.violations && !sampled.vertices.violations && !sampled.centroids.violations,
+                    "Midpoint violations should be measured on accepted triangles");
+        } else {
+            require(state.result.mesh.triangles.empty(),"An out-of-range centroid must reject the seed triangle");
+        }
+    }
+}
+
+static void fiber_tolerances() {
+    const auto strip=analytical_field("strip");
+    const Range q=Range::Zero();
+    const Vec normal=Vec::UnitZ(), anchor=Vec::Zero();
+    Options options;
+    options.iterations=1; // Observe the acceptance test before a second Newton iterate.
+    Corrector corrector(strip.field,strip.segment,options);
+    for (double surface_tolerance : {1e-12, .005}) {
+        options.residual_tolerance=surface_tolerance;
+        for (double error : {1e-9, 1.1e-9}) {
+            const bool accept=error<=1e-9;
+            Vec seed(error,0,0), sample=seed, contact(error,0,strip.field.box.max.z());
+            require(corrector.fiber_seed(seed,q)==accept,"Fiber seed field tolerance");
+            require(corrector.fiber(sample,q,normal,anchor,1)==accept,"Interior fiber field tolerance");
+            require(corrector.fiber(contact,q,normal,anchor,1,1u<<5)==accept,"Fiber contact field tolerance");
+        }
+    }
+    for (double h : {.1, .5}) {
+        options.fiber_step=h;
+        for (double distance : {1e-6*h, 1.1e-6*h}) {
+            Vec sample(0,0,distance);
+            require(corrector.fiber(sample,q,normal,anchor,1)==(distance<=1e-6*h),"Fiber plane tolerance must scale with the trace step");
+        }
+    }
+
+    // On the unit equator, the sixth step returns within h with tangent dot product about 0.72.
+    const auto sphere=analytical_field("sphere");
+    const Segment segment(Range(1,0),Range(1,.5));
+    Options coarse;
+    coarse.fiber_step=.925;
+    coarse.max_trace_steps=6;
+    Seeds seeds;
+    seeds.endpoints[0].push_back(Vec::UnitX());
+    const Result loop=trace_endpoint_fibers(sphere.field,segment,coarse,seeds);
+    require(loop.unresolved.empty() && loop.fibers.size()==1 && loop.fibers[0].closed &&
+            loop.fibers[0].vertices.size()==6,"A fiber must close on its first eligible return to the seed");
+}
+
+static void fiber_seed_coverage() {
+    const Field field=analytical_field("disconnected").field;
+    const double gap=1./64;
+    const Vec left(-gap/2,0,0), right(gap/2,0,.125), other(-gap/2,gap/2,0);
+    const Segment segment(field.value(left),field.value(other));
+    Seeds seeds;
+    seeds.endpoints[0]={left,right};
+    seeds.endpoints[1]={other};
+    Options options;
+    options.fiber_step=.25; // The closest point to right is halfway along an edge of the left trace.
+    for (double tolerance : {gap, gap/2}) {
+        options.spatial_tolerance=tolerance;
+        const Result result=trace_endpoint_fibers(field,segment,options,seeds);
+        const size_t expected=tolerance==gap ? 2 : 3;
+        require(result.unresolved.empty() && result.fibers.size()==expected,
+                "Distance to the segment must cover a seed up to and including the spatial tolerance");
+        require(result.fibers.back().endpoint==1,"A nearby trace for a different range point must not cover a seed");
+    }
+}
+
 static void derivatives() {
     const auto e=analytical_field("sphere"); const Vec p(.2,-.4,.7); const Segment s(Range(.1,.2),Range(2,.6));
     const auto j=e.field.jacobian(p); const auto h=e.field.hessians(p); const double delta=1e-5;
@@ -121,6 +285,8 @@ static void derivatives() {
     guarded.value=[e](const Vec& x) { if (!e.field.box.contains(x)) throw std::runtime_error("Out-of-domain evaluation"); return e.field.value(x); };
     Corrector bounded(guarded,e.segment,options); Vec outside(3,0,0);
     require(!bounded.surface(outside,1),"Outside correction should fail before model evaluation");
+    Vec near_axis(.1,0,0); // The full Newton step toward the unit equator lands at x=5.05.
+    require(!bounded.fiber_seed(near_axis,Range(1,0)),"An out-of-box Newton step must reject the seed candidate");
     auto strip=analytical_field("strip"); Corrector planar(strip.field,strip.segment,options);
     Vec contact(0.01,.01,2);
     require(planar.fiber(contact,Range(0,0),Vec::Zero(),contact,.1,1u<<5) && (contact-Vec(0,0,2)).norm()<1e-10,"Simultaneous fiber/face contact");
@@ -131,22 +297,27 @@ static void derivatives() {
     Corrector loose_corrector(e.field,e.segment,loose); Result traced;
     FiberTracer(loose_corrector,traced).run(discovery_grid(e.field.box,7));
     require(traced.fibers.size()==1 && traced.fibers.front().closed && traced.unresolved.empty(),
-            "Loose sampling slack must not create duplicate endpoint components");
+            "A loose surface root tolerance must not create duplicate endpoint components");
 }
 int main(int argc,char** argv) {
     try {
         const std::string name=argc>1?argv[1]:"sphere";
         if (name=="derivatives") { derivatives(); return 0; }
+        if (name=="segment-sampling") { segment_sampling(); return 0; }
+        if (name=="fiber-tolerances") { fiber_tolerances(); return 0; }
+        if (name=="seed-coverage") { fiber_seed_coverage(); return 0; }
         if (name=="seeds") { seeds(); return 0; }
         if (name=="polylines") { polylines(); return 0; }
         if (name=="contacts") { contacts(); return 0; }
+        if (name=="box-sliver") { box_sliver(); return 0; }
         auto example=analytical_field(name); Options options;
         const Result r=Extractor(example.field,example.segment,options).run();
         const auto report=evaluate(r,example.field,example.segment,options);
         write_outputs("test_"+name,r,report,example.field,example.segment,options);
         std::cout<<name<<": triangles="<<r.mesh.triangles.size()<<" components="<<report.components<<" unresolved="<<r.unresolved.size()<<" "<<report.topology.summary()<<std::endl;
         require(report.complete(r),"Extraction is incomplete");
-        require(report.vertices.maximum<options.residual_tolerance*1.01 && report.endpoint_residual<options.residual_tolerance*1.01,"Constraint residual");
+        require(report.vertices.maximum<options.residual_tolerance*1.01,"Surface vertex residual");
+        require(report.endpoint_residual<=Options::fiber_field_tolerance,"Endpoint fiber residual");
         require(report.components==(name=="disconnected"?2u:1u),"Incorrect connected components");
         require(report.topology.euler_characteristic==(name=="closed-sphere" || name=="disconnected" ? 2 : 1),"Incorrect Euler characteristic");
         if (name=="sphere" || name=="closed-sphere") {

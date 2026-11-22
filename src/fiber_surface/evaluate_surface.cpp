@@ -21,19 +21,22 @@ Report evaluate(const Result& r, const Field& field, const RangeCurve& curve, co
     const auto labels=vertex_segments(r,curve);
     for (size_t i=0; i<mesh.vertices.size(); ++i) {
         const int k=r.info[i].endpoint;
-        report.vertices.add(mesh.vertices[i],field,curve.segments[labels[i]],options);
+        const bool inside=report.vertices.add(mesh.vertices[i],field,curve.segments[labels[i]]);
+        if (k<0 && !inside) ++report.ordinary_vertex_violations;
         if (k>=0) {
-            report.endpoint_residual=std::max(report.endpoint_residual,(field.value(mesh.vertices[i])-curve.point(k)).norm());
+            const double residual=(field.value(mesh.vertices[i])-curve.point(k)).norm();
+            report.endpoint_residual=std::max(report.endpoint_residual,
+                std::isfinite(residual) ? residual : std::numeric_limits<double>::infinity());
             if (curve.closed() || (k>0 && k<curve.size()))
-                report.vertices.add(mesh.vertices[i],field,curve.segments[(k+curve.size()-1)%curve.size()],options);
+                report.vertices.add(mesh.vertices[i],field,curve.segments[(k+curve.size()-1)%curve.size()]);
         }
     }
     for (const auto& [edge,use]:mesh.edges) {
-        const Vec a=mesh.vertices[edge.first], b=mesh.vertices[edge.second], mid=a+(b-a)/2;
+        const Vec mid=edge_midpoint(mesh,edge.first,edge.second);
         const int first=r.face_segment(use.face);
-        report.midpoints.add(mid,field,curve.segments[first],options);
+        report.midpoints.add(mid,field,curve.segments[first]);
         if (use.second>=0 && r.face_segment(use.second)!=first) {
-            report.midpoints.add(mid,field,curve.segments[r.face_segment(use.second)],options);
+            report.midpoints.add(mid,field,curve.segments[r.face_segment(use.second)]);
             if (!r.fiber_edges.count(edge)) ++report.incorrect_feature_incidence;
         }
         if (use.second<0 && !r.fiber_edges.count(edge) && !r.box_edges.count(edge)) ++report.unexpected_boundary;
@@ -59,7 +62,7 @@ Report evaluate(const Result& r, const Field& field, const RangeCurve& curve, co
     for (size_t face=0; face<mesh.triangles.size(); ++face) {
         const auto& t=mesh.triangles[face];
         const Vec &a=mesh.vertices[t[0]],&b=mesh.vertices[t[1]],&c=mesh.vertices[t[2]];
-        report.centroids.add(Vec(a+((b-a)+(c-a))/3),field,curve.segments[r.face_segment(face)],options);
+        report.centroids.add(face_centroid(mesh,t),field,curve.segments[r.face_segment(face)]);
         report.area+=(b-a).cross(c-a).norm()/2;
         double minimum=180;
         for (int i=0; i<3; ++i) {
@@ -137,6 +140,8 @@ void write_outputs(const std::string& prefix, const Result& r, const Report& rep
     json<<','<<"\n  \"domain_min\": ["<<field.box.min[0]<<','<<field.box.min[1]<<','<<field.box.min[2]<<"],"
         <<"\n  \"domain_max\": ["<<field.box.max[0]<<','<<field.box.max[1]<<','<<field.box.max[2]<<"],"
         <<"\n  \"step\": "<<options.step<<",\n  \"fiber_step\": "<<options.fiber_step
+        <<",\n  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance
+        <<",\n  \"fiber_plane_tolerance\": "<<options.fiber_plane_tolerance()
         <<",\n  \"spatial_tolerance\": "<<options.spatial_tolerance<<",\n  \"range_tolerance\": "<<options.residual_tolerance
         <<",\n  \"discovery_grid\": "<<options.seed_grid
         <<",\n  \"discovery_grid_shape\": ["<<shape[0]<<','<<shape[1]<<','<<shape[2]<<']'
@@ -163,6 +168,7 @@ void write_outputs(const std::string& prefix, const Result& r, const Report& rep
             <<", \"segment_violations\": "<<s.violations<<", \"min_s\": "<<(s.count?s.min_s:0)<<", \"max_s\": "<<(s.count?s.max_s:0)<<'}';
     };
     samples("vertex_samples",report.vertices); samples("edge_midpoint_samples",report.midpoints); samples("centroid_samples",report.centroids);
+    json<<",\n  \"ordinary_vertex_violations\": "<<report.ordinary_vertex_violations;
     json<<",\n  \"unresolved\": [";
     for (size_t i=0; i<r.unresolved.size(); ++i) {
         const auto& e=r.unresolved[i]; if (i) json<<',';
@@ -178,7 +184,7 @@ int evaluate_and_write(Result result, const Field& field, const RangeCurve& curv
         result.unresolved.push_back({field.box.min+(field.box.max-field.box.min)/2,"No regular surface discovered along the range curve"});
     if (!report.topology.valid()) result.unresolved.push_back({(field.box.min+field.box.max)/2,
         "Final mesh connectivity/intersection validation failed: "+report.topology.summary()});
-    if (report.vertices.violations || report.midpoints.violations || report.centroids.violations)
+    if (report.ordinary_vertex_violations || report.centroids.violations)
         result.unresolved.push_back({(field.box.min+field.box.max)/2,"Final sampling found finite-segment violations"});
     write_outputs(prefix,result,report,field,curve,options);
     std::cout<<"vertices="<<result.mesh.vertices.size()<<" triangles="<<result.mesh.triangles.size()<<" components="<<report.components

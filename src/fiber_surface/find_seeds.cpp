@@ -27,8 +27,8 @@ Seeds find_seeds(const Field& field, const Segment& segment, const Options& opti
         auto& output=target==2 ? seeds.surface : seeds.endpoints[target];
         for (size_t i=0; i<grid.size(); ++i) if (accepted[i]) output.push_back(corrected[i]);
     }
-    // Preserve discovery order. Coverage/component identity is established by
-    // tracing and marching, rather than by proximity-only seed deduplication.
+    // Keep seeds in grid order. Tracing compares endpoint seeds with existing
+    // polylines, and marching compares surface seeds with existing triangles.
     seeds.seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     return seeds;
 }

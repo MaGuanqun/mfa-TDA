@@ -65,7 +65,6 @@ double Extractor::epsilon() const { return options_.step*1e-9; }
 
 bool Extractor::geometry(const Triangle& t, bool delaunay, bool overlap) const {
     const auto& mesh=result_.mesh;
-    if (!mesh.topology_ok(t)) return false;
     const Vec &a=mesh.vertices[t[0]], &b=mesh.vertices[t[1]], &c=mesh.vertices[t[2]];
     const double longest=std::max({(b-a).norm(),(c-a).norm(),(c-b).norm()});
     const double shortest=std::min({(b-a).norm(),(c-a).norm(),(c-b).norm()});
@@ -74,56 +73,29 @@ bool Extractor::geometry(const Triangle& t, bool delaunay, bool overlap) const {
     if (cross.norm()<1e-8*longest*longest) return false;
     const Vec normal=cross.normalized();
     for (int k=0; k<3; ++k) {
-        const int u=t[k],v=t[(k+1)%3]; const Edge key=edge_key(u,v);
-        if (intended(key) && mesh.edges.count(key)) return false;
-        auto fiber=result_.fiber_edges.find(key);
-        if (fiber!=result_.fiber_edges.end() && !pending_.count({v,u})) return false;
-        // Traced boundary edges may only be consumed in their prescribed order.
-        if (result_.info[u].fiber>=0 && result_.info[u].fiber==result_.info[v].fiber && fiber==result_.fiber_edges.end()) return false;
         const Vec e1=mesh.vertices[t[(k+1)%3]]-mesh.vertices[t[k]], e2=mesh.vertices[t[(k+2)%3]]-mesh.vertices[t[k]];
         const double angle=std::acos(std::clamp(e1.normalized().dot(e2.normalized()),-1.,1.))*180/std::acos(-1.);
         if (angle<options_.min_angle_degrees) return false;
     }
     const double min_cos=std::cos(options_.max_normal_degrees*std::acos(-1.)/180);
-    for (const Vec& x:std::array<Vec,3>{a,b,c}) {
-        if (!corrector_.member(x) || std::abs(segment_.phi(field_.value(x)))>options_.residual_tolerance*1.01) return false;
+    for (const int id:t) {
+        const Vec& x=mesh.vertices[id];
+        if (!corrector_.member(x,result_.info[id].endpoint) || std::abs(segment_.phi(field_.value(x)))>options_.residual_tolerance*1.01) return false;
         const Vec g=gradient(x);
         if (!g.allFinite() || g.norm()<=options_.derivative_tolerance || normal.dot(g.normalized())<min_cos) return false;
     }
-    // Check chords as well as corrected vertices: nonlinear segment bounds
-    // can fail inside a triangle whose three corners satisfy the constraints.
-    const std::array<Vec,4> samples{(a+b)/2,(b+c)/2,(c+a)/2,(a+b+c)/3};
-    for (int sample_id=0; sample_id<4; ++sample_id) {
-        Vec x=samples[sample_id];
-        if (!corrector_.member(x)) return false;
-        const Vec sample=x;
-        bool corrected=false;
-        if (sample_id<3 && result_.fiber_edges.count(edge_key(t[sample_id],t[(sample_id+1)%3]))) {
-            const auto& info=result_.info[t[sample_id]]; Vec tangent;
-            corrected=corrector_.tangent(mesh.vertices[t[sample_id]],tangent) &&
-                corrector_.fiber(x,info.endpoint ? segment_.b : segment_.a,tangent,sample,options_.spatial_tolerance);
-        } else {
-            const unsigned faces=sample_id<3 ? result_.info[t[sample_id]].faces & result_.info[t[(sample_id+1)%3]].faces : 0;
-            corrected=corrector_.surface(x,options_.spatial_tolerance,faces);
-        }
-        if (!corrected || (x-sample).norm()>options_.spatial_tolerance) return false;
+    // Sample the planar triangle itself. Projection would change the point being tested.
+    const Vec centroid=face_centroid(mesh,t);
+    if (!corrector_.member(centroid)) return false;
+    for (const Vec& x:std::array<Vec,4>{edge_midpoint(mesh,t[0],t[1]),edge_midpoint(mesh,t[1],t[2]),
+                                         edge_midpoint(mesh,t[2],t[0]),centroid}) {
         const Vec g=gradient(x);
-        if (normal.dot(g.normalized())<min_cos) return false;
-    }
-    // Intended curved boundary chords have their own spatial error check.
-    for (int k=0; k<3; ++k) {
-        const int u=t[k],v=t[(k+1)%3]; const auto& iu=result_.info[u]; const auto& iv=result_.info[v];
-        Vec x=(mesh.vertices[u]+mesh.vertices[v])/2, original=x;
-        if (result_.fiber_edges.count(edge_key(u,v))) {
-            Vec tangent; if (!corrector_.tangent(mesh.vertices[u],tangent)) return false;
-            if (!corrector_.fiber(x,iu.endpoint ? segment_.b : segment_.a,tangent,original,options_.spatial_tolerance)) return false;
-        } else if (iu.faces & iv.faces) {
-            if (!corrector_.surface(x,options_.spatial_tolerance,iu.faces & iv.faces)) return false;
-        }
+        if (!g.allFinite() || g.norm()<=options_.derivative_tolerance || normal.dot(g.normalized())<min_cos) return false;
     }
     Vec center; double radius2=0;
     if (delaunay && !marching_triangles::circumcircle(a,b,c,center,radius2)) return false;
     for (const auto& old:mesh.triangles) {
+        if (&old==&t) continue; // Rechecking an existing face after a vertex move.
         if (marching_triangles::triangles_conflict(mesh.vertices,t,old,epsilon()) ||
             marching_triangles::triangles_conflict(mesh.vertices,old,t,epsilon())) return false;
         if (overlap && marching_triangles::surface_overlap(mesh.vertices,t,old,epsilon(),normal)) return false;
@@ -142,7 +114,17 @@ bool Extractor::geometry(const Triangle& t, bool delaunay, bool overlap) const {
 }
 
 bool Extractor::insert(const Triangle& t, bool delaunay, bool overlap) {
-    if (result_.mesh.triangles.size()>=options_.max_triangles || !geometry(t,delaunay,overlap)) return false;
+    const auto& mesh=result_.mesh;
+    if (mesh.triangles.size()>=options_.max_triangles || !mesh.topology_ok(t)) return false;
+    for (int k=0; k<3; ++k) {
+        const int u=t[k],v=t[(k+1)%3]; const Edge key=edge_key(u,v);
+        if (intended(key) && mesh.edges.count(key)) return false;
+        auto fiber=result_.fiber_edges.find(key);
+        if (fiber!=result_.fiber_edges.end() && !pending_.count({v,u})) return false;
+        // Traced boundary edges may only be consumed in their prescribed order.
+        if (result_.info[u].fiber>=0 && result_.info[u].fiber==result_.info[v].fiber && fiber==result_.fiber_edges.end()) return false;
+    }
+    if (!geometry(t,delaunay,overlap)) return false;
     result_.mesh.add(t);
     for (int k=0; k<3; ++k) {
         const int a=t[k],b=t[(k+1)%3]; pending_.erase({b,a});
@@ -224,7 +206,7 @@ bool Extractor::clip(const Edge& e, const Vec& outside) {
             else {
                 if (!corrector_.surface(p.x,options_.step,p.faces)) { rollback_vertices(n); return false; }
                 const double s=segment_.parameter(field_.value(p.x));
-                if (s<=corrector_.slack() || s>=1-corrector_.slack()) { rollback_vertices(n); return false; }
+                if (s<=0 || s>=1) { rollback_vertices(n); return false; }
                 p.id=vertex(p.x,{-1,-1,p.faces});
             }
         }
@@ -265,7 +247,7 @@ bool Extractor::advance(const Edge& e) {
         Vec tangent; if (!corrector_.tangent(a,tangent)) return false;
         const auto& fiber=result_.fibers[pending->second];
         if (!corrector_.fiber(mid,fiber.endpoint ? segment_.b : segment_.a,tangent,mid,options_.step)) return false;
-    } else if (!corrector_.surface(mid,options_.step)) return false;
+    } else if (!corrector_.surface(mid,options_.step,0,false)) return false;
     const Vec g=gradient(mid); Vec tangent=edge.cross(g);
     if (tangent.norm()<options_.derivative_tolerance*edge.norm()) return false;
     tangent.normalize();

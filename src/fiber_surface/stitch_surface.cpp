@@ -29,13 +29,9 @@ size_t finish_box_contacts(Result& r,const Field& f,const Segment& s,const Optio
             const Vec p=r.mesh.vertices[t[k]],q=r.mesh.vertices[t[(k+1)%3]],z=r.mesh.vertices[t[(k+2)%3]];
             const double angle=std::acos(std::clamp((q-p).normalized().dot((z-p).normalized()),-1.,1.))*180/std::acos(-1.);
             if((q-p).norm()>2*o.step || angle<o.min_angle_degrees)valid=false;
-            Vec sample=p+(q-p)/2;const Vec original=sample;
-            const unsigned fp=t[k]==id ? fa|fb : r.info[t[k]].faces;
-            const unsigned fq=t[(k+1)%3]==id ? fa|fb : r.info[t[(k+1)%3]].faces;
-            if(!corrector.member(sample) || !corrector.surface(sample,o.spatial_tolerance,fp&fq) || (sample-original).norm()>o.spatial_tolerance)valid=false;
+            if(!corrector.member(p,t[k]==id ? -1 : r.info[t[k]].endpoint))valid=false;
         }
-        Vec centroid=r.mesh.vertices[a]+((r.mesh.vertices[b]-r.mesh.vertices[a])+(x-r.mesh.vertices[a]))/3;
-        if(valid && (!corrector.member(centroid) || !corrector.surface(centroid,o.spatial_tolerance)))valid=false;
+        if(valid && !corrector.member(face_centroid(r.mesh,t)))valid=false;
         for(const auto& old:r.mesh.triangles)if(valid && marching_triangles::triangles_conflict(r.mesh.vertices,t,old,eps))valid=false;
         if(!valid){r.mesh.vertices.pop_back();continue;}
         r.info.push_back({-1,-1,fa|fb});r.mesh.add(t);
@@ -51,10 +47,18 @@ Checkpoint Extractor::finish(Checkpoint state, bool curve_patch) {
     result_=std::move(state.result); pending_=std::move(state.pending); fiber_uses_=std::move(state.fiber_uses);
     stitch(); repair();
     if (curve_patch) result_.box_contact_triangles=finish_box_contacts(result_,field_,segment_,options_);
+    snap_box_slivers();
     for (const auto& e:fronts()) result_.unresolved.push_back({(result_.mesh.vertices[e.first]+result_.mesh.vertices[e.second])/2,
         result_.mesh.triangles.size()>=options_.max_triangles ? "Triangle limit reached; unfinished front" : "Unfinished front: no valid growth or existing-vertex connection"});
-    for (const auto& e:result_.fiber_edges) if (!result_.mesh.edges.count(e.first))
-        result_.unresolved.push_back({result_.mesh.vertices[e.first.first],"Traced fiber edge has no surface attachment"});
+    for (const auto& [edge,component]:result_.fiber_edges) {
+        if (result_.mesh.edges.count(edge)) continue;
+        const Vec mid=edge_midpoint(result_.mesh,edge.first,edge.second);
+        const char* reason="Traced fiber edge has no surface attachment";
+        if (!corrector_.member(result_.mesh.vertices[edge.first],result_.info[edge.first].endpoint) ||
+            !corrector_.member(result_.mesh.vertices[edge.second],result_.info[edge.second].endpoint))
+            reason="Traced fiber vertex exceeds endpoint residual tolerance";
+        result_.unresolved.push_back({mid,reason});
+    }
     if (result_.mesh.triangles.empty() && (!curve_patch || result_.surface_seed_hits)) result_.unresolved.push_back({(field_.box.min+field_.box.max)/2,"No regular surface discovered; finite search does not prove emptiness"});
     result_.seconds+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     return {std::move(result_),std::move(pending_),std::move(fiber_uses_)};
@@ -66,6 +70,68 @@ void Extractor::stitch() {
     crack_closing::CrackCloser<double>::close_cracks(result_.mesh,[&](const Triangle& t) {
         return insert(t,false);
     },options_.max_triangles);
+}
+
+void Extractor::snap_box_slivers() {
+    auto& mesh=result_.mesh;
+    std::map<int,std::vector<int>> neighbors;
+    for (const auto& [edge,face]:mesh.boundary) {
+        neighbors[edge.first].push_back(edge.second);
+        neighbors[edge.second].push_back(edge.first);
+    }
+    for (const auto& [tip,ends]:neighbors) {
+        auto& info=result_.info[tip];
+        if (ends.size()!=2 || info.fiber>=0 || info.endpoint>=0 || info.faces) continue;
+        const int a=ends[0], b=ends[1];
+        if (intended({tip,a}) || intended({tip,b}) || mesh.edges.count(edge_key(a,b))) continue;
+        const unsigned face=result_.info[a].faces & result_.info[b].faces;
+        if (!face || (face & (face-1))) continue;
+
+        const Vec original=mesh.vertices[tip];
+        const Vec& start=mesh.vertices[a];
+        const Vec& end=mesh.vertices[b];
+        // A sliver tip lies between its neighbors and within 1% of its shorter
+        // incident edge length from their chord, even when the mesh tolerance is loose.
+        const double bound=std::min(options_.spatial_tolerance,
+                                    .01*std::min((original-start).norm(),(original-end).norm()));
+        const Vec chord=end-start;
+        auto near_chord=[&](const Vec& x) {
+            const double along=(x-start).dot(chord);
+            return along>0 && along<chord.squaredNorm() &&
+                   (x-marching_triangles::closest_on_segment(x,start,end)).norm()<=bound;
+        };
+        if (!near_chord(original)) continue;
+        Vec point=original;
+        if (!corrector_.surface(point,bound,face) || !near_chord(point) ||
+            field_.box.faces(point,epsilon())!=face) continue;
+        const double tau=segment_.parameter(field_.value(point));
+        if (!(tau>0 && tau<1)) continue; // Segment ends belong to the traced fibers.
+
+        // Keep the vertex ID and its incident triangles. Commit both seam edges
+        // together only after the changed triangles and both curved chords pass.
+        mesh.vertices[tip]=point;
+        bool valid=true;
+        for (int id:ends) {
+            Vec mid=edge_midpoint(mesh,tip,id);
+            if (!corrector_.surface(mid,options_.spatial_tolerance,face)) { valid=false; break; }
+        }
+        for (const auto& t:mesh.triangles) {
+            if (!valid) break;
+            const auto corner=std::find(t.begin(),t.end(),tip);
+            if (corner==t.end()) continue;
+            const auto k=corner-t.begin();
+            const int u=t[(k+1)%3], v=t[(k+2)%3];
+            const Vec base=mesh.vertices[v]-mesh.vertices[u];
+            const Vec old_normal=base.cross(original-mesh.vertices[u]);
+            const Vec new_normal=base.cross(point-mesh.vertices[u]);
+            valid=!(result_.info[u].faces & result_.info[v].faces & face) &&
+                  old_normal.dot(new_normal)>0 && geometry(t,false,false);
+        }
+        if (!valid) { mesh.vertices[tip]=original; continue; }
+        info.faces=face;
+        result_.box_edges.insert(edge_key(tip,a));
+        result_.box_edges.insert(edge_key(tip,b));
+    }
 }
 
 void Extractor::repair() {

@@ -154,6 +154,9 @@ network outputs directly. To select a velocity in original data units, convert
 each component with its own training extrema using
 `q = 2 * (velocity - min) / (max - min) - 1`.
 
+The example produces 86 triangles. Each of the 17 traced edges belongs to
+exactly one triangle.
+
 For other pairs, supply two differentiable scalar TorchScript modules that take
 a float64 tensor of shape `[1,3]` on CPU. The seed stage accepts
 `--model coordnet --first U.pt --second V.pt`. Set `--domain-min` and
@@ -198,8 +201,11 @@ hurricane volume. Pressure `-1100` is close to the sampled center pressure
 `-1107.6`; the temperature interval surrounds the center value `-24.48`.
 The choice is a geometric demonstration, not a meteorological feature criterion.
 
-Historical results before automatic/proportional seeding (all have no unresolved events, detected
-intersections, or nonmanifold links):
+The local run produces 641 triangles. Each of the 72 traced edges belongs to
+exactly one triangle.
+The following results predate the exact segment interval and
+automatic proportional seeding. Those runs reported zero unresolved events,
+intersections, and nonmanifold links.
 
 | Case | Vertices | Triangles | Components | Boundary edges |
 | --- | ---: | ---: | ---: | ---: |
@@ -241,8 +247,9 @@ be smaller. Rerun from the seeds stage to apply a change.
 
 TBB processes the independent endpoint and surface seed corrections in parallel.
 Each worker has separate MFA decoder buffers, and accepted seeds are collected
-in grid order for reproducibility. Fiber tracing and mesh growth still use their
-ordered coverage checks. `seeds_report.json` and the final report include the
+in grid order for reproducibility. The tracer skips an endpoint seed within
+`--spatial-tolerance` of any polyline segment already traced for the same
+range point. `seeds_report.json` and the final report include the
 actual `discovery_grid_shape`; seed files save this shape for restart validation.
 
 ## Outputs and interpretation
@@ -275,16 +282,23 @@ or invalid partial result was exported. A successful finite-grid discovery does
 not certify that every component exists in the output. An endpoint with no seed
 hits is not proved empty. Increase `--seed-grid` to examine discovery sensitivity.
 
-The range tolerance is in field units; `epsilon_s=tau/|b-a|`. It is separate from
-spatial tolerance. Curved boundary chords can violate a very tight range bound
-even though their endpoints satisfy `F=q`. Reduce `--fiber-step` or choose a
-range tolerance appropriate to the input scale. Fiber roots are solved more
-accurately than the allowed chord slack to stabilize component matching.
+To keep a candidate triangle, the marcher requires `0 <= tau <= 1` at its
+centroid and at each vertex that does not belong to a traced fiber, including
+untraced box-boundary vertices. At a traced vertex it checks the distance
+between the field value and the assigned range endpoint, with tolerance
+`1e-9`. The report records raw interval violations at all vertices and edge
+midpoints. A straight chord of a curved fiber can have an out-of-range
+midpoint even when both ends map to the assigned endpoint. This midpoint
+value is diagnostic. The residual tolerance controls surface root accuracy.
+The spatial tolerance still controls the curvature-based predictor and seed
+coverage. All field backends use an
+absolute field tolerance of `1e-9` for fiber seeds, traced samples, and box
+contacts. Interior fiber corrections also require the distance to the correction
+plane to be at most `1e-6 * fiber_step`.
 Frozen fiber samples are never moved during surface attachment.
 
-The implementation checks triangle edge midpoints and centroids, not all points
-of a curved preimage. Its checks are numerical evidence, not a global geometric
-error certificate. Discovery, geometry comparisons, and cavity repair use simple
+The reported samples describe the field at discrete locations on the mesh.
+Discovery, geometry comparisons, and cavity repair use simple
 serial scans; this is a correctness prototype for small/moderate meshes.
 Rank loss, failed transverse contacts, insufficient boundary sampling, exhausted
 limits, and failed attachments remain unresolved. Use the report before trusting

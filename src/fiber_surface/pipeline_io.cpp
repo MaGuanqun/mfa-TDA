@@ -229,7 +229,7 @@ void validate_seeds(const Seeds& seeds,const Field& field,const Segment& segment
             segment.gradient(field.jacobian(p)).norm()<=options.derivative_tolerance) throw std::runtime_error("Invalid saved surface seed");
     for (int endpoint=0; endpoint<2; ++endpoint) for (const auto& p:seeds.endpoints[endpoint])
         if (!field.box.contains(p) || !corrector.regular(field.jacobian(p)) ||
-            (field.value(p)-(endpoint?segment.b:segment.a)).norm()>options.residual_tolerance*1.01)
+            !((field.value(p)-(endpoint?segment.b:segment.a)).norm()<=Options::fiber_field_tolerance))
             throw std::runtime_error("Invalid saved endpoint seed");
 }
 

@@ -177,13 +177,15 @@ reach the executable's `main()` catch and produce exit `1`.
 
 **Boundary assembly starts by tracing the shared corner fibers.**
 `assemble_volume_boundary()` first copies the options and sets
-`surface_solve_tolerance = min(1e-10, residual_tolerance)`. This gives surface
-root solves a tighter tolerance than the chord classification may use.
+`surface_solve_tolerance = min(1e-10, residual_tolerance)` to keep roots on
+adjacent side patches accurate.
 
 `assemble_volume_boundary()` passes the closed curve `[q0,q1,q2,q0]` to
 `extract_curve()`. The surface core discovers surface seeds for every directed
 side and endpoint seeds for each distinct range vertex. It traces the
-components of each corner fiber once.
+components of each corner fiber once. Corner seeds, traced samples, and box
+contacts use an absolute field tolerance of `1e-9`. For an interior sample,
+the maximum distance to the correction plane is `1e-6 * fiber_step`.
 
 The inherited tracer follows the normalized tangent
 `grad(f1) × grad(f2)` using RK4 prediction and Newton correction. It follows
@@ -221,9 +223,14 @@ contacts. With no fixed coordinates, its Newton update has the form:
 x_new = x - phi_i(x) * g_i(x) / |g_i(x)|²
 ```
 
-Triangle acceptance also checks segment membership, chord correction errors,
-angles, normals, topology, and conflicts with existing triangles. Hessians
-guide prediction; field and geometry checks decide acceptance.
+To keep a candidate triangle, the side marcher requires the closed segment
+interval at its centroid and each untraced vertex, including vertices on
+the box boundary. At a traced corner-fiber vertex it requires the field
+value to be within `1e-9` of the assigned range corner. The raw segment
+parameter at edge midpoints is diagnostic. The marcher also checks angles,
+normals, topology, and conflicts with existing triangles. Volume validation
+later checks the vertices, edge midpoints, and centroid against the active
+volume constraints.
 
 The side marcher orients triangles toward `+g_i`. The volume retains
 `phi_i >= 0`, so its outward direction is `-g_i`. Assembly explicitly reverses
@@ -232,8 +239,9 @@ each side triangle from `{a,b,c}` to `{a,c,b}` when adding it to the boundary.
 After marching, `finish_box_contacts()` handles a narrow leftover case: a
 short front joins contacts on two different box faces but has not reached
 their common box edge. It solves `phi_i = 0` with both box coordinates fixed
-and adds a triangle only after checking size, angles, orientation, sample
-corrections, topology, and intersections. It leaves traced corner fibers fixed.
+and applies the same range tests at the vertices and centroid before adding
+the triangle. It also checks size, angles, orientation, topology, and
+intersections. It leaves traced corner fibers fixed.
 This repair is counted in `box_contact_triangles`.
 
 **`cap()` closes the selected portions of each box face.** Three side patches
@@ -300,7 +308,6 @@ checks build on one another:
 | Domain and labels | Every vertex is in the field box; every triangle has a patch in `1..9`. Out-of-domain vertices are rejected before field callbacks. |
 | Sampled model agreement | Three vertices, three edge midpoints, and the centroid of every triangle: seven samples from `volume_triangle_samples()`. |
 | Outward orientation | Side normals agree with `-J^T n_i`; cap normals agree with the outward box normal. |
-| Retained-side probes | Correct a facet-center sample, construct an inward direction from active constraints, and seek offsets where the inward point is selected and the outward point is excluded. |
 | Active-constraint independence | At vertices, collect incident range gradients and box normals, normalize them, and check their matrix rank. |
 | Shell containment | Find connected boundary shells, compute signed volumes, and check their signs against nesting depth. |
 | Empirical coverage | Compare field membership with shell-based material membership on the discovery grid, away from the boundary. |
@@ -459,8 +466,8 @@ most useful controls when reading or changing this code:
 | `step` | Nominal side-surface growth scale; also sets several geometric comparison tolerances. It is not a TetGen cell-size request. |
 | `min_step` | Lower growth scale used by the surface marcher. |
 | `fiber_step` | Step along traced corner fibers; controls their shared sampling. |
-| `spatial_tolerance` | Allowed local correction displacement for sampled geometry, in physical coordinates. |
-| `residual_tolerance` | Range-space classification/chord slack and an upper bound on solve tolerances. Must be less than one percent of each range-side length. |
+| `spatial_tolerance` | Maximum distance from an endpoint seed to an existing trace of the same range point for skipping the seed. Also limits local correction displacements for sampled geometry. Both distances use physical coordinates. |
+| `residual_tolerance` | Bounds surface projection residuals and enters volume constraint checks. Must be less than one percent of each range-side length. |
 | `derivative_tolerance` | Threshold used in derivative and rank checks. |
 | `seed_grid` | Starting-point count on the shortest box axis; other counts scale with physical axis length. Default `7`; `0` also selects `7`. |
 | `iterations`, `max_trace_steps` | Limits for nonlinear corrections and fiber tracing. |
@@ -512,7 +519,7 @@ use the corresponding counters:
 | --- | --- |
 | `topology` | Open edges, inconsistent winding, nonmanifold contacts, or intersecting input triangles. |
 | `constraint_failures` | Domain, assigned patch, correction, or active-gradient failures. |
-| `orientation_failures` | Reversed facets, failed retained-side probes, or inconsistent shell nesting. |
+| `orientation_failures` | A missing or misaligned outward normal, or a shell signed volume inconsistent with its nesting depth. |
 | `coverage_misses` | Sampled disagreement between the model selection and the assembled shells. |
 | `max_side_residual`, `max_corner_residual` | Raw field errors relative to a side or shared range corner, including chord samples. |
 | `max_inequality_violation`, `max_spatial_error` | Largest sampled raw violation and largest successful correction distance. |

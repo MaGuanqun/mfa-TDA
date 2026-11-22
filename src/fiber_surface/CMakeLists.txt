@@ -78,7 +78,7 @@ if(BUILD_TESTING)
     endif()
     add_executable(fiber_surface_tests tests.cpp)
     target_link_libraries(fiber_surface_tests PRIVATE fiber_surface_core)
-    foreach(case derivatives seeds contacts polylines sphere closed-sphere strip disconnected)
+    foreach(case derivatives segment-sampling fiber-tolerances seed-coverage seeds contacts box-sliver polylines sphere closed-sphere strip disconnected)
         add_test(NAME fiber_surface_${case} COMMAND fiber_surface_tests ${case})
     endforeach()
     add_test(NAME fiber_surface_cli COMMAND ${CMAKE_COMMAND}
