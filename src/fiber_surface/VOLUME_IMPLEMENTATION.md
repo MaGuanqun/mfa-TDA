@@ -244,6 +244,15 @@ the triangle. It also checks size, angles, orientation, topology, and
 intersections. It leaves traced corner fibers fixed.
 This repair is counted in `box_contact_triangles`.
 
+If two unfinished edges meet at an untraced vertex and their other ends
+lie on one box face, `snap_box_slivers()` tests the vertex against the
+segment between those ends. Its projection must fall inside the segment.
+Both the distance to the segment and the displacement of the face-constrained
+surface correction must be at most `0.01 * step`. The corrected edges and
+incident triangles must pass validation before the two edges join the cap
+outline. This operation reuses the existing vertex and triangles. The
+marcher's duplicate-vertex and intersection checks use `1e-9 * step`.
+
 **`cap()` closes the selected portions of each box face.** Three side patches
 alone need not enclose a volume: in the prism example, the top and bottom
 would remain open. Assembly calls `cap()` once for each of the six box faces.

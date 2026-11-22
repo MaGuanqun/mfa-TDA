@@ -74,6 +74,7 @@ void Extractor::stitch() {
 
 void Extractor::snap_box_slivers() {
     auto& mesh=result_.mesh;
+    const double repair_distance=0.01*options_.step;
     std::map<int,std::vector<int>> neighbors;
     for (const auto& [edge,face]:mesh.boundary) {
         neighbors[edge.first].push_back(edge.second);
@@ -90,19 +91,15 @@ void Extractor::snap_box_slivers() {
         const Vec original=mesh.vertices[tip];
         const Vec& start=mesh.vertices[a];
         const Vec& end=mesh.vertices[b];
-        // A sliver tip lies between its neighbors and within 1% of its shorter
-        // incident edge length from their chord, even when the mesh tolerance is loose.
-        const double bound=std::min(options_.spatial_tolerance,
-                                    .01*std::min((original-start).norm(),(original-end).norm()));
         const Vec chord=end-start;
         auto near_chord=[&](const Vec& x) {
             const double along=(x-start).dot(chord);
             return along>0 && along<chord.squaredNorm() &&
-                   (x-marching_triangles::closest_on_segment(x,start,end)).norm()<=bound;
+                   (x-marching_triangles::closest_on_segment(x,start,end)).norm()<=repair_distance;
         };
         if (!near_chord(original)) continue;
         Vec point=original;
-        if (!corrector_.surface(point,bound,face) || !near_chord(point) ||
+        if (!corrector_.surface(point,repair_distance,face) || !near_chord(point) ||
             field_.box.faces(point,epsilon())!=face) continue;
         const double tau=segment_.parameter(field_.value(point));
         if (!(tau>0 && tau<1)) continue; // Segment ends belong to the traced fibers.

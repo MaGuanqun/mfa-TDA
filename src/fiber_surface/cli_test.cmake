@@ -1,0 +1,17 @@
+file(MAKE_DIRECTORY "${WORK}")
+foreach(args "--step;0" "--a;1,1;--b;1,1" "--a;1,1" "--unknown;value"
+             "--seed-grid;-1" "--seed-grid;1" "--seed-grid;1000000")
+    execute_process(COMMAND "${EXPLICIT}" ${args} RESULT_VARIABLE code OUTPUT_QUIET ERROR_QUIET)
+    if(NOT code EQUAL 1)
+        message(FATAL_ERROR "Invalid input was not rejected: ${args}")
+    endif()
+endforeach()
+execute_process(COMMAND "${EXPLICIT}" --max-triangles 4 --output "${WORK}/partial"
+    RESULT_VARIABLE code OUTPUT_QUIET ERROR_QUIET)
+if(NOT code EQUAL 2 OR NOT EXISTS "${WORK}/partial_report.json")
+    message(FATAL_ERROR "Triangle limit must export a report and return exit status 2")
+endif()
+file(READ "${WORK}/partial_report.json" report)
+if(NOT report MATCHES "\"complete\": false" OR NOT report MATCHES "Triangle limit")
+    message(FATAL_ERROR "Partial report silently claimed completion")
+endif()

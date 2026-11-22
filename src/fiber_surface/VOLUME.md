@@ -123,11 +123,10 @@ the physical `(x,y,time)` domain.
 
 The default triangle has vertices `(0.402,-0.344)`, `(0.429,-0.320)`, and
 `(0.402,-0.296)`. At the default marching step of `0.006`, all three corner
-fibers are traced. Two fronts near the lower time boundary remain open,
-which prevents the cap from closing. The boundary stage exports 164 triangles
-with 14 open edges and stops before tetrahedralization. Reducing only
-`--step` to `0.005` closes the shell with 292 boundary triangles. TetGen
-then fills it with 363 tetrahedra.
+fibers are traced. Correcting one vertex onto the lower time face closes
+the cap. The resulting shell has 176 boundary triangles and zero open edges,
+and TetGen fills it with 212 tetrahedra. At `--step 0.005`, the same selection
+has 292 boundary triangles and 363 tetrahedra.
 
 For another scalar model pair, change `first_coordnet`, `second_coordnet`,
 and the **full training box** (`domain_min`, `domain_max`). The shared surface

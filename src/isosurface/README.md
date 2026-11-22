@@ -7,7 +7,9 @@ with C++17 and Eigen; they do not require MPI, MFA, TBB, or Torch.
 
 ## Build and run
 
-The isosurface executables build with the other enabled project folders. Load
+The default root build has `add_subdirectory(isosurface)` commented out in
+`src/CMakeLists.txt`. Enable that line for the combined explicit and MFA build
+described below, or use the standalone explicit build instructions in this section. Load
 the Spack environment in your current shell, then configure and compile from
 the repository root:
 

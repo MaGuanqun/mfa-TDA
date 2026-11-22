@@ -5,11 +5,14 @@
 *.run
 *.log
 *.sh
+!/fiber_surface_analytical.sh
 !/fiber_surface_coordnet.sh
+!/fiber_surface_mfa.sh
 !/src/fiber_surface/run_pipeline.sh
 !/fiber_volume.sh
 !/isosurface_explicit.sh
 *.cmake
+!/src/fiber_surface/cli_test.cmake
 *.pyc
 !/isosurface_mfa.sh
 !/critical_point_tracking_local.sh

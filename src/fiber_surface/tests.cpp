@@ -11,7 +11,8 @@ static void box_sliver() {
     example.field.box.min.z()=0;
     example.field.value=[](const Vec& x) { return Range(x.x(),x.y()-x.z()); };
     example.field.jacobian=[](const Vec&) { Jacobian j; j << 1,0,0, 0,1,-1; return j; };
-    const Options options;
+    Options options;
+    options.min_angle_degrees=5; // The narrow gap stays open until the box-face repair.
     const unsigned lower_z=1u<<4;
     auto finish=[&](double height,const Vec& apex) {
         Checkpoint state;
@@ -24,15 +25,19 @@ static void box_sliver() {
         return Extractor(example.field,example.segment,options).finish(std::move(state)).result;
     };
     const Vec apex(.25,.07,.07);
-    const auto snapped=finish(1e-5,apex);
+    // In the plane y=z the Euclidean distance to the chord is sqrt(2)*height.
+    const double cutoff_height=0.01*options.step/std::sqrt(2.);
+    const auto snapped=finish(.99*cutoff_height,apex);
     require(snapped.mesh.vertices==std::vector<Vec>{Vec(.2,0,0),Vec(.25,0,0),Vec(.3,0,0),apex} &&
             snapped.mesh.triangles==std::vector<Triangle>{{0,3,1},{1,3,2}},
             "Correct the sliver tip on both the box face and the side surface, preserving connectivity");
     require(snapped.info[1].faces==lower_z && snapped.box_edges.count({0,1}) && snapped.box_edges.count({1,2}),
             "Both sides of the tip must be available to the cap");
-    const auto interior=finish(.003,apex);
-    require(interior.mesh.vertices[1]==Vec(.25,.003,.003) && !interior.info[1].faces,
-            "Spatial tolerance alone must not move an interior point onto the face");
+    const double above=1.01*cutoff_height;
+    const auto interior=finish(above,apex);
+    require(interior.mesh.vertices[1]==Vec(.25,above,above) && !interior.info[1].faces &&
+            !interior.box_edges.count({0,1}) && !interior.box_edges.count({1,2}),
+            "A tip beyond one percent of the nominal step must retain its position and edge labels");
     // Moving the tip onto this apex would collapse both existing facets.
     const auto blocked=finish(1e-5,Vec(.25,0,0));
     require(blocked.mesh.vertices[1]==Vec(.25,1e-5,1e-5) && !blocked.info[1].faces &&
