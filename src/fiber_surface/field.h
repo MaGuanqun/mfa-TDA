@@ -87,17 +87,19 @@ struct RangeCurve {
 
 struct Options {
     static constexpr double fiber_field_tolerance = 1e-9;
-    double step = .2, min_step = .025, fiber_step = .15, spatial_tolerance = .015;
+    static constexpr int default_max_seed_starts = 1000000;
+    double step = .15, min_step = step/8, spatial_tolerance = .075*step;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
     // Optional tighter residual tolerance for surface roots on adjacent patches.
     double surface_solve_tolerance = 0;
     double min_angle_degrees = .1, max_normal_degrees = 55;
     // Count on the shortest physical axis for every field; zero is an alias for 7.
     int seed_grid = 7, iterations = 40, max_trace_steps = 10000;
+    int max_seed_starts = default_max_seed_starts;
     size_t max_triangles = 30000;
-    double fiber_plane_tolerance() const { return 1e-6 * fiber_step; }
+    double fiber_plane_tolerance() const { return 1e-6 * step; }
     void validate(const Field& f, const Segment& segment) const {
-        for (double x : {step, min_step, fiber_step, spatial_tolerance, residual_tolerance, derivative_tolerance})
+        for (double x : {step, min_step, spatial_tolerance, residual_tolerance, derivative_tolerance})
             if (!std::isfinite(x) || x <= 0) throw std::invalid_argument("Steps and tolerances must be positive and finite");
         if (!std::isfinite(surface_solve_tolerance) || surface_solve_tolerance<0 ||
             min_step > step || seed_grid < 0 || seed_grid == 1 || iterations < 1 || max_trace_steps < 4 ||
@@ -149,12 +151,11 @@ Seeds find_seeds(const Field& field, const Segment& segment, const Options& opti
 Result trace_endpoint_fibers(const Field& field, const Segment& segment,
                              const Options& options, const Seeds& seeds);
 
-inline size_t discovery_size(const SeedShape& shape) {
-    // Preserve the previous maximum (100^3), while allowing anisotropic grids.
+inline size_t discovery_size(const SeedShape& shape, int limit=Options::default_max_seed_starts) {
     size_t size=1;
     for (int n:shape) {
-        if (n<1 || size>1000000/size_t(n))
-            throw std::invalid_argument("Seed grid must contain between 1 and 1000000 starting points");
+        if (limit<1 || n<1 || size>size_t(limit)/size_t(n))
+            throw std::invalid_argument("Seed grid exceeds its allocation limit or has an empty axis");
         size*=size_t(n);
     }
     return size;
@@ -168,16 +169,17 @@ inline SeedShape discovery_shape(const Field& field, const Options& options) {
     if (shortest<2) throw std::invalid_argument("--seed-grid must be 0 (default count 7) or at least 2");
     for (int d=0; d<3; ++d) {
         const double n=std::ceil(shortest*(lengths[d]/lengths.minCoeff()));
-        if (!std::isfinite(n) || n>1000000) throw std::invalid_argument("Seed grid exceeds 1000000 starting points");
+        if (!std::isfinite(n) || n>options.max_seed_starts)
+            throw std::invalid_argument("Seed axis exceeds the seed grid allocation limit");
         shape[d]=int(n);
     }
-    discovery_size(shape);
+    discovery_size(shape,options.max_seed_starts);
     return shape;
 }
 
-inline std::vector<Vec> discovery_grid(const Box& box, const SeedShape& shape) {
+inline std::vector<Vec> discovery_grid(const Box& box, const SeedShape& shape, int limit=Options::default_max_seed_starts) {
     std::vector<Vec> points;
-    points.reserve(discovery_size(shape));
+    points.reserve(discovery_size(shape,limit));
     for (int k=0; k<shape[2]; ++k) for (int j=0; j<shape[1]; ++j) for (int i=0; i<shape[0]; ++i) {
         const SeedShape index{i,j,k}; Vec point;
         for (int d=0; d<3; ++d) {
@@ -190,5 +192,8 @@ inline std::vector<Vec> discovery_grid(const Box& box, const SeedShape& shape) {
 }
 inline std::vector<Vec> discovery_grid(const Box& box, int n) {
     return discovery_grid(box,SeedShape{n,n,n});
+}
+inline std::vector<Vec> discovery_grid(const Field& field, const Options& options) {
+    return discovery_grid(field.box,discovery_shape(field,options),options.max_seed_starts);
 }
 } // namespace fiber_surface

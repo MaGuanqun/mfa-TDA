@@ -35,7 +35,9 @@ if(FIBER_ENABLE_VOLUME)
     target_link_libraries(fiber_volume_mfa PRIVATE fiber_volume_core ${libraries})
     add_executable(fiber_volume_coordnet fiber_volume_coordnet.cpp)
     target_link_libraries(fiber_volume_coordnet PRIVATE fiber_volume_core fiber_coordnet_field)
-    install(TARGETS fiber_volume_explicit fiber_volume_mfa fiber_volume_coordnet RUNTIME DESTINATION src/fiber_surface)
+    add_executable(fiber_volume_from_patches fiber_volume_from_patches.cpp)
+    target_link_libraries(fiber_volume_from_patches PRIVATE fiber_volume_core fiber_surface_pipeline)
+    install(TARGETS fiber_volume_explicit fiber_volume_mfa fiber_volume_coordnet fiber_volume_from_patches RUNTIME DESTINATION src/fiber_surface)
 endif()
 if(BUILD_TESTING)
     if(FIBER_ENABLE_VOLUME)
@@ -59,6 +61,9 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/volume_cli_test.py
             --exe $<TARGET_FILE:fiber_volume_explicit>
             --work ${CMAKE_CURRENT_BINARY_DIR}/volume_cli_test)
+        add_test(NAME fiber_volume_patch_restart COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/volume_patch_restart_test.py
+            $<TARGET_FILE_DIR:fiber_volume_from_patches> ${CMAKE_CURRENT_BINARY_DIR}/volume_patch_restart)
     endif()
     add_executable(fiber_surface_mfa_tests mfa_tests.cpp)
     target_link_libraries(fiber_surface_mfa_tests PRIVATE fiber_surface_core ${libraries})

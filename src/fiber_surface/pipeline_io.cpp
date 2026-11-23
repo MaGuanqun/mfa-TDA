@@ -45,7 +45,8 @@ void config_body(std::ostream& out, const RunConfig& c) {
         out<<c.curve.segments.back().b.transpose();
     }
     const auto& o=c.options;
-    out<<"\noptions "<<o.step<<' '<<o.min_step<<' '<<o.fiber_step<<' '<<o.spatial_tolerance<<' '
+    // Keep both step slots in the existing on-disk format and its checkpoint signature.
+    out<<"\noptions "<<o.step<<' '<<o.min_step<<' '<<o.step<<' '<<o.spatial_tolerance<<' '
         <<o.residual_tolerance<<' '<<o.derivative_tolerance<<' '<<o.min_angle_degrees<<' '<<o.max_normal_degrees<<' '
         <<o.seed_grid<<' '<<o.iterations<<' '<<o.max_trace_steps<<' '<<o.max_triangles<<"\nEND\n";
 }
@@ -155,7 +156,10 @@ RunConfig read_config(const fs::path& run) {
         c.curve=RangeCurve(std::move(points));
     }
     in.word("options"); auto& o=c.options;
-    o.step=in.real(); o.min_step=in.real(); o.fiber_step=in.real(); o.spatial_tolerance=in.real();
+    o.step=in.real(); o.min_step=in.real();
+    if (in.real()!=o.step)
+        in.fail("saved fiber and surface steps differ; rerun the seeds stage with one --step");
+    o.spatial_tolerance=in.real();
     o.residual_tolerance=in.real(); o.derivative_tolerance=in.real(); o.min_angle_degrees=in.real(); o.max_normal_degrees=in.real();
     o.seed_grid=in.get<int>(); o.iterations=in.get<int>(); o.max_trace_steps=in.get<int>(); o.max_triangles=in.count();
     in.end(); return c;

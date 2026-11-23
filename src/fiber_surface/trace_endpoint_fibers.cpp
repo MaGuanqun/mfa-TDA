@@ -4,7 +4,7 @@
 namespace fiber_surface {
 void FiberTracer::event(const Vec& x, const std::string& why) { result_.unresolved.push_back({x,why}); }
 
-bool FiberTracer::contact(const Vec& p, const Vec& trial, const Range& q, Vec& x) const {
+bool FiberTracer::contact(const Vec& p, const Vec& trial, const Range& q, double h, Vec& x) const {
     double fraction=1;
     const Vec delta=trial-p;
     for (int d=0; d<3; ++d) {
@@ -12,57 +12,70 @@ bool FiberTracer::contact(const Vec& p, const Vec& trial, const Range& q, Vec& x
         if (delta[d]<0) fraction=std::min(fraction,(c_.field.box.min[d]-p[d])/delta[d]);
     }
     x=p+std::max(0.,fraction)*delta;
-    const unsigned faces=c_.field.box.faces(x,1e-10*c_.options.step);
+    const unsigned faces=c_.field.box.faces(x,1e-10*h);
     c_.field.box.fix(x,faces);
-    if (!faces || !c_.fiber(x,q,Vec::Zero(),x,2*c_.options.fiber_step,faces)) return false;
-    return (x-p).dot(delta)>=-1e-10*c_.options.step*delta.norm();
+    if (!faces || !c_.fiber(x,q,Vec::Zero(),x,2*h,faces)) return false;
+    return (x-p).dot(delta)>=-1e-10*h*delta.norm();
+}
+
+// A step either reaches a verified contact or returns a corrected, regular sample.
+const char* FiberTracer::try_step(const Sample& start, const Range& q, double sign, double h, Sample& next) const {
+    const Vec& p=start.point;
+    next.on_box=false;
+    auto reach_box=[&](const Vec& trial) -> const char* {
+        next.on_box=contact(p,trial,q,h,next.point);
+        return next.on_box ? nullptr : "Fiber-box contact correction failed";
+    };
+    std::array<Vec,4> k;
+    k[0]=start.tangent;
+    for (int i=1; i<4; ++i) {
+        const Vec trial=p+(i==3 ? h : .5*h)*k[i-1];
+        if (!c_.field.box.contains(trial)) return reach_box(trial);
+        if (!c_.tangent(trial,k[i])) return "Fiber RK4 stage lost Jacobian rank";
+        k[i]*=sign;
+    }
+    const Vec predictor=p+h*(k[0]+2*k[1]+2*k[2]+k[3])/6;
+    if (!c_.field.box.contains(predictor)) return reach_box(predictor);
+    next.point=predictor;
+    if (!c_.fiber(next.point,q,start.tangent,predictor,h)) {
+        if (!c_.field.box.contains(next.point)) return reach_box(next.point);
+        return "Interior fiber Newton correction failed";
+    }
+    if (!c_.tangent(next.point,next.tangent)) return "Fiber correction reached rank loss";
+    next.tangent*=sign;
+    return nullptr;
+}
+
+const char* FiberTracer::advance(const Sample& start, const Range& q, double sign, double h, Sample& next) const {
+    const char* failure=try_step(start,q,sign,h,next);
+    if (!failure || h/2<c_.options.min_step) return failure;
+    // Keep the nominal output spacing. Both halves must succeed before emitting
+    // a sample, unless the first half reaches a verified domain boundary.
+    Sample middle;
+    if (const char* first=advance(start,q,sign,h/2,middle)) return first;
+    if (middle.on_box) { next=middle; return nullptr; }
+    return advance(middle,q,sign,h/2,next);
 }
 
 FiberTracer::Trace FiberTracer::direction(const Vec& seed, const Range& q, double sign) {
     Trace trace; trace.points.push_back(seed);
-    const double h=c_.options.fiber_step;
-    Vec t;
-    if (!c_.tangent(seed,t)) { event(seed,"Endpoint fiber lost Jacobian rank"); return trace; }
+    const double h=c_.options.step;
+    Sample current{seed,Vec::Zero()};
+    if (!c_.tangent(seed,current.tangent)) { event(seed,"Endpoint fiber lost Jacobian rank"); return trace; }
+    current.tangent*=sign;
     for (int step=0; step<c_.options.max_trace_steps; ++step) {
-        const Vec p=trace.points.back();
-        t*=sign;
-        Vec v2,v3,v4,predictor;
-        bool hit=false, failed=false; Vec contact_point;
-        auto stage=[&](const Vec& x, Vec& v) {
-            if (hit || failed) return;
-            if (!c_.field.box.contains(x)) {
-                hit=contact(p,x,q,contact_point);
-                failed=!hit; return;
-            }
-            if (!c_.tangent(x,v)) { failed=true; return; }
-            v*=sign;
-        };
-        stage(Vec(p+.5*h*t),v2);
-        if (!hit && !failed) stage(Vec(p+.5*h*v2),v3);
-        if (!hit && !failed) stage(Vec(p+h*v3),v4);
-        if (!hit && !failed) {
-            predictor=p+h*(t+2*v2+2*v3+v4)/6;
-            if (!c_.field.box.contains(predictor)) {
-                hit=contact(p,predictor,q,contact_point); failed=!hit;
-            } else {
-                Vec corrected=predictor;
-                if (!c_.fiber(corrected,q,t,predictor,h)) {
-                    if (!c_.field.box.contains(corrected)) hit=contact(p,corrected,q,contact_point);
-                    failed=!hit;
-                } else predictor=corrected;
-            }
-        }
-        if (failed) { event(p,"RK4 stage, fiber correction, or fiber-box contact failed"); return trace; }
-        if (hit) {
-            if ((contact_point-p).norm()>h*1e-7) trace.points.push_back(contact_point);
+        Sample next{Vec::Zero(),Vec::Zero()};
+        if (const char* reason=advance(current,q,sign,h,next)) { event(current.point,reason); return trace; }
+        if (next.on_box) {
+            if ((next.point-current.point).norm()>h*1e-7) trace.points.push_back(next.point);
             trace.complete=true; return trace;
         }
-        if (!c_.tangent(predictor,t)) { event(p,"Fiber correction reached rank loss"); return trace; }
-        if (trace.points.size()>=4 && (predictor-seed).norm()<=h) {
+        if (trace.points.size()>=4 && (next.point-seed).norm()<=h) {
             trace.closed=true; trace.complete=true; return trace;
         }
-        if ((predictor-p).norm()<h*.1) { event(p,"Fiber trace made insufficient progress"); return trace; }
-        trace.points.push_back(predictor);
+        if ((next.point-current.point).norm()<h*.1) { event(current.point,"Fiber trace made insufficient progress"); return trace; }
+        trace.points.push_back(next.point);
+        current=next;
     }
     event(trace.points.back(),"Fiber trace step limit reached"); return trace;
 }

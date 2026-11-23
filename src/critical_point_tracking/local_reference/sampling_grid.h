@@ -41,7 +41,9 @@ inline Dataset dataset(const std::string& name) {
         return {{-.5, -.5, 0}, {.5, 2.5, 1.5}, {10, 30, 15}};
     if(name == "vortex_street_3d")
         return {{-.5, -.5, 13.5}, {7.5, .5, 15}, {80, 10, 15}};
-    throw std::invalid_argument("--dataset must be boussinesq_3d or vortex_street_3d");
+    if(name == "hurricane_isabel_3d")
+        return {{0, 0, 0}, {499, 499, 99}, {499, 499, 99}};
+    throw std::invalid_argument("Unknown sampling dataset: " + name);
 }
 
 struct Grid {

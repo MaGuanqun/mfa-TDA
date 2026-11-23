@@ -185,7 +185,7 @@ adjacent side patches accurate.
 side and endpoint seeds for each distinct range vertex. It traces the
 components of each corner fiber once. Corner seeds, traced samples, and box
 contacts use an absolute field tolerance of `1e-9`. For an interior sample,
-the maximum distance to the correction plane is `1e-6 * fiber_step`.
+the maximum distance to the correction plane is `1e-6 * step`.
 
 The inherited tracer follows the normalized tangent
 `grad(f1) × grad(f2)` using RK4 prediction and Newton correction. It follows
@@ -472,9 +472,8 @@ most useful controls when reading or changing this code:
 
 | Option | Role in this implementation |
 | --- | --- |
-| `step` | Nominal side-surface growth scale; also sets several geometric comparison tolerances. It is not a TetGen cell-size request. |
+| `step` | Fixed RK4 step along corner fibers and nominal growth step for side surfaces. Also scales geometric comparison tolerances. |
 | `min_step` | Lower growth scale used by the surface marcher. |
-| `fiber_step` | Step along traced corner fibers; controls their shared sampling. |
 | `spatial_tolerance` | Maximum distance from an endpoint seed to an existing trace of the same range point for skipping the seed. Also limits local correction displacements for sampled geometry. Both distances use physical coordinates. |
 | `residual_tolerance` | Bounds surface projection residuals and enters volume constraint checks. Must be less than one percent of each range-side length. |
 | `derivative_tolerance` | Threshold used in derivative and rank checks. |
@@ -482,16 +481,16 @@ most useful controls when reading or changing this code:
 | `iterations`, `max_trace_steps` | Limits for nonlinear corrections and fiber tracing. |
 | `max_triangles` | Surface triangle budget per range side; not a limit on all caps or on tetrahedra. |
 
-In the CLI, omitted `min_step`, `fiber_step`, and `spatial_tolerance` are
-computed from the selected `step` as `step/8`, `0.75*step`, and `0.075*step`.
+In the CLI, omitted `min_step` and `spatial_tolerance` are computed from
+the shared `step` as `step/8` and `0.075*step`.
 Direct C++ use of `Options` retains its member defaults unless you update
 them yourself. The analytical `curved-prism` and `sphere` CLI examples set
 `residual_tolerance` to `0.005` before parsing overrides; most examples start
 with `1e-9`. The MFA CLI initially sets `step` to one twentieth of the model
 intersection box's shortest side, before applying CLI options.
 
-Reducing `step` refines boundary growth, reducing `fiber_step` refines shared
-curves, and increasing `seed_grid` supplies more discovery starts. None alone
+Reducing `step` refines both the shared curves and the side patches.
+Increasing `seed_grid` supplies more discovery starts. None alone
 guarantees successful closure or discovery of every component.
 
 **Analytical and MFA inputs use the same geometry code.** Both provide the

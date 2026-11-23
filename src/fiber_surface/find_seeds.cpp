@@ -7,7 +7,7 @@ Seeds find_seeds(const Field& field, const Segment& segment, const Options& opti
     options.validate(field,segment);
     const auto start=std::chrono::steady_clock::now();
     const auto shape=discovery_shape(field,options);
-    const auto grid=discovery_grid(field.box,shape);
+    const auto grid=discovery_grid(field.box,shape,options.max_seed_starts);
     Corrector corrector(field,segment,options);
     Seeds seeds;
     seeds.starting_points=grid.size();

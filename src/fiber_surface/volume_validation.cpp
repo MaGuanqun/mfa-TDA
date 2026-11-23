@@ -193,7 +193,7 @@ BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,con
         else b.unresolved.push_back({center,"No verified ray-midpoint seed for cavity"});
     }
     // Independent empirical coverage, not a certification of absent components.
-    for (const Vec& p:discovery_grid(f.box,discovery_shape(f,o))) {
+    for (const Vec& p:discovery_grid(f,o)) {
         if (member(p)!=material(p) && clearance(p,m)>2*o.spatial_tolerance) ++r.coverage_misses;
     }
     if (r.constraint_failures || r.orientation_failures || r.coverage_misses)

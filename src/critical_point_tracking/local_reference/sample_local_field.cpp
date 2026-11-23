@@ -35,7 +35,8 @@ void usage() {
         "--points-per-span is MFA-only: N equal intervals per span,\n"
         "spacing = span width/N, bounds snapped outward to the domain grid.\n"
         "This mode reads MFA knots even for --dry-run. Otherwise nominal spacing\n"
-        "is 0.1/ratio with exact box endpoints. Outputs: PREFIX.bin and .json.\n";
+        "is the dataset's base interval divided by ratio, with exact box endpoints.\n"
+        "Outputs: PREFIX.bin and .json.\n";
 }
 
 double number(const std::string& text) {

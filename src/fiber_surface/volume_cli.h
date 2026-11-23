@@ -31,6 +31,8 @@ inline void volume_options(Arguments& args,Field& field,RangeTriangle& triangle,
     }
     if(args.has("--a") || args.has("--b"))throw std::invalid_argument("Use --q0 --q1 --q2 for a filled range triangle");
     common_options(args,field,options);
+    options.max_seed_starts=args.integer("--max-seed-starts",options.max_seed_starts);
+    discovery_shape(field,options);
     for(const auto& s:triangle.sides)options.validate(field,s);
 }
 inline int run_model_volume(Arguments& args, Field& field, const std::string& default_prefix) {
@@ -45,7 +47,7 @@ inline int run_model_volume(Arguments& args, Field& field, const std::string& de
     args.finish();
     if (inspect) {
         Range lo=Range::Constant(std::numeric_limits<double>::infinity()),hi=-lo;
-        for (const Vec& x:discovery_grid(field.box,discovery_shape(field,options))) {
+        for (const Vec& x:discovery_grid(field,options)) {
             const Range y=field.value(x);
             lo=lo.cwiseMin(y);
             hi=hi.cwiseMax(y);
@@ -58,8 +60,10 @@ inline int run_model_volume(Arguments& args, Field& field, const std::string& de
 inline void volume_help() {
     std::cout<<"  --q0 u,v --q1 u,v --q2 u,v  counterclockwise range triangle\n"
         <<"  --min x,y,z --max x,y,z      spatial sub-box\n"
-        <<"  --step H --fiber-step H --spatial-tolerance E --residual-tolerance E\n"
+        <<"  --step H                  shared fiber tracing and surface marching step\n"
+        <<"  --spatial-tolerance E --residual-tolerance E\n"
         <<"  --seed-grid N --max-triangles N (per side)\n"
+        <<"  --max-seed-starts N          seed lattice allocation limit (default 1000000)\n"
         <<"  --stage all|boundary|fill    full extraction (default), export boundary, or fill from PLY\n"
         <<"  --boundary-input FILE        fill a saved boundary (default for fill: PREFIX_boundary.ply)\n"
         <<"  --output PREFIX              prefix for boundary meshes, tetrahedral VTK and JSON report\n"

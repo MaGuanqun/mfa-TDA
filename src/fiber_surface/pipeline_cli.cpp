@@ -55,7 +55,11 @@ int stage_main(Stage stage,int argc,char** argv) {
                     <<"    Use float64 scalar exports and range endpoints in model-output units.\n"
                     <<"  All resolved parameters are saved in run.conf.\n";
                 common_help();
-            } else std::cout<<"Reads run.conf and preceding stage files. To change parameters, restart at find_seeds.\n";
+            } else {
+                std::cout<<"Reads run.conf and preceding stage files. To change parameters, restart at find_seeds.\n";
+                if (stage==Stage::marching || stage==Stage::stitching)
+                    std::cout<<"  --segment I   process only zero-based range segment I\n";
+            }
             return 0;
         }
         const std::string directory=args.take("--run-dir");
@@ -78,22 +82,27 @@ int stage_main(Stage stage,int argc,char** argv) {
             }
             return 0;
         }
+        const bool single = (stage==Stage::marching || stage==Stage::stitching) && args.has("--segment");
+        const int side = single ? args.integer("--segment",0) : 0;
         args.finish();
         const auto config=read_config(run);
+        if (side<0 || side>=config.curve.size()) throw std::invalid_argument("Segment index outside the saved range curve");
         auto loaded=load_field(config,true);
         const auto& curve=config.curve;
         const auto options=curve_options(curve,config.options);
-        std::vector<Seeds> seeds;
+        std::vector<Seeds> seeds(curve.size());
         if (stage==Stage::fibers || stage==Stage::marching) {
             for (int i=0; i<curve.size(); ++i) {
-                seeds.push_back(read_seeds(patch_directory(run,curve,i),config));
-                validate_seeds(seeds.back(),loaded.field,curve.segments[i],options);
+                if (single && i!=side) continue;
+                seeds[i]=read_seeds(patch_directory(run,curve,i),config);
+                validate_seeds(seeds[i],loaded.field,curve.segments[i],options);
             }
         }
         std::vector<Result> patches;
         if (stage==Stage::fibers) patches=trace_curve_fibers(loaded.field,curve,options,seeds);
         int status=0;
         for (int i=0; i<curve.size(); ++i) {
+            if (single && i!=side) continue;
             const auto dir=patch_directory(run,curve,i);
             if (stage==Stage::evaluation) {
                 patches.push_back(read_checkpoint(dir,config,Stage::stitching,i).result);

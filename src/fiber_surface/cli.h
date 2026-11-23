@@ -67,9 +67,12 @@ inline void common_options(Arguments& args, Field& field, Options& options) {
         if (!field.box.contains(lo) || !field.box.contains(hi)) throw std::invalid_argument("Requested box is outside the model domain");
         field.box.min=lo; field.box.max=hi;
     }
-    options.step=args.number("--step",options.step);
+    const bool has_fiber_step=args.has("--fiber-step");
+    const double fiber_step=args.number("--fiber-step",options.step);
+    options.step=args.number("--step",fiber_step);
+    if (has_fiber_step && fiber_step!=options.step)
+        throw std::invalid_argument("--step and --fiber-step must agree. Use --step for both tracing and marching.");
     options.min_step=args.number("--min-step",options.step/8);
-    options.fiber_step=args.number("--fiber-step",options.step*.75);
     options.spatial_tolerance=args.number("--spatial-tolerance",options.step*.075);
     options.residual_tolerance=args.number("--residual-tolerance",options.residual_tolerance);
     options.derivative_tolerance=args.number("--derivative-tolerance",options.derivative_tolerance);
@@ -92,7 +95,8 @@ inline void common_help() {
         <<"  --polyline 'u,v;u,v;...'  ordered range vertices; repeat the first to close\n"
         <<"  --min x,y,z --max x,y,z  spatial sub-box\n"
         <<"  --output PREFIX       OBJ, VTK, fiber VTK and JSON report\n"
-        <<"  --step H --min-step H --fiber-step H (physical units)\n"
+        <<"  --step H                 shared fiber tracing and surface marching step (physical units)\n"
+        <<"  --min-step H             minimum fiber retry step and marching height recovery threshold\n"
         <<"  --spatial-tolerance E --residual-tolerance E --derivative-tolerance E\n"
         <<"  --seed-grid N         N seeds on the shortest axis; other counts = ceil(N * length / shortest)\n"
         <<"                        default 7 for all fields; 0 also selects 7\n"

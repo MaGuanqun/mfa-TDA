@@ -113,6 +113,13 @@ static void seeds() {
     bool rejected=false;
     try { discovery_shape(e.field,options); } catch (const std::invalid_argument&) { rejected=true; }
     require(rejected,"Excessive grid allocation must be rejected");
+    e.field.box={Vec::Zero(),Vec(499,499,99)};
+    options.seed_grid=40;
+    rejected=false;
+    try { discovery_shape(e.field,options); } catch (const std::invalid_argument&) { rejected=true; }
+    require(rejected,"Isabel seed grid needs an explicit larger allocation limit");
+    options.max_seed_starts=1632160;
+    require(discovery_shape(e.field,options)==SeedShape{202,202,40},"Full Isabel discovery grid");
 }
 
 static void polylines() {
@@ -233,7 +240,7 @@ static void fiber_tolerances() {
         }
     }
     for (double h : {.1, .5}) {
-        options.fiber_step=h;
+        options.step=h;
         for (double distance : {1e-6*h, 1.1e-6*h}) {
             Vec sample(0,0,distance);
             require(corrector.fiber(sample,q,normal,anchor,1)==(distance<=1e-6*h),"Fiber plane tolerance must scale with the trace step");
@@ -244,13 +251,42 @@ static void fiber_tolerances() {
     const auto sphere=analytical_field("sphere");
     const Segment segment(Range(1,0),Range(1,.5));
     Options coarse;
-    coarse.fiber_step=.925;
+    coarse.step=.925;
     coarse.max_trace_steps=6;
     Seeds seeds;
     seeds.endpoints[0].push_back(Vec::UnitX());
     const Result loop=trace_endpoint_fibers(sphere.field,segment,coarse,seeds);
     require(loop.unresolved.empty() && loop.fibers.size()==1 && loop.fibers[0].closed &&
             loop.fibers[0].vertices.size()==6,"A fiber must close on its first eligible return to the seed");
+
+    // The unit equator is regular, but a full RK4 midpoint from (1,0,0)
+    // lands exactly on the rank-deficient cylinder r^2=1+h^2/4.
+    Field cylinder=sphere.field;
+    constexpr double h=.5, critical_radius2=1+h*h/4;
+    cylinder.value=[](const Vec& p) {
+        const double r2=p.head<2>().squaredNorm();
+        return Range(r2,p.z()*(r2-critical_radius2));
+    };
+    cylinder.jacobian=[](const Vec& p) {
+        Jacobian j;
+        j << 2*p.x(),2*p.y(),0,2*p.x()*p.z(),2*p.y()*p.z(),p.head<2>().squaredNorm()-critical_radius2;
+        return j;
+    };
+    Options retry;
+    retry.step=retry.min_step=h;
+    const Result rejected=trace_endpoint_fibers(cylinder,segment,retry,seeds);
+    require(!rejected.unresolved.empty() && rejected.fibers.empty(),"Full RK4 step should hit the singular cylinder");
+    retry.min_step=h/8;
+    const Result recovered=trace_endpoint_fibers(cylinder,segment,retry,seeds);
+    require(recovered.unresolved.empty() && recovered.fibers.size()==1 && recovered.fibers[0].closed,
+            "Subdividing rejected steps must recover the regular closed fiber");
+    const auto& ids=recovered.fibers[0].vertices;
+    for (size_t i=1; i<ids.size(); ++i) {
+        const Vec& p=recovered.mesh.vertices[ids[i]];
+        const double length=(p-recovered.mesh.vertices[ids[i-1]]).norm();
+        require((cylinder.value(p)-segment.a).norm()<=Options::fiber_field_tolerance &&
+                length>.75*h && length<1.05*h,"Only nominal-spaced fiber samples should be emitted");
+    }
 }
 
 static void fiber_seed_coverage() {
@@ -262,7 +298,7 @@ static void fiber_seed_coverage() {
     seeds.endpoints[0]={left,right};
     seeds.endpoints[1]={other};
     Options options;
-    options.fiber_step=.25; // The closest point to right is halfway along an edge of the left trace.
+    options.step=.25; // The closest point to right is halfway along an edge of the left trace.
     for (double tolerance : {gap, gap/2}) {
         options.spatial_tolerance=tolerance;
         const Result result=trace_endpoint_fibers(field,segment,options,seeds);

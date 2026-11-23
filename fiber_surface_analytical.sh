@@ -5,7 +5,7 @@ set -eo pipefail
 # Stage: all (default), seeds, fibers, march, stitch, evaluate.
 # Edit these seed-stage parameters, then rerun all stages to apply the change.
 # --seed-grid sets the count on the shortest axis; other counts scale with length.
-parameters=(--step 0.2 --fiber-step 0.15 --spatial-tolerance 0.015
+parameters=(--step 0.15 --spatial-tolerance 0.015
             --residual-tolerance 1e-9 --seed-grid 7 --max-triangles 30000)
 
 fiber_repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

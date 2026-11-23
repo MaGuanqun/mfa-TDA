@@ -139,7 +139,7 @@ void write_outputs(const std::string& prefix, const Result& r, const Report& rep
     }
     json<<','<<"\n  \"domain_min\": ["<<field.box.min[0]<<','<<field.box.min[1]<<','<<field.box.min[2]<<"],"
         <<"\n  \"domain_max\": ["<<field.box.max[0]<<','<<field.box.max[1]<<','<<field.box.max[2]<<"],"
-        <<"\n  \"step\": "<<options.step<<",\n  \"fiber_step\": "<<options.fiber_step
+        <<"\n  \"step\": "<<options.step<<",\n  \"fiber_step\": "<<options.step
         <<",\n  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance
         <<",\n  \"fiber_plane_tolerance\": "<<options.fiber_plane_tolerance()
         <<",\n  \"spatial_tolerance\": "<<options.spatial_tolerance<<",\n  \"range_tolerance\": "<<options.residual_tolerance

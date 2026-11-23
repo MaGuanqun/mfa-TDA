@@ -8,7 +8,7 @@ int main(int argc,char** argv) {
         const std::string name=argc>1?argv[1]:"prism";
         auto e=volume_example(name=="validation"||name=="box"?"prism":name); Options o;
         if(name=="curved-prism" || name=="sphere")o.residual_tolerance=.005;
-        if(name=="hollow-cylinder") {o.step=.25;o.min_step=o.step/8;o.fiber_step=.75*o.step;o.spatial_tolerance=.075*o.step;}
+        if(name=="hollow-cylinder") {o.step=.25;o.min_step=o.step/8;o.spatial_tolerance=.075*o.step;}
         if(name=="box")e.triangle=RangeTriangle(Range(-10,-10),Range(20,-10),Range(-10,20));
         auto r=extract_volume(e.field,e.triangle,o);
         write_volume((std::filesystem::current_path()/("volume_test_"+name)/"volume").string(),r,e.field,e.triangle,o);

@@ -84,7 +84,8 @@ The analytical case uses the planar prism. The MFA case uses
 `build/src/hurricane_isabel_3d/{Pf30_3d,TCf30_3d}.mfa`. Set `FIRST_MFA` and
 `SECOND_MFA` if the pressure and temperature files are elsewhere.
 Each model writes under `build/fiber-volume-results/` in its own directory
-(`vortex_street_3d_2_variables/`, `analytical_prism/`, or `hurricane_isabel_3d/`). Set `FIBER_RESULTS_ROOT`
+(`vortex_street_3d_2_variables_full/{up,down}/`, `analytical_prism/`, or
+`hurricane_isabel_3d_full/{1200,1300}/`). Set `FIBER_RESULTS_ROOT`
 to use a different root, and `FIBER_SKIP_BUILD=1` to reuse a build.
 
 The **boundary** stage calls the shared fiber-surface extractor on the three
@@ -113,31 +114,38 @@ the same model and selection to both invocations. A direct executable run
 with the default `--stage all` passes the boundary to TetGen in memory and
 also exports the PLY.
 
+If the staged surface pipeline has saved a closed, counterclockwise triangle,
+each side can resume from its traced fibers. In the Spack environment use
+`fiber_march_surface --run-dir DIR --segment I` followed by
+`fiber_stitch_surface --run-dir DIR --segment I` for each zero-based side.
+Then run `fiber_volume_from_patches --run-dir DIR --output PREFIX`. It reads
+the three stitched checkpoints, checks their input hashes, joins their shared
+fibers, and applies the same cap construction, validation and fill as the
+direct extractor. The assembly report's first timing starts at cap assembly.
+Individual stage reports contain the earlier tracing and marching times.
+
 ## CoordNet example
 
 The script loads the two float64 TorchScript checkpoints in
-`CoordNet/Exp/vortex_street_3d_2_variables/`. Edit `q0`, `q1`, and `q2`
-in counterclockwise order to select a filled triangle in the models'
-independently normalized velocity components. The output measures volume in
-the physical `(x,y,time)` domain.
-
-The default triangle has vertices `(0.402,-0.344)`, `(0.429,-0.320)`, and
-`(0.402,-0.296)`. At the default marching step of `0.006`, all three corner
-fibers are traced. Correcting one vertex onto the lower time face closes
-the cap. The resulting shell has 176 boundary triangles and zero open edges,
-and TetGen fills it with 212 tetrahedra. At `--step 0.005`, the same selection
-has 292 boundary triangles and 363 tetrahedra.
-
-For another scalar model pair, change `first_coordnet`, `second_coordnet`,
-and the **full training box** (`domain_min`, `domain_max`). The shared surface
-and volume adapter uses these bounds to normalize coordinates and pass them to
-the models in `(time,y,x)` order. Change `box_min` and `box_max` to crop the
-extraction. Keep the same models, boxes, and range triangle when resuming a fill.
+`CoordNet/Exp/vortex_street_3d_2_variables/`. Both queries span the physical
+`(x,y,t)` domain `[-0.5,7.5] × [-0.5,0.5] × [13.5,15]`. In velocity units the
+triangles share the edge from `(0.60,0)` to `(0.90,0)`. Their third vertices
+are `(0.75,0.35)` for `up` and `(0.75,-0.35)` for `down`.
+[model_experiments.sh](model_experiments.sh) supplies the normalized range
+coordinates to both extractors. Keep the same query when resuming a fill.
 
 ```bash
 ./fiber_volume.sh coordnet boundary
 ./fiber_volume.sh coordnet fill
+./fiber_volume.sh coordnet all down
 ```
+
+To estimate the selected space–time volumes and the spatial areas at
+`t = 13.8, 14.1, 14.4` directly from the fitted velocities, run
+`python src/fiber_surface/sample_wake_selections.py` in the CoordNet Python
+environment. It classifies 100,000 uniform points per estimate, uses the
+training extrema to recover velocity units, and prints the hit counts and
+measures as JSON.
 
 To sample the output range when choosing a triangle, run `fiber_volume_coordnet`
 with `--inspect`, the model paths (`--first`, `--second`), the training bounds
@@ -149,8 +157,7 @@ with `--inspect`, the model paths (`--first`, `--second`), the training bounds
 source ./load-env.sh
 build/src/fiber_surface/fiber_volume_explicit --example prism \
   --output build/fiber-volume-results/analytical_prism/volume
-build/src/fiber_surface/fiber_volume_explicit --example curved-prism \
-  --output build/fiber-volume-results/analytical_curved_prism/volume
+./src/fiber_surface/experiment/run_curved_prism.sh
 ```
 
 The planar example is exactly the paper's `F=(x,y)`,
@@ -159,16 +166,20 @@ The planar example is exactly the paper's `F=(x,y)`,
 `F=(x+z²/2,y+z²/2)`, `box=[-2,2]^2 x [-1,1]`. Each horizontal section is a
 translated unit right triangle, so its exact volume is `1`.
 
-Both default to step `0.2`, fiber step `0.15`, and spatial tolerance `0.015`.
+The analytical executable defaults to a shared tracing and marching step of `0.15`.
+The manuscript's curved-prism run sets `--step 0.1 --spatial-tolerance 0.015
+--residual-tolerance 0.005 --seed-grid 10`, giving a 20 × 20 × 10 seed lattice.
+The [curved-prism experiment](experiment/README.md) builds the extractor,
+computes the measurements and renders both manuscript figures.
 As in the MFA and CoordNet examples, corner fibers use an absolute field
-tolerance of `1e-9` and an interior plane tolerance of `1e-6 * fiber_step`.
+tolerance of `1e-9` and an interior plane tolerance of `1e-6 * step`.
 On the curved prism, a chord along the fiber of `(0,0)` maps at its midpoint
 to `(-Δz²/8,-Δz²/8)`, where `Δz` is the difference in endpoint heights.
 This midpoint falls outside the segment interval on both axis-aligned sides.
 The side marcher records that value and tests each traced vertex against
 its assigned range corner. The two side patches can therefore share the chord.
 Volume validation separately checks a local correction at the chord midpoint.
-Use `--step`, `--fiber-step`,
+Use `--step`,
 `--spatial-tolerance`, `--residual-tolerance`, and `--seed-grid` for resolution
 studies. Smaller steps do not guarantee successful front closure on every field;
 failed fronts are reported, and filling is blocked.
@@ -195,7 +206,7 @@ ctest --test-dir build -R '^fiber_volume_mfa_adapter$' --output-on-failure
 build/src/fiber_surface/fiber_volume_mfa \
   --first build/src/fiber_surface/fiber_volume_mfa_fixture/curved-prism.mfa \
   --q0 0,0 --q1 1,0 --q2 0,1 \
-  --step 0.2 --fiber-step 0.15 --spatial-tolerance 0.015 \
+  --step 0.15 --spatial-tolerance 0.015 \
   --residual-tolerance 0.005 \
   --output build/fiber-volume-results/mfa_curved_prism/volume
 ```
@@ -204,7 +215,16 @@ The default variables in a single file are `--variable1 0 --variable2 1`.
 For separate scalar files the defaults are both zero. `--block1` and `--block2`
 select blocks. Use `--inspect` to sample the field range without extracting.
 
-The existing Hurricane Isabel pressure/temperature models were also tested on
+Run `./fiber_volume.sh mfa all 1200` and `./fiber_volume.sh mfa all 1300`
+for the nested pressure–temperature triangles on the full model domain
+`[0,499] × [0,499] × [0,99]`. The third vertex is `(-1200,-22)` or
+`(-1300,-22)`. Both share the edge from `(-1100,-27)` to `(-1100,-22)`.
+With VTK and NumPy installed, `python src/fiber_surface/check_isabel_grid.py`
+compares the two meshes with all 25 million source-grid points. It reads the
+original component binaries from `build/examples/hurricane_isabel/` and
+accepts the directory containing `1200/` and `1300/` as an optional argument.
+
+The Hurricane Isabel pressure/temperature models were previously tested on
 the same local box as the surface example. This triangle selects the side with
 pressure at least `-1100`; the other two range edges lie outside the sampled
 local range:
@@ -216,7 +236,7 @@ build/src/fiber_surface/fiber_volume_mfa \
   --second build/src/hurricane_isabel_3d/TCf30_3d.mfa \
   --q0 -1100,-40 --q1 10000,-40 --q2 -1100,0 \
   --min 240,240,45 --max 260,260,55 \
-  --step 1 --fiber-step 0.6 --spatial-tolerance 0.08 \
+  --step 1 --spatial-tolerance 0.08 \
   --residual-tolerance 0.005 --seed-grid 7 --max-triangles 8000 \
   --output build/fiber-volume-results/hurricane_isabel_3d/volume
 ```
@@ -230,7 +250,8 @@ consistency checks against the MFA model.
 
 ## Measured reference results
 
-The analytical and exact polynomial MFA prism runs pass closure, model checks,
+These archived runs used a fiber step of 0.75 times the listed surface step.
+The analytical and exact polynomial MFA prism runs passed closure, model checks,
 and tetrahedral conformity. Cell counts can differ under floating-point tie
 breaking; both representations agree on the enclosed volume.
 

@@ -179,10 +179,12 @@ void compact(VolumeBoundary& b) {
 }
 } // namespace
 VolumeBoundary assemble_volume_boundary(const Field& f,const RangeTriangle& range,const Options& requested) {
-    VolumeBoundary b;
     const RangeCurve loop({range.corners[0],range.corners[1],range.corners[2],range.corners[0]});
     const Options o=curve_options(loop,requested);
-    auto sides=extract_curve(f,loop,o);
+    return assemble_volume_boundary(f,range,o,extract_curve(f,loop,o));
+}
+VolumeBoundary assemble_volume_boundary(const Field& f,const RangeTriangle& range,const Options& o,Result sides) {
+    VolumeBoundary b;
     b.mesh.vertices=std::move(sides.mesh.vertices);
     b.unresolved=std::move(sides.unresolved);
     b.box_contact_triangles=sides.box_contact_triangles;

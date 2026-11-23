@@ -2,6 +2,7 @@
 #include "../isosurface/crack_closing.h"
 #include <chrono>
 #include <deque>
+#include <iostream>
 
 namespace fiber_surface {
 Extractor::Extractor(Field field, Segment segment, Options options)
@@ -288,6 +289,9 @@ void Extractor::grow() {
         const Edge e=queue.front(); queue.pop_front(); if (!active(e)) continue;
         const size_t before=result_.mesh.triangles.size();
         if (!advance(e)) continue;
+        const size_t after=result_.mesh.triangles.size();
+        if (after/1000>before/1000)
+            std::clog<<"Marching: "<<after<<" triangles (limit "<<options_.max_triangles<<")"<<std::endl;
         for (size_t i=before; i<result_.mesh.triangles.size(); ++i) {
             const auto t=result_.mesh.triangles[i];
             for (int k=0; k<3; ++k) if (active({t[k],t[(k+1)%3]})) queue.emplace_back(t[k],t[(k+1)%3]);

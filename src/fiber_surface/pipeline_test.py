@@ -47,6 +47,7 @@ def main():
         assert mesh == (run / "surface.obj").read_bytes(), "Restart changed mesh geometry"
         report = json.loads((run / "report.json").read_text())
         assert report["complete"] is not partial
+        assert report["step"] == report["fiber_step"]
         seed_report = json.loads((run / "seeds_report.json").read_text())
         shape = seed_report["discovery_grid_shape"]
         assert seed_report["starting_points"] == shape[0] * shape[1] * shape[2]
@@ -98,11 +99,25 @@ def main():
                               "--min", "-1,-2,-2", "--max", "1,2,2"])
         seed_report = json.loads((anisotropic / "seeds_report.json").read_text())
         assert seed_report["discovery_grid_shape"] == [5, 10, 10]
+        # Old checkpoints can only resume if their traced and marched geometry use the same step.
+        config_path = anisotropic / "run.conf"
+        original_config = config_path.read_text()
+        config_lines = original_config.splitlines()
+        for i, line in enumerate(config_lines):
+            if line.startswith("options "):
+                fields = line.split()
+                fields[3] = str(float(fields[1]) / 2)
+                config_lines[i] = " ".join(fields)
+        try:
+            config_path.write_text("\n".join(config_lines) + "\n")
+            assert "rerun the seeds stage" in stage(2, anisotropic, expected=1)
+        finally:
+            config_path.write_text(original_config)
         assert seed_report["starting_points"] == 500
         curve_pipeline(args.work / "mfa elbow", "fiber_surface_mfa", "mfa",
                        ["--first", model, "--variable1", "0", "--variable2", "1",
                         "--polyline", "1,-2;1,0.5;2,0.5", "--min", "-2,-2,-2", "--max", "2,2,2",
-                        "--step", "0.2", "--fiber-step", "0.1", "--residual-tolerance", "0.005"],
+                        "--step", "0.1", "--residual-tolerance", "0.005"],
                        closed=False)
         original = model.read_bytes()
         try:

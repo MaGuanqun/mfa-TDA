@@ -3,15 +3,15 @@
 #include <filesystem>
 
 namespace fiber_surface {
-VolumeResult extract_volume(const Field& f,const RangeTriangle& range,const Options& o,
-                            VolumeStage stage,const std::string& boundary_input) {
+namespace {
+template<class BuildBoundary>
+VolumeResult assess_or_fill(const Field& f,const RangeTriangle& range,const Options& o,
+                            VolumeStage stage, BuildBoundary build_boundary) {
     for(const auto& s:range.sides)o.validate(f,s);
     VolumeResult r;
     auto timed=[&](int stage,auto work) {const auto start=std::chrono::steady_clock::now();work();r.seconds[stage]=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();};
-    if (stage==VolumeStage::fill)
-        r.boundary=read_boundary_ply(boundary_input);
-    else
-        timed(0,[&]{r.boundary=assemble_volume_boundary(f,range,o);});
+    if (stage==VolumeStage::fill) r.boundary=build_boundary();
+    else timed(0,[&]{r.boundary=build_boundary();});
     timed(1,[&]{r.boundary_report=validate_volume_boundary(r.boundary,f,range,o);});
     if(!r.boundary_report.valid){r.failed_stage="boundary_validation";return r;}
     if(stage==VolumeStage::boundary)return r;
@@ -24,6 +24,16 @@ VolumeResult extract_volume(const Field& f,const RangeTriangle& range,const Opti
             "Tetrahedral validity or boundary conformity failed; output boundary: "+r.report.output_topology.summary()});
     }
     return r;
+}
+} // namespace
+VolumeResult extract_volume(const Field& f,const RangeTriangle& range,const Options& o,
+                            VolumeStage stage,const std::string& boundary_input) {
+    return assess_or_fill(f,range,o,stage,[&]{
+        return stage==VolumeStage::fill ? read_boundary_ply(boundary_input) : assemble_volume_boundary(f,range,o);
+    });
+}
+VolumeResult volume_from_patches(const Field& f,const RangeTriangle& range,const Options& o,Result sides) {
+    return assess_or_fill(f,range,o,VolumeStage::all,[&]{return assemble_volume_boundary(f,range,o,std::move(sides));});
 }
 namespace {
 std::string json(const std::string& s) {
@@ -79,7 +89,9 @@ void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f
         out<<"{\n  \"stage\": \""<<stage_name<<"\",\n  \"complete\": "<<(r.complete()?"true":"false")<<",\n  \"failed_stage\": \""<<r.failed_stage<<"\",\n  \"tetgen_switches\": \"pV\",\n  \"coverage\": \"empirical, not certified\",\n  \"triangle\": [";
         for(int i=0;i<3;++i){if(i)out<<',';out<<'['<<range.corners[i][0]<<','<<range.corners[i][1]<<']';}
         out<<"],\n  \"box_min\": ["<<f.box.min[0]<<','<<f.box.min[1]<<','<<f.box.min[2]<<"],\n  \"box_max\": ["<<f.box.max[0]<<','<<f.box.max[1]<<','<<f.box.max[2]<<"],\n";
-        out<<"  \"step\": "<<o.step<<", \"fiber_step\": "<<o.fiber_step<<", \"spatial_tolerance\": "<<o.spatial_tolerance<<", \"residual_tolerance\": "<<o.residual_tolerance<<",\n";
+        const auto shape=discovery_shape(f,o);
+        out<<"  \"discovery_grid_shape\": ["<<shape[0]<<','<<shape[1]<<','<<shape[2]<<"], \"starting_points\": "<<discovery_size(shape,o.max_seed_starts)<<",\n";
+        out<<"  \"step\": "<<o.step<<", \"fiber_step\": "<<o.step<<", \"spatial_tolerance\": "<<o.spatial_tolerance<<", \"residual_tolerance\": "<<o.residual_tolerance<<",\n";
         out<<"  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance<<", \"fiber_plane_tolerance\": "<<o.fiber_plane_tolerance()<<",\n";
         out<<"  \"boundary_vertices\": "<<b.mesh.vertices.size()<<", \"boundary_triangles\": "<<b.mesh.triangles.size()<<", \"box_contact_triangles\": "<<b.box_contact_triangles<<",\n  \"tet_vertices\": "<<r.mesh.vertices.size()<<", \"tetrahedra\": "<<r.mesh.cells.size()<<",\n";
         out<<"  \"corner_fiber_components\": ["<<b.corner_components[0]<<','<<b.corner_components[1]<<','<<b.corner_components[2]<<"],\n  \"shell_signed_volumes\": [";

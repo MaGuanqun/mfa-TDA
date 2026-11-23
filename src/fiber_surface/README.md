@@ -1,13 +1,15 @@
 # Continuous-model fiber surfaces
 
 To extract a **filled volume** from the vortex-street CoordNet models, run the
-script below from the repository root. The settings at the top of the script
-select the two models, the local box in `(x,y,time)`, and a triangle in
-normalized `(u,v)`. Set `default_model` to `analytical` for the planar prism
-or `mfa` for the Hurricane Isabel pressure/temperature models.
-It builds the fiber-surface patches, closes them with box-face caps,
-and saves the boundary as a binary PLY. A second process reads that PLY,
-validates it against the field, and fills it with TetGen.
+script below from the repository root. It applies the upward-flow triangle to
+the full space–time domain. Use `./fiber_volume.sh coordnet all down` for the
+downward-flow triangle or `./fiber_volume.sh mfa all 1200` and
+`./fiber_volume.sh mfa all 1300` for the two full-domain Hurricane Isabel runs.
+The boundary stage builds the fiber-surface patches and caps and saves them
+as a binary PLY. If validation succeeds, a second process fills the boundary
+with TetGen. Both Hurricane queries passed on the full domain. The vortex-street
+preset allows 100,000 triangles per range side. The earlier run at 4,000
+triangles per side reached that limit with open edges.
 
 ```bash
 ./fiber_volume.sh
@@ -16,9 +18,17 @@ validates it against the field, and fills it with TetGen.
 Use `./fiber_volume.sh coordnet boundary` to stop and inspect `volume_boundary.ply`.
 Use `./fiber_volume.sh coordnet fill` to resume from that file. Both stages also work
 with `analytical` and `mfa`. Open `volume_volume.vtk` in ParaView to inspect the tetrahedra.
-The default CoordNet results are under `build/fiber-volume-results/vortex_street_3d_2_variables/`.
+The default CoordNet results are under `build/fiber-volume-results/vortex_street_3d_2_variables_full/up/`.
 See [the volume guide](VOLUME.md#run-the-two-stage-examples) for input paths,
 the PLY layout, and validation.
+
+Set `--step` once for both RK4 fiber tracing and surface marching. When a fiber
+step fails, the tracer retries it as two corrected half-steps, down to
+`--min-step` (default `h/8`). It saves the endpoint of the nominal step or
+the first verified box contact. The marcher adapts each triangle height to
+its front and curvature. The legacy
+`--fiber-step` spelling is an alias for `--step`. To resume a staged run
+saved with different steps, rerun the seeds stage with the shared value.
 
 The analytical, MFA, and CoordNet extractors accept a directed segment or a simple open
 or closed polyline in range space. Each segment produces a surface patch.
@@ -69,7 +79,7 @@ in one folder per dataset:
 
 The scripts write under `build/fiber-surface-results/` in
 `analytical_<example>/` (with underscores replacing hyphens),
-`hurricane_isabel_3d/`, and `vortex_street_3d_2_variables/`, respectively.
+`hurricane_isabel_3d_full/`, and `vortex_street_3d_2_variables_full/`, respectively.
 `FIBER_RESULTS_ROOT` overrides the results root, and `FIBER_DATASET` overrides
 the MFA dataset folder name. There are no step or log subfolders.
 
@@ -140,22 +150,19 @@ mesh, fiber, and report files are written in the run directory.
 
 ## Vortex street CoordNet example
 
-Run `./fiber_surface_coordnet.sh` with no arguments. Edit the variables at the
-top of the script to change the two checkpoints, training and extraction boxes,
-range segment or polyline, and mesh settings. The script activates Spack, builds
+Run `./fiber_surface_coordnet.sh` with no arguments. The full-domain surface
+and volume experiments share the model paths, bounds, range edge and mesh
+settings in [model_experiments.sh](model_experiments.sh). The script activates Spack, builds
 the stage executables, and runs all five stages. Open `surface.vtk` for the
 mesh or `surface_fibers.vtk` for the endpoint fibers.
 
 The default pair in `CoordNet/Exp/vortex_street_3d_2_variables/` predicts
-independently normalized velocity components. The example holds the predicted
-`u` at 0.402 and selects `v` from -0.344 to -0.296 in a small box around
-`(x,y,t) = (0.4,0.15,14)`. Range endpoints and the residual tolerance use the
+independently normalized velocity components. The experiment selects
+`v = 0` and `0.60 ≤ u ≤ 0.90` in physical velocity units over
+`[-0.5,7.5] × [-0.5,0.5] × [13.5,15]`. Range endpoints passed to the CLI and the residual tolerance use the
 network outputs directly. To select a velocity in original data units, convert
 each component with its own training extrema using
 `q = 2 * (velocity - min) / (max - min) - 1`.
-
-The example produces 86 triangles. Each of the 17 traced edges belongs to
-exactly one triangle.
 
 For other pairs, supply two differentiable scalar TorchScript modules that take
 a float64 tensor of shape `[1,3]` on CPU. The seed stage accepts
@@ -180,8 +187,9 @@ build/src/fiber_surface/fiber_surface_mfa \
   --second build/src/hurricane_isabel_3d/TCf30_3d.mfa --inspect
 ```
 
-This also compares the center Jacobian with finite differences. A reproducible
-local extraction around the data center is:
+This also compares the center Jacobian with finite differences. Run
+`./fiber_surface_mfa.sh` to extract the shared pressure–temperature edge over
+this full domain. The following command reproduces the older local demo:
 
 ```bash
 source ./load-env.sh
@@ -191,7 +199,7 @@ build/src/fiber_surface/fiber_surface_mfa \
   --second build/src/hurricane_isabel_3d/TCf30_3d.mfa \
   --a -1100,-27 --b -1100,-22 \
   --min 240,240,45 --max 260,260,55 \
-  --step 1 --fiber-step 0.6 --spatial-tolerance 0.08 \
+  --step 1 --spatial-tolerance 0.08 \
   --residual-tolerance 0.005 --seed-grid 7 --max-triangles 8000 \
   --output build/fiber-surface-results/isabel_tolerance
 ```
@@ -201,7 +209,7 @@ hurricane volume. Pressure `-1100` is close to the sampled center pressure
 `-1107.6`; the temperature interval surrounds the center value `-24.48`.
 The choice is a geometric demonstration, not a meteorological feature criterion.
 
-The local run produces 641 triangles. Each of the 72 traced edges belongs to
+The local run produces 287 triangles. Each of the 44 traced edges belongs to
 exactly one triangle.
 The following results predate the exact segment interval and
 automatic proportional seeding. Those runs reported zero unresolved events,
@@ -241,7 +249,8 @@ and span counts do not affect this grid. `--seed-grid 0` is retained as an alias
 for the default count of 7. Positive counts must be at least 2.
 
 Seeds are uniformly spaced and include both box endpoints. The total grid is
-limited to 1,000,000 starts.
+limited to 1,000,000 starts by default. Volume extractors accept an explicit
+`--max-seed-starts N` allocation limit for larger lattices.
 These are starting points for correction, so the number of accepted seeds can
 be smaller. Rerun from the seeds stage to apply a change.
 
@@ -294,7 +303,7 @@ The spatial tolerance still controls the curvature-based predictor and seed
 coverage. All field backends use an
 absolute field tolerance of `1e-9` for fiber seeds, traced samples, and box
 contacts. Interior fiber corrections also require the distance to the correction
-plane to be at most `1e-6 * fiber_step`.
+plane to be at most `1e-6 * step`.
 Frozen fiber samples are never moved during surface attachment.
 
 The reported samples describe the field at discrete locations on the mesh.
@@ -312,7 +321,7 @@ faces or ambiguous tangential contacts.
 - `coordnet_field.cpp` implements the same field interface with LibTorch autograd.
 - `corrector.h`: minimum-norm scalar/fiber discovery, phase-plane fiber Newton,
   and simultaneous box face/edge/corner correction, with domain guards.
-- `trace.h`: fixed-step RK4/Newton tracing in both directions, loop/component
+- `trace.h`: RK4/Newton tracing with local retries in both directions, loop/component
   matching, and fiber-box contacts before any triangle growth.
 - `extract.h`: inward lifting of fiber edges, independent surface seeds,
   neighboring-edge step adaptation and curvature limits, triangle validation,

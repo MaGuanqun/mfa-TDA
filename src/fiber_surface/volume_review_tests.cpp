@@ -89,7 +89,7 @@ int main(int argc,char** argv) {
             field.box.min*=scale;field.box.max*=scale;
             field.value=[scale](const Vec& x) {return Range(x[0]/scale,x[1]/scale);};
             field.jacobian=[scale](const Vec&) {Jacobian j=Jacobian::Zero();j(0,0)=j(1,1)=1/scale;return j;};
-            options.step*=scale;options.min_step*=scale;options.fiber_step*=scale;options.spatial_tolerance*=scale;
+            options.step*=scale;options.min_step*=scale;options.spatial_tolerance*=scale;
             const auto report=assess_volume(mesh,boundary,boundary_report,field,example.triangle,options);
             std::cout<<"scale="<<scale<<" invalid_cells="<<report.invalid_cells<<" invalid_faces="<<report.invalid_faces
                 <<" intersections="<<report.intersections<<" conformity="<<report.conformity_failures<<'\n';

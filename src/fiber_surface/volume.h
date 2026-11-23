@@ -61,12 +61,14 @@ enum class VolumeStage { all, boundary, fill };
 void write_boundary_ply(const std::string& path, const VolumeBoundary&, bool valid);
 VolumeBoundary read_boundary_ply(const std::string& path);
 VolumeBoundary assemble_volume_boundary(const Field&, const RangeTriangle&, const Options&);
+VolumeBoundary assemble_volume_boundary(const Field&, const RangeTriangle&, const Options&, Result sides);
 BoundaryAssessment validate_volume_boundary(VolumeBoundary&, const Field&, const RangeTriangle&, const Options&);
 VolumeMesh fill_volume(const VolumeBoundary&, const BoundaryAssessment&);
 VolumeAssessment assess_volume(const VolumeMesh&, const VolumeBoundary&, const BoundaryAssessment&,
                                const Field&, const RangeTriangle&, const Options&);
 VolumeResult extract_volume(const Field&, const RangeTriangle&, const Options&,
                             VolumeStage stage=VolumeStage::all, const std::string& boundary_input={});
+VolumeResult volume_from_patches(const Field&, const RangeTriangle&, const Options&, Result sides);
 void write_volume(const std::string&, const VolumeResult&, const Field&, const RangeTriangle&, const Options&,
                   VolumeStage stage=VolumeStage::all);
 int run_volume(const Field&, const RangeTriangle&, const Options&, const std::string& prefix,

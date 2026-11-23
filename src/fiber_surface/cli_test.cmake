@@ -1,5 +1,5 @@
 file(MAKE_DIRECTORY "${WORK}")
-foreach(args "--step;0" "--a;1,1;--b;1,1" "--a;1,1" "--unknown;value"
+foreach(args "--step;0" "--step;0.2;--fiber-step;0.1" "--a;1,1;--b;1,1" "--a;1,1" "--unknown;value"
              "--seed-grid;-1" "--seed-grid;1" "--seed-grid;1000000")
     execute_process(COMMAND "${EXPLICIT}" ${args} RESULT_VARIABLE code OUTPUT_QUIET ERROR_QUIET)
     if(NOT code EQUAL 1)
