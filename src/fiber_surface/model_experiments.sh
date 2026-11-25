@@ -16,7 +16,8 @@ vortex_velocities() {
     model_args=(--first "$model_dir/u-super-spatial-temporal-64-5-float64.pt"
                 --second "$model_dir/v-super-spatial-temporal-64-5-float64.pt"
                 --domain-min -0.5,-0.5,13.5 --domain-max 7.5,0.5,15)
-    mesh_args=(--step 0.05 --residual-tolerance 0.0002 --seed-grid 3 --max-triangles 100000)
+    vortex_residual_tolerance=0.0002
+    mesh_args=(--step 0.05 --residual-tolerance "$vortex_residual_tolerance" --seed-grid 3 --max-triangles 100000)
     # (0.60,0), (0.90,0), (0.75,0.35), (0.75,-0.35), converted using
     # 2*(value-min)/(max-min)-1 independently on the u and v training binaries.
     edge_a=0.04409611104351585,-0.0001770810478360918

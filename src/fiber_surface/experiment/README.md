@@ -40,6 +40,33 @@ python3 src/fiber_surface/experiment/export_model_results_table.py
 python3 src/fiber_surface/experiment/plot_model_results.py
 ```
 
+## Vortex street INR with the Isabel outer-ring settings
+
+Place the trained `u-super-spatial-temporal-64-5-float64.pt` and
+`v-super-spatial-temporal-64-5-float64.pt` files under
+`CoordNet/Exp/vortex_street_3d_2_variables/`. With the project Spack
+environment installed, run from the repository root
+
+```bash
+./src/fiber_surface/experiment/run_vortex_street.sh up
+```
+
+The default upward-flow triangle has velocity vertices `(0.60,0)`, `(0.90,0)`,
+and `(0.75,0.35)`. Use `down` for the triangle with its tip at `(0.75,-0.35)`.
+The nominal step is `0.005`, one two-hundredth of the full y extent. The
+endpoint seed radius and spatial tolerance equal the step. The range residual
+tolerance is the vortex preset's `0.0002` in normalized velocity units.
+Isabel's `0.005` exceeds the extractor's limit of 1% of the shortest
+normalized triangle edge (about `0.00322` here). As in the Isabel
+outer-ring surface run, the normal-angle limit is 85°, the budget is 500,000 triangles per
+side, and each trace direction can take 100,000 steps. The 40 seeds along
+the shortest axis give a 320 × 40 × 60 lattice in `(x,y,t)`.
+
+The launcher prints its run directory under `build/fiber-volume-results/`.
+Open `volume_boundary.ply` for the assembled surface and `audit.json` for
+topology and field agreement. The directory also contains the stage commands
+in `run.txt` and per-side checkpoints under `stages/`.
+
 ## Hurricane Isabel at time step 30
 
 Run `./src/fiber_surface/experiment/run_hurricane_isabel.sh` for the broad
