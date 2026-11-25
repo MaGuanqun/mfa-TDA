@@ -14,7 +14,7 @@ struct InternalEdge {
 };
 
 void refine(VolumeBoundary& patch, const Field& field, const RangeTriangle& range, Options options) {
-    options.surface_solve_tolerance = std::min(1e-10, options.residual_tolerance);
+    options.surface_solve_tolerance = options.patch_solve_tolerance();
     auto& mesh = patch.mesh;
     std::map<Edge, InternalEdge> edges;
     for (size_t i = 0; i < mesh.triangles.size(); ++i) {
@@ -40,8 +40,8 @@ void refine(VolumeBoundary& patch, const Field& field, const RangeTriangle& rang
         } else {
             const int corner = (edge.label%3+1 == edge.neighbor ? edge.neighbor : edge.label)-1;
             const Range& q = range.corners[corner];
-            if ((field.value(a)-q).norm() > Options::fiber_field_tolerance ||
-                (field.value(b)-q).norm() > Options::fiber_field_tolerance)
+            if ((field.value(a)-q).norm() > options.corner_residual_tolerance ||
+                (field.value(b)-q).norm() > options.corner_residual_tolerance)
                 throw std::invalid_argument("Expected a fitted shared corner edge");
             if (!solver.fiber(p, q, (b-a).normalized(), start, options.spatial_tolerance)) {
                 p = start;

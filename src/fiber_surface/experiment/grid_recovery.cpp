@@ -302,7 +302,7 @@ void audit(const VolumeBoundary& surface,const Field& field,const RangeTriangle&
         const double residual=(field.value(vertices[i])-query.corners[k]).norm();
         if(!std::isfinite(residual)) throw std::runtime_error("Nonfinite seam residual");
         ++seam_tests;
-        if(residual>Options::fiber_field_tolerance) ++seam_failures;
+        if(residual>options.corner_residual_tolerance) ++seam_failures;
         max_seam_residual=std::max(max_seam_residual,residual);
     }
     std::vector<double> distance,angle;

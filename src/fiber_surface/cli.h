@@ -77,6 +77,11 @@ inline void common_options(Arguments& args, Field& field, Options& options) {
     if (args.has("--fiber-seed-radius"))
         options.fiber_seed_radius=args.number("--fiber-seed-radius",0);
     options.residual_tolerance=args.number("--residual-tolerance",options.residual_tolerance);
+    options.corner_residual_tolerance=args.number("--fiber-field-tolerance",options.corner_residual_tolerance);
+    if (args.has("--surface-solve-tolerance")) {
+        options.surface_solve_tolerance=args.number("--surface-solve-tolerance",0);
+        if (options.surface_solve_tolerance<=0) throw std::invalid_argument("--surface-solve-tolerance must be positive");
+    }
     options.derivative_tolerance=args.number("--derivative-tolerance",options.derivative_tolerance);
     options.min_angle_degrees=args.number("--min-angle",options.min_angle_degrees);
     options.max_normal_degrees=args.number("--max-normal-angle",options.max_normal_degrees);
@@ -101,6 +106,8 @@ inline void common_help() {
         <<"  --min-step H             minimum fiber retry step and marching height recovery threshold\n"
         <<"  --fiber-seed-radius R    endpoint seed duplicate-check radius (defaults to spatial tolerance)\n"
         <<"  --spatial-tolerance E --residual-tolerance E --derivative-tolerance E\n"
+        <<"  --fiber-field-tolerance E    maximum range residual on a corner fiber (default 1e-9)\n"
+        <<"  --surface-solve-tolerance E  surface root residual (default cap 1e-10 on triangle patches)\n"
         <<"  --seed-grid N         N seeds on the shortest axis; other counts = ceil(N * length / shortest)\n"
         <<"                        default 7 for all fields; 0 also selects 7\n"
         <<"                        uses the selected physical box; maximum 1000000 starts\n"

@@ -181,15 +181,15 @@ Exceptions outside the filling catch, such as invalid options or output errors,
 reach the executable's `main()` catch and produce exit `1`.
 
 **Boundary assembly starts by tracing the shared corner fibers.**
-`assemble_volume_boundary()` first copies the options and sets
-`surface_solve_tolerance = min(1e-10, residual_tolerance)` to keep roots on
-adjacent side patches accurate.
+`assemble_volume_boundary()` uses the smaller of the range residual tolerance
+and the surface-root tolerance (default `1e-10`) to keep roots on adjacent
+side patches accurate. Set the latter with `--surface-solve-tolerance`.
 
 `assemble_volume_boundary()` passes the closed curve `[q0,q1,q2,q0]` to
 `extract_curve()`. The surface core discovers surface seeds for every directed
 side and endpoint seeds for each distinct range vertex. It traces the
 components of each corner fiber once. Corner seeds, traced samples, and box
-contacts use an absolute field tolerance of `1e-9`. For an interior sample,
+contacts use `--fiber-field-tolerance`, which defaults to `1e-9`. For an interior sample,
 the maximum distance to the correction plane is `1e-6 * step`.
 
 The inherited tracer follows the normalized tangent

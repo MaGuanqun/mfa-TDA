@@ -91,6 +91,7 @@ struct Options {
     static constexpr int default_max_seed_starts = 1000000;
     double step = .15, min_step = step/8, spatial_tolerance = .075*step;
     std::optional<double> fiber_seed_radius;
+    double corner_residual_tolerance = fiber_field_tolerance;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
     // Optional tighter residual tolerance for surface roots on adjacent patches.
     double surface_solve_tolerance = 0;
@@ -101,8 +102,11 @@ struct Options {
     size_t max_triangles = 30000;
     double seed_coverage_radius() const { return fiber_seed_radius.value_or(spatial_tolerance); }
     double fiber_plane_tolerance() const { return 1e-6 * step; }
+    double patch_solve_tolerance() const {
+        return std::min(residual_tolerance, surface_solve_tolerance > 0 ? surface_solve_tolerance : 1e-10);
+    }
     void validate(const Field& f, const Segment& segment) const {
-        for (double x : {step, min_step, spatial_tolerance, seed_coverage_radius(), residual_tolerance, derivative_tolerance})
+        for (double x : {step, min_step, spatial_tolerance, seed_coverage_radius(), residual_tolerance, corner_residual_tolerance, derivative_tolerance})
             if (!std::isfinite(x) || x <= 0) throw std::invalid_argument("Steps and tolerances must be positive and finite");
         if (!std::isfinite(surface_solve_tolerance) || surface_solve_tolerance<0 ||
             min_step > step || seed_grid < 0 || seed_grid == 1 || iterations < 1 || max_trace_steps < 4 ||

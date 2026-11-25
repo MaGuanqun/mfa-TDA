@@ -25,11 +25,12 @@ struct Report {
     Samples vertices, midpoints, centroids;
     size_t ordinary_vertex_violations=0;
     double endpoint_residual=0, area=0, min_angle=180, median_angle=0, p05_angle=0;
+    double corner_residual_tolerance=Options::fiber_field_tolerance;
     size_t unexpected_boundary=0, incorrect_feature_incidence=0, components=0;
     std::vector<int> face_components;
     bool complete(const Result& r) const {
         return !r.mesh.triangles.empty() && topology.valid() && r.unresolved.empty() &&
-            !unexpected_boundary && !incorrect_feature_incidence && endpoint_residual<=Options::fiber_field_tolerance &&
+            !unexpected_boundary && !incorrect_feature_incidence && endpoint_residual<=corner_residual_tolerance &&
             !ordinary_vertex_violations && !centroids.violations;
     }
 };

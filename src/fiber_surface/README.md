@@ -311,7 +311,7 @@ midpoints. A straight chord of a curved fiber can have an out-of-range
 midpoint even when both ends map to the assigned endpoint. This midpoint
 value is diagnostic. The residual tolerance controls surface root accuracy.
 The spatial tolerance controls the curvature-based surface predictor. All field backends use an
-absolute field tolerance of `1e-9` for fiber seeds, traced samples, and box
+absolute field tolerance of `1e-9` by default for fiber seeds, traced samples, and box
 contacts. Interior fiber corrections also require the distance to the correction
 plane to be at most `1e-6 * step`.
 Frozen fiber samples are never moved during surface attachment.

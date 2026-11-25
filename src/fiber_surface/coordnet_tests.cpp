@@ -30,7 +30,18 @@ def forward(self, p: Tensor) -> Tensor:
         config.training_box = {Vec(-2, 1, 10), Vec(6, 3, 14)};
         config.box = {Vec(1, 1.2, 11), Vec(3, 2, 12)};
         write_config(dir, config);
-        auto loaded = load_field(read_config(dir), true);
+        const auto defaults = read_config(dir);
+        if (defaults.options.corner_residual_tolerance != 1e-9 || defaults.options.patch_solve_tolerance() != 1e-10)
+            throw std::runtime_error("Incorrect default solver tolerances");
+        config.options.corner_residual_tolerance = 1e-11;
+        config.options.surface_solve_tolerance = 1e-12;
+        config.options.derivative_tolerance = 1e-12;
+        write_config(dir, config);
+        const auto saved = read_config(dir);
+        if (saved.options.corner_residual_tolerance != 1e-11 || saved.options.patch_solve_tolerance() != 1e-12 ||
+            saved.options.derivative_tolerance != 1e-12 || config_signature(config) != config_signature(saved))
+            throw std::runtime_error("Solver tolerances changed across staged runs");
+        auto loaded = load_field(saved, true);
         const Field& field = loaded.field;
         if (field.box.min != config.box.min || field.box.max != config.box.max)
             throw std::runtime_error("Saved extraction box changed");

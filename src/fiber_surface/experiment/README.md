@@ -53,14 +53,31 @@ environment installed, run from the repository root
 
 The default upward-flow triangle has velocity vertices `(0.60,0)`, `(0.90,0)`,
 and `(0.75,0.35)`. Use `down` for the triangle with its tip at `(0.75,-0.35)`.
-The nominal step is `0.005`, one two-hundredth of the full y extent. The
-endpoint seed radius and spatial tolerance equal the step. The range residual
-tolerance is the vortex preset's `0.0002` in normalized velocity units.
-Isabel's `0.005` exceeds the extractor's limit of 1% of the shortest
-normalized triangle edge (about `0.00322` here). As in the Isabel
-outer-ring surface run, the normal-angle limit is 85°, the budget is 500,000 triangles per
-side, and each trace direction can take 100,000 steps. The 40 seeds along
-the shortest axis give a 320 × 40 × 60 lattice in `(x,y,t)`.
+The two float64 models predict normalized `u` and `v` over the full
+`(x,y,t)` box from `(-0.5,-0.5,13.5)` to `(7.5,0.5,15)`. The nominal
+vortex step is one two-hundredth of its unit y extent. The reference is
+the Isabel outer-ring run with a nominal step of 0.5 grid units.
+
+| Extraction setting | Ratio to nominal step | Isabel | Vortex |
+| --- | ---: | ---: | ---: |
+| Nominal tracing and marching step | 1 | 0.5 | 0.005 |
+| Minimum retry step | 1/8 | 0.0625 | 0.000625 |
+| Endpoint seed duplicate radius | 1 | 0.5 | 0.005 |
+| Spatial tolerance for the surface predictor | 1 | 0.5 | 0.005 |
+| Fiber corrector plane tolerance | 1e-6 | 5e-7 | 5e-9 |
+| Surface range residual tolerance | 0.01 | 0.005 | 0.00005 |
+| Corner-fiber field residual tolerance | 2e-9 | 1e-9 | 1e-11 |
+| Surface-root and audit projection residual tolerance | 2e-10 | 1e-10 | 1e-12 |
+| Derivative and rank threshold | 2e-10 | 1e-10 | 1e-12 |
+
+`VORTEX_STEP` updates these settings together. The residual ratio is
+numerical because Isabel uses pressure and temperature in its range,
+while the vortex model uses normalized velocity. Both experiments use
+a 0.1° minimum triangle angle, an 85° face-to-field normal limit,
+40 Newton iterations, 100,000 steps per trace direction and 500,000
+triangles per side. The shortest-axis seed count is 40 and the seed
+allocation limit is 1,632,160. The vortex domain gives a 320 × 40 × 60
+lattice in `(x,y,t)`, or 768,000 starting locations.
 
 The launcher prints its run directory under `build/fiber-volume-results/`.
 Open `volume_boundary.ply` for the assembled surface and `audit.json` for

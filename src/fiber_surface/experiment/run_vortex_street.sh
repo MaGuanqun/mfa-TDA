@@ -5,7 +5,7 @@ usage() {
     cat <<'EOF'
 Usage: run_vortex_street.sh [up|down]
 Extract and audit the full-domain CoordNet triangle surface (default: up).
-VORTEX_STEP sets the step, seed radius and spatial tolerance (default 0.005).
+VORTEX_STEP sets the step and scales the tolerances (default 0.005).
 VORTEX_SEED_GRID sets the shortest-axis seed count (default 40).
 VORTEX_MAX_TRIANGLES sets the per-side budget (default 500000).
 FIBER_RESULTS_ROOT sets the output parent (default build/fiber-volume-results).
@@ -33,6 +33,19 @@ case "$query" in
     down) polyline="$edge_b;$edge_a;$wake_down;$edge_b" ;;
 esac
 step=${VORTEX_STEP:-0.005}
+if ! [[ $step =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]]; then
+    printf 'VORTEX_STEP must be a positive number.\n' >&2
+    exit 1
+fi
+# Multiply Isabel's range, corner, surface-root and rank tolerances by h / 0.5.
+scaled_tolerances=$(LC_ALL=C awk -v h="$step" 'BEGIN {
+    if (h+0 <= 0) exit 1
+    scale = h / 0.5
+    printf "%.17g %.17g %.17g %.17g", 0.005 * scale, 1e-9 * scale, 1e-10 * scale, 1e-10 * scale
+}') || {
+    printf 'VORTEX_STEP must be positive.\n' >&2; exit 1;
+}
+read -r residual_tolerance corner_tolerance root_tolerance derivative_tolerance <<< "$scaled_tolerances"
 seed_grid=${VORTEX_SEED_GRID:-40}
 max_triangles=${VORTEX_MAX_TRIANGLES:-500000}
 
@@ -50,7 +63,9 @@ run_dir=$(mktemp -d -- "$results_root/vortex_street_${query}.XXXXXXXX")
 printf 'Results: %s\n' "$run_dir"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 run_triangle_stages "$run_dir" surface "$step" --model coordnet "${model_args[@]}" \
-    --polyline "$polyline" --residual-tolerance "$vortex_residual_tolerance" \
+    --polyline "$polyline" --residual-tolerance "$residual_tolerance" \
+    --fiber-field-tolerance "$corner_tolerance" --surface-solve-tolerance "$root_tolerance" \
+    --derivative-tolerance "$derivative_tolerance" \
     --seed-grid "$seed_grid" --max-seed-starts 1632160 \
     --max-normal-angle 85 --max-triangles "$max_triangles"
 printf 'Assembled boundary and surface audit: %s\n' "$run_dir"

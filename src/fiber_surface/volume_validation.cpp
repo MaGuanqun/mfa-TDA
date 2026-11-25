@@ -10,7 +10,7 @@ bool correct_volume_sample(Vec& x,int patch,const Field& f,const RangeTriangle& 
     if(patch>=4)faces|=1u<<(patch-4);
     f.box.fix(x,faces);
     std::array<bool,3> active{};if(patch<=3)active[patch-1]=true;
-    const double tolerance=std::min(o.residual_tolerance,1e-10);
+    const double tolerance=o.patch_solve_tolerance();
     for(int it=0;it<o.iterations;++it) {
         if(!f.box.contains(x) || (x-origin).norm()>o.spatial_tolerance)return false;
         const Range value=f.value(x);const Jacobian jac=f.jacobian(x);
@@ -159,7 +159,7 @@ BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,con
         for (int k=0;k<3;++k) if (labels[i].count(k+1) && labels[i].count((k+2)%3+1)) {
             const double residual=(value-range.corners[k]).norm();
             r.corner_residual=std::max(r.corner_residual,residual);
-            if (residual>Options::fiber_field_tolerance) ++r.constraint_failures;
+            if (residual>o.corner_residual_tolerance) ++r.constraint_failures;
         }
         Eigen::MatrixXd active(3,gradients.size());
         for (size_t k=0;k<gradients.size();++k) active.col(k)=gradients[k].normalized();

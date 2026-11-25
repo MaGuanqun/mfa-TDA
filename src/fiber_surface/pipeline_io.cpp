@@ -49,6 +49,8 @@ void config_body(std::ostream& out, const RunConfig& c) {
         out<<"\nmax_seed_starts "<<o.max_seed_starts;
     if (o.fiber_seed_radius)
         out<<"\nfiber_seed_radius "<<*o.fiber_seed_radius;
+    if (o.corner_residual_tolerance!=Options::fiber_field_tolerance || o.surface_solve_tolerance!=0)
+        out<<"\nsolver_tolerances "<<o.corner_residual_tolerance<<' '<<o.surface_solve_tolerance;
     // Keep both step slots in the existing on-disk format and its checkpoint signature.
     out<<"\noptions "<<o.step<<' '<<o.min_step<<' '<<o.step<<' '<<o.spatial_tolerance<<' '
         <<o.residual_tolerance<<' '<<o.derivative_tolerance<<' '<<o.min_angle_degrees<<' '<<o.max_normal_degrees<<' '
@@ -171,6 +173,12 @@ RunConfig read_config(const fs::path& run) {
         if (*o.fiber_seed_radius<=0) in.fail("invalid fiber seed radius");
         section=in.get<std::string>();
     }
+    if (section=="solver_tolerances") {
+        o.corner_residual_tolerance=in.real();
+        o.surface_solve_tolerance=in.real();
+        if (o.corner_residual_tolerance<=0 || o.surface_solve_tolerance<0) in.fail("invalid solver tolerances");
+        section=in.get<std::string>();
+    }
     if (section!="options") in.fail("expected options");
     o.step=in.real(); o.min_step=in.real();
     if (in.real()!=o.step)
@@ -249,7 +257,7 @@ void validate_seeds(const Seeds& seeds,const Field& field,const Segment& segment
             segment.gradient(field.jacobian(p)).norm()<=options.derivative_tolerance) throw std::runtime_error("Invalid saved surface seed");
     for (int endpoint=0; endpoint<2; ++endpoint) for (const auto& p:seeds.endpoints[endpoint])
         if (!field.box.contains(p) || !corrector.regular(field.jacobian(p)) ||
-            !((field.value(p)-(endpoint?segment.b:segment.a)).norm()<=Options::fiber_field_tolerance))
+            !((field.value(p)-(endpoint?segment.b:segment.a)).norm()<=options.corner_residual_tolerance))
             throw std::runtime_error("Invalid saved endpoint seed");
 }
 

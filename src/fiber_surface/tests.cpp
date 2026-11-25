@@ -248,6 +248,9 @@ static void fiber_tolerances() {
             require(corrector.fiber(contact,q,normal,anchor,1,1u<<5)==accept,"Fiber contact field tolerance");
         }
     }
+    options.corner_residual_tolerance=1e-11;
+    Vec off_corner(5e-10,0,0);
+    require(!corrector.fiber_seed(off_corner,q),"The staged corner tolerance must govern seed acceptance");
     for (double h : {.1, .5}) {
         options.step=h;
         for (double distance : {1e-6*h, 1.1e-6*h}) {

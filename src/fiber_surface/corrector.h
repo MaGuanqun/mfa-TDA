@@ -13,7 +13,7 @@ public:
         const Range value=field.value(x);
         if (traced_endpoint==0 || traced_endpoint==1) {
             const Range& q=traced_endpoint==0 ? segment.a : segment.b;
-            return (value-q).norm()<=Options::fiber_field_tolerance;
+            return (value-q).norm()<=options.corner_residual_tolerance;
         }
         return segment.contains_parameter(segment.parameter(value));
     }
@@ -57,7 +57,7 @@ public:
         for (int it=0; it<options.iterations; ++it) {
             const Jacobian j=field.jacobian(x);
             if (!r.allFinite() || !regular(j)) return false;
-            if (r.norm()<=Options::fiber_field_tolerance) return true;
+            if (r.norm()<=options.corner_residual_tolerance) return true;
             const Vec trial=x-j.transpose()*(j*j.transpose()).ldlt().solve(r);
             if (!field.box.contains(trial)) return false;
             const Range next_r=field.value(trial)-q;
@@ -77,7 +77,7 @@ public:
             if (!r.allFinite() || !regular(j)) return false;
             if (!faces) {
                 const double p=phase.dot(x-fixed_anchor);
-                if (r.norm()<=Options::fiber_field_tolerance && std::abs(p)<=options.fiber_plane_tolerance()) return true;
+                if (r.norm()<=options.corner_residual_tolerance && std::abs(p)<=options.fiber_plane_tolerance()) return true;
                 Hessian a; a.topRows<2>()=j; a.row(2)=phase.transpose();
                 Eigen::FullPivLU<Hessian> lu(a); lu.setThreshold(options.derivative_tolerance);
                 if (!lu.isInvertible()) return false;
@@ -85,12 +85,12 @@ public:
             } else {
                 std::vector<int> free;
                 for (int d=0; d<3; ++d) if (!(faces & (3u<<(2*d)))) free.push_back(d);
-                if (free.empty()) return r.norm()<=Options::fiber_field_tolerance;
+                if (free.empty()) return r.norm()<=options.corner_residual_tolerance;
                 Eigen::MatrixXd a(2,free.size());
                 for (size_t d=0; d<free.size(); ++d) a.col(d)=j.col(free[d]);
                 Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(a); qr.setThreshold(options.derivative_tolerance);
                 if (qr.rank()!=int(free.size())) return false; // transversality on the face/edge
-                if (r.norm()<=Options::fiber_field_tolerance) return true;
+                if (r.norm()<=options.corner_residual_tolerance) return true;
                 const Eigen::VectorXd delta=qr.solve(-r);
                 if (!delta.allFinite()) return false;
                 for (size_t d=0; d<free.size(); ++d) x[free[d]]+=delta[d];

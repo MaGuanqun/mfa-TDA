@@ -55,10 +55,7 @@ public:
 };
 // Use a tighter surface root solve where neighboring patches meet.
 inline Options curve_options(const RangeCurve& curve, Options options) {
-    if (curve.size()>1) {
-        const double tolerance=options.surface_solve_tolerance>0 ? options.surface_solve_tolerance : options.residual_tolerance;
-        options.surface_solve_tolerance=std::min(1e-10,tolerance);
-    }
+    if (curve.size()>1) options.surface_solve_tolerance=options.patch_solve_tolerance();
     return options;
 }
 std::vector<Seeds> find_curve_seeds(const Field&, const RangeCurve&, const Options&);

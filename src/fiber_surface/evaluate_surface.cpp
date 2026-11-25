@@ -16,6 +16,7 @@ std::vector<int> vertex_segments(const Result& r, const RangeCurve& curve) {
 
 Report evaluate(const Result& r, const Field& field, const RangeCurve& curve, const Options& options) {
     Report report;
+    report.corner_residual_tolerance=options.corner_residual_tolerance;
     const auto& mesh=r.mesh;
     report.topology=marching_triangles::validate_mesh(mesh.vertices,mesh.triangles,options.step*1e-9);
     const auto labels=vertex_segments(r,curve);
@@ -140,7 +141,7 @@ void write_outputs(const std::string& prefix, const Result& r, const Report& rep
     json<<','<<"\n  \"domain_min\": ["<<field.box.min[0]<<','<<field.box.min[1]<<','<<field.box.min[2]<<"],"
         <<"\n  \"domain_max\": ["<<field.box.max[0]<<','<<field.box.max[1]<<','<<field.box.max[2]<<"],"
         <<"\n  \"step\": "<<options.step<<",\n  \"fiber_step\": "<<options.step
-        <<",\n  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance
+        <<",\n  \"fiber_field_tolerance\": "<<options.corner_residual_tolerance
         <<",\n  \"fiber_plane_tolerance\": "<<options.fiber_plane_tolerance()
         <<",\n  \"fiber_seed_radius\": "<<options.seed_coverage_radius()
         <<",\n  \"spatial_tolerance\": "<<options.spatial_tolerance<<",\n  \"range_tolerance\": "<<options.residual_tolerance

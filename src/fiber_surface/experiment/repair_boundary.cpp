@@ -135,8 +135,8 @@ class JointRepair {
         if(label!=other) {
             const auto& q=shared_corner(label,other);
             const Vec x=b.mesh.vertices[a], y=b.mesh.vertices[c];
-            if((field.value(x)-q).norm()>Options::fiber_field_tolerance ||
-               (field.value(y)-q).norm()>Options::fiber_field_tolerance) return false;
+            if((field.value(x)-q).norm()>options.corner_residual_tolerance ||
+               (field.value(y)-q).norm()>options.corner_residual_tolerance) return false;
             Corrector solver(field,range.sides[label-1],options);
             for(double alpha:{.5,.25,.75}) {
                 Vec mpos=x+alpha*(y-x);
@@ -187,7 +187,7 @@ class JointRepair {
             if(!correct_volume_sample(point,label,field,range,options)) continue;
             const auto value=field.value(point);
             bool interior=true;
-            for(int k=0;k<3;++k) if(k!=label-1 && range.sides[k].phi(value)<=Options::fiber_field_tolerance) interior=false;
+            for(int k=0;k<3;++k) if(k!=label-1 && range.sides[k].phi(value)<=options.corner_residual_tolerance) interior=false;
             if(!interior) continue;
             const int m=int(b.mesh.vertices.size());
             b.mesh.vertices.push_back(point);
@@ -206,7 +206,7 @@ class JointRepair {
         if(left<1 || left>3 || right<1 || right>3) return false;
         const Range& q=shared_corner(left,right);
         const auto &x=b.mesh.vertices[a], &y=b.mesh.vertices[c];
-        const double tolerance=Options::fiber_field_tolerance;
+        const double tolerance=options.corner_residual_tolerance;
         if((field.value(x)-q).norm()>tolerance || (field.value(y)-q).norm()>tolerance) return false;
         Corrector solver(field,range.sides[left-1],options);
         const Vec dir=(y-x).normalized();
@@ -324,7 +324,7 @@ class JointRepair {
             const Vec original=b.mesh.vertices[v];
             const auto val=field.value(original);
             bool corner=false;
-            for(const auto& q:range.corners) corner|=(val-q).norm()<=Options::fiber_field_tolerance;
+            for(const auto& q:range.corners) corner|=(val-q).norm()<=options.corner_residual_tolerance;
             if(corner || field.box.faces(original,eps)) continue;
             Vec g=range.sides[label-1].gradient(field.jacobian(original));
             if(g.norm()<=options.derivative_tolerance) continue;
@@ -336,7 +336,7 @@ class JointRepair {
                 Vec p=original+radius*options.step*(t1*std::cos(theta)+t2*std::sin(theta));
                 if(!correct_volume_sample(p,label,field,range,options) || (p-starting_positions[v]).norm()>.5*options.step) continue;
                 bool interior=true;
-                for(int k=0;k<3;++k) if(k!=label-1 && range.sides[k].phi(field.value(p))<=Options::fiber_field_tolerance) interior=false;
+                for(int k=0;k<3;++k) if(k!=label-1 && range.sides[k].phi(field.value(p))<=options.corner_residual_tolerance) interior=false;
                 if(!interior) continue;
                 b.mesh.vertices[v]=p;
                 if(std::all_of(star.begin(),star.end(),[&](const Triangle& t){return geometry(t,label);}) && !clashes(star,ids)) {
@@ -380,7 +380,7 @@ class JointRepair {
         if(label<1 || label>3) return false;
         const Vec original=b.mesh.vertices[v];
         if(field.box.faces(original,eps)) return false;
-        for(const auto& q:range.corners) if((field.value(original)-q).norm()<=Options::fiber_field_tolerance) return false;
+        for(const auto& q:range.corners) if((field.value(original)-q).norm()<=options.corner_residual_tolerance) return false;
         std::vector<int> ids(star.begin(),star.end());
         std::set<int> neighbors;
         std::vector<Triangle> faces;
@@ -403,7 +403,7 @@ class JointRepair {
             if(!correct_volume_sample(p,label,field,range,options) || (p-starting_positions[v]).norm()>.5*options.step) continue;
             if(!range.sides[label-1].contains_parameter(range.sides[label-1].parameter(field.value(p)))) continue;
             bool on_corner=false;
-            for(const auto& q:range.corners) on_corner|=(field.value(p)-q).norm()<=Options::fiber_field_tolerance;
+            for(const auto& q:range.corners) on_corner|=(field.value(p)-q).norm()<=options.corner_residual_tolerance;
             if(on_corner) continue;
             b.mesh.vertices[v]=p;
             if(std::all_of(faces.begin(),faces.end(),[&](const Triangle& face){return geometry(face,label);})
