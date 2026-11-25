@@ -66,13 +66,14 @@ the Isabel outer-ring run with a nominal step of 0.5 grid units.
 | Spatial tolerance for the surface predictor | 1 | 0.5 | 0.005 |
 | Fiber corrector plane tolerance | 1e-6 | 5e-7 | 5e-9 |
 | Surface range residual tolerance | 0.01 | 0.005 | 0.00005 |
-| Corner-fiber field residual tolerance | 2e-9 | 1e-9 | 1e-11 |
-| Surface-root and audit projection residual tolerance | 2e-10 | 1e-10 | 1e-12 |
-| Derivative and rank threshold | 2e-10 | 1e-10 | 1e-12 |
 
 `VORTEX_STEP` updates these settings together. The residual ratio is
 numerical because Isabel uses pressure and temperature in its range,
-while the vortex model uses normalized velocity. Both experiments use
+while the vortex model uses normalized velocity.
+
+At every step size, the vortex run uses the Isabel corner-fiber field residual
+tolerance of `1e-9`, surface-root and audit projection residual tolerance
+of `1e-10`, and derivative and rank threshold of `1e-10`. Both experiments use
 a 0.1° minimum triangle angle, an 85° face-to-field normal limit,
 40 Newton iterations, 100,000 steps per trace direction and 500,000
 triangles per side. The shortest-axis seed count is 40 and the seed
