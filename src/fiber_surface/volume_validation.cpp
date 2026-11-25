@@ -65,6 +65,37 @@ double ray_hit(const Vec& p,const Vec& n,const Mesh& m,int skip,double eps) {
     }
     return best;
 }
+// Along an x row, shell membership can change only on a segment touching a
+// boundary triangle. Mark a conservative superset using triangle bounding boxes.
+// A marked segment (including either endpoint) still uses the solid-angle test.
+std::vector<char> possible_crossings(const Mesh& m,const std::vector<Vec>& grid,
+                                     const SeedShape& shape,double eps) {
+    std::array<std::vector<double>,3> axes;
+    size_t stride=1;
+    for (int d=0;d<3;++d) {
+        for (int i=0;i<shape[d];++i) axes[d].push_back(grid[stride*i][d]);
+        stride*=shape[d];
+    }
+    std::vector<char> marked(grid.size(),0);
+    for (const auto& t:m.triangles) {
+        const Vec lo=m.vertices[t[0]].cwiseMin(m.vertices[t[1]]).cwiseMin(m.vertices[t[2]]);
+        const Vec hi=m.vertices[t[0]].cwiseMax(m.vertices[t[1]]).cwiseMax(m.vertices[t[2]]);
+        SeedShape first,last;
+        for (int d=0;d<3;++d) {
+            const auto& a=axes[d];
+            first[d]=int(std::lower_bound(a.begin(),a.end(),lo[d]-eps)-a.begin());
+            last[d]=int(std::upper_bound(a.begin(),a.end(),hi[d]+eps)-a.begin());
+        }
+        // Segment i runs from node i-1 to node i. Its left endpoint may
+        // touch the upper bound even if its right endpoint lies beyond it.
+        last[0]=std::min(last[0]+1,shape[0]);
+        for (int k=first[2];k<last[2];++k) for (int j=first[1];j<last[1];++j) {
+            const size_t row=(size_t(k)*shape[1]+j)*shape[0];
+            std::fill(marked.begin()+row+first[0],marked.begin()+row+last[0],1);
+        }
+    }
+    return marked;
+}
 }
 BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,const RangeTriangle& range,const Options& o) {
     BoundaryAssessment r;
@@ -193,8 +224,14 @@ BoundaryAssessment validate_volume_boundary(VolumeBoundary& b,const Field& f,con
         else b.unresolved.push_back({center,"No verified ray-midpoint seed for cavity"});
     }
     // Independent empirical coverage, not a certification of absent components.
-    for (const Vec& p:discovery_grid(f,o)) {
-        if (member(p)!=material(p) && clearance(p,m)>2*o.spatial_tolerance) ++r.coverage_misses;
+    const auto shape=discovery_shape(f,o);
+    const auto grid=discovery_grid(f.box,shape,o.max_seed_starts);
+    const auto crossings=possible_crossings(m,grid,shape,eps);
+    bool retained=false;
+    for (size_t i=0;i<grid.size();++i) {
+        if (i%shape[0]==0) retained=false; // start the ray outside the domain
+        if (crossings[i]) retained=material(grid[i]);
+        if (member(grid[i])!=retained && clearance(grid[i],m)>2*o.spatial_tolerance) ++r.coverage_misses;
     }
     if (r.constraint_failures || r.orientation_failures || r.coverage_misses)
         b.unresolved.push_back({(f.box.min+f.box.max)/2,"Boundary model/orientation/coverage validation failed"});

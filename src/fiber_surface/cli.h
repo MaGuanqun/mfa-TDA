@@ -74,6 +74,8 @@ inline void common_options(Arguments& args, Field& field, Options& options) {
         throw std::invalid_argument("--step and --fiber-step must agree. Use --step for both tracing and marching.");
     options.min_step=args.number("--min-step",options.step/8);
     options.spatial_tolerance=args.number("--spatial-tolerance",options.step*.075);
+    if (args.has("--fiber-seed-radius"))
+        options.fiber_seed_radius=args.number("--fiber-seed-radius",0);
     options.residual_tolerance=args.number("--residual-tolerance",options.residual_tolerance);
     options.derivative_tolerance=args.number("--derivative-tolerance",options.derivative_tolerance);
     options.min_angle_degrees=args.number("--min-angle",options.min_angle_degrees);
@@ -97,6 +99,7 @@ inline void common_help() {
         <<"  --output PREFIX       OBJ, VTK, fiber VTK and JSON report\n"
         <<"  --step H                 shared fiber tracing and surface marching step (physical units)\n"
         <<"  --min-step H             minimum fiber retry step and marching height recovery threshold\n"
+        <<"  --fiber-seed-radius R    endpoint seed duplicate-check radius (defaults to spatial tolerance)\n"
         <<"  --spatial-tolerance E --residual-tolerance E --derivative-tolerance E\n"
         <<"  --seed-grid N         N seeds on the shortest axis; other counts = ceil(N * length / shortest)\n"
         <<"                        default 7 for all fields; 0 also selects 7\n"

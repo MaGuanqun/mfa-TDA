@@ -5,6 +5,13 @@
 
 namespace fiber_surface {
 namespace {
+bool all_vertices_used(const Mesh& mesh) {
+    std::vector<bool> used(mesh.vertices.size(),false);
+    for (const auto& triangle:mesh.triangles)
+        for (int id:triangle) used[id]=true;
+    return std::find(used.begin(),used.end(),false)==used.end();
+}
+
 // A last short front can connect contacts on two different box faces without
 // reaching their shared box edge. Close only that explicit transverse contact,
 // solving the scalar constraint with BOTH box coordinates fixed. This is not an
@@ -44,6 +51,7 @@ size_t finish_box_contacts(Result& r,const Field& f,const Segment& s,const Optio
 
 Checkpoint Extractor::finish(Checkpoint state, bool curve_patch) {
     const auto start=std::chrono::steady_clock::now();
+    index_growth_=false;face_bins_.clear();indexed_faces_=0;
     result_=std::move(state.result); pending_=std::move(state.pending); fiber_uses_=std::move(state.fiber_uses);
     stitch(); repair();
     if (curve_patch) result_.box_contact_triangles=finish_box_contacts(result_,field_,segment_,options_);
@@ -69,7 +77,7 @@ void Extractor::stitch() {
         existing(e,Vec((result_.mesh.vertices[e.first]+result_.mesh.vertices[e.second])/2));
     crack_closing::CrackCloser<double>::close_cracks(result_.mesh,[&](const Triangle& t) {
         return insert(t,false);
-    },options_.max_triangles);
+    },options_.max_triangles,[&](int a,int b){return !intended({a,b});});
 }
 
 void Extractor::snap_box_slivers() {
@@ -132,7 +140,10 @@ void Extractor::snap_box_slivers() {
 }
 
 void Extractor::repair() {
-    while (!fronts().empty() && result_.mesh.triangles.size()<options_.max_triangles) {
+    // Removing faces and closing their boundary loops can only reuse vertices of
+    // existing faces. An initially unused vertex would invalidate every trial.
+    const bool can_repair_cavities=all_vertices_used(result_.mesh);
+    while (can_repair_cavities && !fronts().empty() && result_.mesh.triangles.size()<options_.max_triangles) {
         const auto saved=result_; const auto saved_pending=pending_;
         std::set<int> adjacent;
         for (const auto& e:result_.mesh.boundary) if (!intended(e.first)) adjacent.insert(e.second);
@@ -164,12 +175,8 @@ void Extractor::repair() {
             crack_closing::CrackCloser<double>::close_cracks(result_.mesh,[&](const Triangle& t) {
                 if (forbidden.count(marching_triangles::make_triangle_key(t[0],t[1],t[2]))) return false;
                 return insert(t,false);
-            },options_.max_triangles);
-            if (fronts().size()<before) {
-                std::vector<bool> used(result_.mesh.vertices.size(),false);
-                for (const auto& t:result_.mesh.triangles) for (int id:t) used[id]=true;
-                if (std::find(used.begin(),used.end(),false)==used.end()) { improved=true; break; }
-            }
+            },options_.max_triangles,[&](int a,int b){return !intended({a,b});});
+            if (fronts().size()<before && all_vertices_used(result_.mesh)) { improved=true; break; }
         }
         if (!improved) { result_=saved; pending_=saved_pending; break; }
     }

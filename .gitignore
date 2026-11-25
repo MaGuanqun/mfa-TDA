@@ -12,6 +12,7 @@
 !/src/fiber_surface/experiment/run_curved_prism.sh
 !/src/fiber_surface/experiment/run_hurricane_isabel.sh
 !/src/fiber_surface/experiment/run_hurricane_isabel_ttk.sh
+!/src/fiber_surface/experiment/repair_hurricane_isabel_outer.sh
 !/src/fiber_surface/model_experiments.sh
 !/fiber_volume.sh
 !/isosurface_explicit.sh

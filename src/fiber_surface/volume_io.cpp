@@ -10,7 +10,7 @@ VolumeResult assess_or_fill(const Field& f,const RangeTriangle& range,const Opti
     for(const auto& s:range.sides)o.validate(f,s);
     VolumeResult r;
     auto timed=[&](int stage,auto work) {const auto start=std::chrono::steady_clock::now();work();r.seconds[stage]=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();};
-    if (stage==VolumeStage::fill) r.boundary=build_boundary();
+    if (uses_saved_boundary(stage)) r.boundary=build_boundary();
     else timed(0,[&]{r.boundary=build_boundary();});
     timed(1,[&]{r.boundary_report=validate_volume_boundary(r.boundary,f,range,o);});
     if(!r.boundary_report.valid){r.failed_stage="boundary_validation";return r;}
@@ -29,7 +29,7 @@ VolumeResult assess_or_fill(const Field& f,const RangeTriangle& range,const Opti
 VolumeResult extract_volume(const Field& f,const RangeTriangle& range,const Options& o,
                             VolumeStage stage,const std::string& boundary_input) {
     return assess_or_fill(f,range,o,stage,[&]{
-        return stage==VolumeStage::fill ? read_boundary_ply(boundary_input) : assemble_volume_boundary(f,range,o);
+        return uses_saved_boundary(stage) ? read_boundary_ply(boundary_input,stage==VolumeStage::fill_repaired) : assemble_volume_boundary(f,range,o);
     });
 }
 VolumeResult volume_from_patches(const Field& f,const RangeTriangle& range,const Options& o,Result sides) {
@@ -48,7 +48,7 @@ void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f
                   VolumeStage stage) {
     const auto parent=std::filesystem::path(prefix).parent_path();if(!parent.empty())std::filesystem::create_directories(parent);
     const auto& b=r.boundary;const auto& br=r.boundary_report;const auto& vr=r.report;
-    if (stage!=VolumeStage::fill) write_boundary_ply(prefix+"_boundary.ply", b, br.valid);
+    if (!uses_saved_boundary(stage)) write_boundary_ply(prefix+"_boundary.ply", b, br.valid);
     {
         auto out=output(prefix+"_boundary.obj");for(const Vec& p:b.mesh.vertices)out<<"v "<<p.transpose()<<'\n';
         for(size_t i=0;i<b.mesh.triangles.size();++i){auto t=b.mesh.triangles[i];out<<"g patch_"<<b.patches[i]<<"\nf "<<t[0]+1<<' '<<t[1]+1<<' '<<t[2]+1<<'\n';}
@@ -85,13 +85,14 @@ void write_volume(const std::string& prefix,const VolumeResult& r,const Field& f
     }
     {
         auto out=output(prefix+"_report.json");
-        const char* stage_name=stage==VolumeStage::boundary?"boundary":stage==VolumeStage::fill?"fill":"all";
+        const char* stage_name=stage==VolumeStage::boundary?"boundary":stage==VolumeStage::fill?"fill":stage==VolumeStage::fill_repaired?"fill-repaired":"all";
         out<<"{\n  \"stage\": \""<<stage_name<<"\",\n  \"complete\": "<<(r.complete()?"true":"false")<<",\n  \"failed_stage\": \""<<r.failed_stage<<"\",\n  \"tetgen_switches\": \"pV\",\n  \"coverage\": \"empirical, not certified\",\n  \"triangle\": [";
         for(int i=0;i<3;++i){if(i)out<<',';out<<'['<<range.corners[i][0]<<','<<range.corners[i][1]<<']';}
         out<<"],\n  \"box_min\": ["<<f.box.min[0]<<','<<f.box.min[1]<<','<<f.box.min[2]<<"],\n  \"box_max\": ["<<f.box.max[0]<<','<<f.box.max[1]<<','<<f.box.max[2]<<"],\n";
         const auto shape=discovery_shape(f,o);
         out<<"  \"discovery_grid_shape\": ["<<shape[0]<<','<<shape[1]<<','<<shape[2]<<"], \"starting_points\": "<<discovery_size(shape,o.max_seed_starts)<<",\n";
         out<<"  \"step\": "<<o.step<<", \"fiber_step\": "<<o.step<<", \"spatial_tolerance\": "<<o.spatial_tolerance<<", \"residual_tolerance\": "<<o.residual_tolerance<<",\n";
+        out<<"  \"fiber_seed_radius\": "<<o.seed_coverage_radius()<<",\n";
         out<<"  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance<<", \"fiber_plane_tolerance\": "<<o.fiber_plane_tolerance()<<",\n";
         out<<"  \"boundary_vertices\": "<<b.mesh.vertices.size()<<", \"boundary_triangles\": "<<b.mesh.triangles.size()<<", \"box_contact_triangles\": "<<b.box_contact_triangles<<",\n  \"tet_vertices\": "<<r.mesh.vertices.size()<<", \"tetrahedra\": "<<r.mesh.cells.size()<<",\n";
         out<<"  \"corner_fiber_components\": ["<<b.corner_components[0]<<','<<b.corner_components[1]<<','<<b.corner_components[2]<<"],\n  \"shell_signed_volumes\": [";

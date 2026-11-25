@@ -45,6 +45,10 @@ void config_body(std::ostream& out, const RunConfig& c) {
         out<<c.curve.segments.back().b.transpose();
     }
     const auto& o=c.options;
+    if (o.max_seed_starts!=Options::default_max_seed_starts)
+        out<<"\nmax_seed_starts "<<o.max_seed_starts;
+    if (o.fiber_seed_radius)
+        out<<"\nfiber_seed_radius "<<*o.fiber_seed_radius;
     // Keep both step slots in the existing on-disk format and its checkpoint signature.
     out<<"\noptions "<<o.step<<' '<<o.min_step<<' '<<o.step<<' '<<o.spatial_tolerance<<' '
         <<o.residual_tolerance<<' '<<o.derivative_tolerance<<' '<<o.min_angle_degrees<<' '<<o.max_normal_degrees<<' '
@@ -155,7 +159,19 @@ RunConfig read_config(const fs::path& run) {
         for (size_t i=0; i<count; ++i) points.push_back(in.range());
         c.curve=RangeCurve(std::move(points));
     }
-    in.word("options"); auto& o=c.options;
+    auto& o=c.options;
+    auto section=in.get<std::string>();
+    if (section=="max_seed_starts") {
+        o.max_seed_starts=int(in.count());
+        if (o.max_seed_starts<1) in.fail("invalid seed allocation limit");
+        section=in.get<std::string>();
+    }
+    if (section=="fiber_seed_radius") {
+        o.fiber_seed_radius=in.real();
+        if (*o.fiber_seed_radius<=0) in.fail("invalid fiber seed radius");
+        section=in.get<std::string>();
+    }
+    if (section!="options") in.fail("expected options");
     o.step=in.real(); o.min_step=in.real();
     if (in.real()!=o.step)
         in.fail("saved fiber and surface steps differ; rerun the seeds stage with one --step");
@@ -210,7 +226,7 @@ Seeds read_seeds(const fs::path& run,const RunConfig& config) {
         SeedShape shape{0,0,0}; // Older discoveries did not save their axis counts.
         if (version==2) {
             for (int& n:shape) n=in.get<int>();
-            if (discovery_size(shape)!=starts) in.fail("seed grid shape does not match starting point count");
+            if (discovery_size(shape,config.options.max_seed_starts)!=starts) in.fail("seed grid shape does not match starting point count");
         }
         const size_t count=in.count();
         if (seconds<0) in.fail("negative duration");

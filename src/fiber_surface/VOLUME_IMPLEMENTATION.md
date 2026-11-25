@@ -172,6 +172,11 @@ boundary validation and the writer saves the labeled PLY. With `--stage fill`,
 `read_boundary_ply()` supplies the triangles, winding and patch IDs. Boundary
 validation then rebuilds adjacency and cavity seeds before calling TetGen.
 The repository example script runs these two modes in separate processes.
+For a labeled PLY exported by surface repair, use
+`--stage fill-repaired --boundary-input FILE`. This stage tests the repaired
+geometry against the selected fields, range triangle and discovery grid.
+Filling proceeds only after the boundary passes, and the resulting cells
+undergo the usual volume assessment.
 Exceptions outside the filling catch, such as invalid options or output errors,
 reach the executable's `main()` catch and produce exit `1`.
 
@@ -472,9 +477,10 @@ most useful controls when reading or changing this code:
 
 | Option | Role in this implementation |
 | --- | --- |
-| `step` | Fixed RK4 step along corner fibers and nominal growth step for side surfaces. Also scales geometric comparison tolerances. |
-| `min_step` | Lower growth scale used by the surface marcher. |
-| `spatial_tolerance` | Maximum distance from an endpoint seed to an existing trace of the same range point for skipping the seed. Also limits local correction displacements for sampled geometry. Both distances use physical coordinates. |
+| `step` | Nominal RK4 step along corner fibers and growth step for side surfaces. Stalled corner recovery requires a shared arc of this length, sampled at `max(min_step, step/8)`. Also scales geometric comparison tolerances. |
+| `min_step` | Minimum step for retrying a failed fiber advance and lower growth scale for the surface marcher. |
+| `fiber_seed_radius` | Distance from a corrected endpoint seed to a stored same-corner polyline at which tracing skips the seed. Defaults to `spatial_tolerance`. |
+| `spatial_tolerance` | Physical tolerance for curvature-based surface growth and local correction of sampled geometry. |
 | `residual_tolerance` | Bounds surface projection residuals and enters volume constraint checks. Must be less than one percent of each range-side length. |
 | `derivative_tolerance` | Threshold used in derivative and rank checks. |
 | `seed_grid` | Starting-point count on the shortest box axis; other counts scale with physical axis length. Default `7`; `0` also selects `7`. |

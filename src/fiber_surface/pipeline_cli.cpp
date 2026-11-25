@@ -54,6 +54,7 @@ int stage_main(Stage stage,int argc,char** argv) {
                     <<"  --model coordnet --first U.pt --second V.pt --domain-min x,y,t --domain-max x,y,t\n"
                     <<"    Use float64 scalar exports and range endpoints in model-output units.\n"
                     <<"  All resolved parameters are saved in run.conf.\n";
+                std::cout<<"  --max-seed-starts N  seed lattice allocation limit (default 1000000)\n";
                 common_help();
             } else {
                 std::cout<<"Reads run.conf and preceding stage files. To change parameters, restart at find_seeds.\n";
@@ -67,6 +68,9 @@ int stage_main(Stage stage,int argc,char** argv) {
         const fs::path run=fs::absolute(directory).lexically_normal();
         if (stage==Stage::seeds) {
             auto config=initial_config(args);
+            config.options.max_seed_starts=args.integer("--max-seed-starts",config.options.max_seed_starts);
+            if (config.options.max_seed_starts<1 || config.options.max_seed_starts>10000000)
+                throw std::invalid_argument("Staged runs support a seed allocation limit from 1 to 10000000");
             auto loaded=load_field(config,false);
             if (config.model!="analytical") config.options.step=(loaded.field.box.max-loaded.field.box.min).minCoeff()/20;
             config.curve=surface_options(args,loaded.field,config.curve.segments.front(),config.options);

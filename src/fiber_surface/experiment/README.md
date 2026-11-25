@@ -1,9 +1,282 @@
 # Fiber volume experiments
 
+## Hurricane Isabel and vortex-street metrics
+
+[Open the comparison table (CSV)](model_metrics.csv). Each column is a run.
+The first rows give closure, mesh size, volume, and membership IoU. Filter
+the metric group for corner fibers, side patches, TTK distances in both
+directions, sampled cap agreement, or timings. Blank cells indicate an
+unmeasured or inapplicable value. A measured zero appears as 0. The final
+columns label the cropped validation examples separately. Isabel volumes use
+cubic grid units. Vortex-street volumes use the native `x × y × t` coordinates.
+
+For the Isabel `narrow` and `wedge` triangles, the original data, fitted
+pressure and temperature, and tetrahedral mesh were classified at the same
+25 million integer grid points. The fitted fields are the float64 samples
+saved for TTK, evaluated at grid nodes before piecewise-linear interpolation.
+IoU is the number selected by both sets divided by the number selected by
+either set. For `narrow`, the mesh and source agree on 626 selected points,
+with 124 source-only and 126 mesh-only (IoU 0.7146). The mesh and fitted
+field disagree at only 13 points (IoU 0.9830). For `wedge`, the corresponding
+IoUs are 0.7451 and 0.9884. These are exhaustive grid counts. The Wilson
+intervals in the table apply to the separately labeled random-sample tests.
+
+The full-domain vortex-street boundaries remained open. Their surface
+measurements are available, while their tetrahedral-volume and mesh-IoU
+cells are blank. The vortex piecewise-linear-reference IoUs use fitted INR
+membership as the target. Those reference samples are shared by the three
+upward-flow step sizes.
+
+The manuscript's [combined measurement table](../../../paper/data/model-results.csv)
+also includes the later Isabel step-size and repair studies. The
+[model-results figure](../../../paper/figure/model-results.pdf) shows the repaired
+Isabel surface, a local shell before and after repair, and a common time slice
+of the saved upward-wake and TTK surfaces. To regenerate both from the saved
+experiments under `build/`, run from the repository root with NumPy, SciPy,
+Matplotlib and VTK available:
+
+```bash
+python3 src/fiber_surface/experiment/export_model_results_table.py
+python3 src/fiber_surface/experiment/plot_model_results.py
+```
+
 ## Hurricane Isabel at time step 30
 
-Run `./src/fiber_surface/experiment/run_hurricane_isabel.sh` for the default
-`narrow` experiment. Its pressure–temperature triangle is
+Run `./src/fiber_surface/experiment/run_hurricane_isabel.sh` for the broad
+outer ring (preset `outer`, candidate 2 from the larger-ring screen). Its
+pressure–temperature triangle is `A=(-25,-19)`, `B=(165,-22)`,
+`C=(165,-15)`. The run uses a 0.5-grid-unit step, 202 × 202 × 40 seed
+locations, 500,000 triangles per side, and up to 100,000 steps per trace
+direction. The outer-ring preset sets both the endpoint seed duplicate-check
+radius (`--fiber-seed-radius`) and the surface spatial tolerance to one step
+(`1.0 × h`). Set `ISABEL_OUTER_STEP` to override all three distances together. The minimum retry step follows `h/8` and the
+range residual tolerance is 0.005.
+The outer-ring preset uses an 85-degree limit for the angle between an
+oriented triangle normal and the field normal. The marcher checks the three
+vertices, three edge midpoints and centroid. The final repair uses the limit
+saved with the run. `ISABEL_OUTER_MAX_NORMAL_ANGLE` accepts angles strictly
+between 0 and 90 degrees.
+
+### Half-step outer ring and local repairs
+
+For the time-30 candidate-2 run, keep the 85-degree normal limit explicit. The
+commands below use the full run directory printed by the first script and a
+fresh output directory for the repair. Set `PYTHON` to an interpreter with
+NumPy and SciPy for the repair script.
+
+```bash
+ISABEL_OUTER_MAX_NORMAL_ANGLE=85 ./src/fiber_surface/experiment/run_hurricane_isabel.sh outer
+./src/fiber_surface/experiment/repair_hurricane_isabel_outer.sh "$full_run" "$new_output"
+```
+
+| Full-domain native surface | Faces | Open edges | Nonmanifold vertices | Intersecting pairs |
+| --- | ---: | ---: | ---: | ---: |
+| Uniform `h=0.5`, assembled | 650,258 | 20 | 3 | 0 |
+| Two holes filled at `h=0.5` | 650,264 | 12 | 3 | 0 |
+| Isolated shell replaced at `h=0.125` | 650,522 | 8 | 2 | 0 |
+| Both local refinements joined | 651,410 | 0 | 0 | 0 |
+
+The fixed-step repair closes holes near `(383.33,309.08,42.18)` and
+`(425.19,304.53,37.38)`. At the second site, two front vertices move
+on their own MFA sides before the fill. This experiment then uses local re-extraction at two sites.
+At `(325.06,353.24,42.67)`, two BC faces share one vertex with a small
+shell. Its crop contains the whole shell. At `(279.09,350.09,42.96)`,
+two vertices each have disconnected incident triangle fans. The crop here
+crosses the main shell. The experiment replaces its interior and connects
+corresponding AB and BC rims using 146 transition faces. The two crop boxes
+and joining contours are specific to this dataset and triangle. Both native
+crop runs use `h=0.125` and seven seed locations along their shortest axis.
+
+The script exports `adaptive.ply` with per-face patch labels. It checks
+intersections on the joined mesh, all shared seam vertices, and seven field
+sites on every triangle. The final surface has 37 edge-connected shells.
+All 4,559,870 face-site projections succeeded, with a largest correction of
+0.1590 grid units. The largest face-normal error was 82.23 degrees. On the
+transition faces alone these maxima were 0.0549 grid units and 28.97 degrees.
+At the 25 million original grid locations, surface-interior membership gave
+IoU 0.99785 against the fitted fields and 0.90458 against the source samples.
+These results describe the boundary and its enclosed grid points.
+
+### Uniform quarter-step and final repair of a saved half-step mesh
+
+These two experiments use the same candidate-2 range triangle, 202 × 202 × 40
+seed lattice, 85-degree normal limit and 100,000 steps per trace direction.
+The duplicate radius and the surface spatial tolerance both equal the nominal
+step. The uniform quarter-step run needs more than 500,000 triangles on each
+of its three sides. From the repository root, run
+
+```bash
+ISABEL_OUTER_STEP=0.25 ISABEL_OUTER_MAX_NORMAL_ANGLE=85 \
+ISABEL_OUTER_MAX_TRIANGLES=2000000 ISABEL_OUTER_STAGE=surface \
+./src/fiber_surface/experiment/run_hurricane_isabel.sh outer
+```
+
+The script writes the assembled, labeled `volume_boundary.ply`, the audit in
+`audit.json`, and the stage commands in `run.txt`. The audit checks open
+edges, vertex fans, triangle intersections, corner seams, and field agreement
+at seven sites on every triangle.
+
+For the second experiment, set `full_half_run` to the saved native
+`h=0.5` run with `volume_boundary.ply` and `stages/`. Select a new
+`output_dir` and a Python with NumPy, SciPy and VTK. From the repo root,
+with Spack initialized, run
+
+```bash
+source ./load-env.sh
+cmake --build build --target fiber_repair_boundary fiber_refine_saved_patch fiber_grid_recovery -j 3
+python3 src/fiber_surface/experiment/repair_saved_fronts.py "$full_half_run" "$output_dir"
+```
+
+The first pass fills simple open rims. For a remaining pinch near a small,
+completed corner trace, the script removes its incident faces, reconstructs
+the two labeled sides using the saved trace points, and fits new midpoints
+to the corresponding MFA sides or shared corner fiber. The exposed patch rim
+stays fixed during subdivision. For a saved loop that crosses itself in its
+best-fitting plane, it also tests a cyclic order around the loop. Proposed
+patches undergo topology, intersection, and field checks with their neighbors
+and again in the assembled mesh. The process uses the original half-step
+traces throughout. A localized native run at `h=0.125` belongs to the
+preceding experiment.
+
+| Surface | Triangles | Open edges | Nonmanifold vertices | Intersecting pairs |
+| --- | ---: | ---: | ---: | ---: |
+| Uniform `h=0.5`, assembled | 650,258 | 20 | 3 | 0 |
+| Uniform `h=0.25`, assembled | 2,480,827 | 15 | 3 | 0 |
+| `h=0.5` with final repair | 650,490 | 0 | 0 | 0 |
+
+Halving the nominal step lowered the 95th-percentile distance from 20,000
+area-weighted surface samples to their fitted sides from 0.00904 to 0.00233
+grid units. The quarter-step run closed the native gaps near x=383 and
+x=425. It retained four open edges near x=279 and three near x=325, and
+had eight near x=400 where the half-step surface was closed. All 17,365,789
+quarter-step face-site projections succeeded. Its 39 edge-connected components
+include open patches, so whole-domain interior IoU is left blank.
+
+The `--max-edge-factor 2` control left eight open edges and two pinched
+vertices. With the default factor of four, the longest proposed edge was
+1.6434 grid units (3.29 times the nominal step). The 85-degree normal
+limit and 0.5-grid-unit tolerance stayed in effect. Subdividing the replacement
+faces improved the small shell near `(325,353,43)` from 45.8% to 94.7% of
+the volume measured on a fitted-field reference with grid spacing 1/32.
+The whole-domain membership IoU on the original grid was unchanged by that
+subdivision. Set `--fit-levels 0` for the connectivity-only control.
+
+`final.ply` contains the resulting surface, `reconstructed_faces.ply`
+contains the replacement faces from the corner-loop repairs, and `repair.json`
+records the sites, decisions and closure status. Exit code 2 means the script
+saved a partially repaired mesh with remaining topology defects. The resulting
+surface with the default settings has 37 closed components. At the 25 million
+simulation grid points its interior has IoU 0.99785 with the fitted fields and
+0.90458 with the original simulation.
+
+### Recorded normal-check comparison on the half-step outer ring
+
+The earlier ablation used identical seeds and corner traces for both extractions.
+The table compares the assembled marching checkpoints and the result of
+applying `repair_saved_fronts.py` directly to each checkpoint mesh. This
+comparison bypasses the separate per-side cavity search in both runs.
+A face counts once in the final column if its normal points against the
+outward field normal at any of its three vertices, three edge midpoints or
+centroid.
+
+| Face-to-field angle check | Stage | Triangles | Open edges | Pinched vertices | Intersecting pairs | Faces above 90° |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 85° | After marching | 650,248 | 50 | 4 | 0 | 0 |
+| Disabled | After marching | 633,384 | 15,728 | 2,100 | 15 | 7,749 |
+| 85° | After direct final repair | 650,490 | 0 | 0 | 0 | 0 |
+| Disabled | After direct final repair | 640,817 | 6,199 | 1,688 | 7 | 7,004 |
+
+The 85-degree repaired surface had 37 closed components. The unchecked
+repaired mesh had 284 edge-connected components including open patches.
+All seven projection tests on every face succeeded in both runs.
+
+Starting with the **same** native 85-degree boundary (20 open edges),
+both final repairs closed all 37 components, with zero intersecting triangle
+pairs. Disabling the comparison only in repair moved two vertices near
+`(425,305,37)`, affecting nine faces while preserving every vertex index and
+triangle connection. On one CA face, the third vertex landed on the other
+side of its fixed edge in the original triangle plane. Its largest angle
+at the seven audit sites increased from 2.11 to 179.58 degrees. In both
+meshes the maximum fitted-field correction on this face was 0.000634 grid
+units. Both repairs gave fitted-field IoU 0.99785 and source IoU 0.90458.
+
+### Isabel comparison and volume cutaway
+
+To regenerate the paper figure from the half-step repaired surface, run the
+native MFA volume fill from the repository root in the active build environment.
+
+```bash
+mkdir -p build/isabel-presentation/native
+source ./load-env.sh
+build/src/fiber_surface/fiber_volume_mfa \
+    --first build/src/hurricane_isabel_3d/Pf30_3d.mfa \
+    --second build/src/hurricane_isabel_3d/TCf30_3d.mfa \
+    --variable1 0 --variable2 0 --q0 '-25,-19' --q1 '165,-22' --q2 '165,-15' \
+    --step 0.5 --fiber-seed-radius 0.5 --spatial-tolerance 0.5 \
+    --residual-tolerance 0.005 --max-normal-angle 85 \
+    --seed-grid 40 --max-seed-starts 1632160 --max-triangles 500000 --max-trace-steps 100000 \
+    --stage fill-repaired --boundary-input build/isabel_two_methods/half_fitted/final.ply \
+    --output build/isabel-presentation/native/isabel
+python src/fiber_surface/experiment/plot_isabel_comparison.py
+```
+
+The plotter uses NumPy, Matplotlib and VTK. It matches the native boundary to
+the displayed surface, slices the tetrahedra at `x=197` and checks both section
+areas against the surface contours. The smaller section cuts 606 of the 996,518
+tetrahedra. The overviews and cross section show the vertical coordinate at
+twice its horizontal scale. The matched surface details use equal spatial scales.
+
+### Earlier outer-ring trials
+
+The 50,000-triangle trial reached its limit on AB. The larger run saves shared
+seeds and corner traces under `stages/`, marches and stitches the three sides
+independently, then assembles and validates the full boundary. Follow
+`AB.log`, `BC.log` and `CA.log` inside the results directory printed by the script.
+Before stalled-trace recovery, at `h=1` with both spatial thresholds equal to the step, candidate 2 gave
+1, 58 and 40 traces at A, B and C, with two incomplete at B. All three sides
+finished below budget. The assembled boundary has 176,888 triangles, 406 open
+edges, 37 nonmanifold vertices and 21 intersections. Of the open edges, 382
+were already open on a marching front, 17 lost a neighbor during assembly,
+and seven have a corner trace with only one attached patch. Validation stopped
+before tetrahedralization.
+
+Rerunning candidate 2 from the same saved seeds with a required shared arc
+of one grid unit recovered the two incomplete B traces as one closed loop
+of length 21.747. The resulting corner counts were A = 1, B = 57 and C = 40,
+all closed. Replaying the native MFA tracer separately from each of the three
+original stalls at a step of 1/256 gave a first return after 21.757 grid units.
+TTK extracted two local loops on the unit grid and at spacing 1/16. On local
+grids of spacing 1/32 and 1/64 it extracted one loop, with lengths 21.771
+and 21.760. Both adjacent patches attached to all 175 edges of the recovered
+loop. The assembled boundary had 177,328 triangles and 350 open edges,
+including 334 unfinished patch-front edges, nine exposed by rejected faces
+and seven corner edges with only one patch attached. Its 27 nonmanifold
+vertices and 18 intersecting triangle pairs also failed boundary validation.
+
+The measurements in the next paragraphs come from the earlier run with a 0.35-grid-unit
+surface tolerance and duplicate-check radius. Its corner stage found 1 trace at A, 66 at B and 43 at C. Two of the
+66 B traces remained incomplete, with three insufficient-progress events
+near `(400.3,161.2,41.9)`. The volume validator requires all events to be resolved.
+The original grid selects 98,788 points across levels 36–44. Of 291 groups
+connected through grid faces, the largest contains 96,108 points. The main ring's
+horizontal footprint has area-equivalent inner and outer radii of 84.0 and
+131.4 grid units. At the integer grid points, the fitted fields select
+98,537 points and agree with the original fields on 93,711 selected points
+(fitted/source IoU 0.9044).
+At the 500,000 limit, AB, BC and CA finished marching with 74,748, 44,226
+and 50,930 triangles. Assembly rejected 336 BC triangles at inconsistent
+corner incidences. The resulting boundary has 169,568 triangles, 1,772
+open edges, 139 nonmanifold vertices and 1,262 intersections. Validation
+stopped before tetrahedralization. Its total side area is 75,749.2 square
+grid units, compared with 75,860.1 for TTK. The sewn B seam has 76.7% of
+the TTK B-fiber length.
+With 50,000 triangles per side, AB supplied 66.36% of the TTK AB area,
+and the assembled surface had 5,766 open edges. With the higher limit, AB's
+assembled area reached 100.004% of TTK.
+Across the three sides, the MFA/TTK area ratio rose from 83.62% to 99.85%.
+
+Run `./src/fiber_surface/experiment/run_hurricane_isabel.sh narrow` for the
+earlier narrow experiment. Its pressure–temperature triangle is
 `A=(-1000,-22)`, `B=(-900,-22)`, `C=(-950,-18)`. It uses a 1-grid-unit step
 for tracing and marching, a 202 × 202 × 40 seed lattice, a budget of 50,000
 triangles per side, and up to 100,000 steps per trace direction. The range
@@ -45,6 +318,7 @@ Output directories start with `hurricane_isabel_t30_storm_h5_budget3500_seed40.`
 
 | Preset | Shared step | Source-grid samples inside the triangle | Horizontal columns selected (of 250,000) | Validated mesh volume (cubic grid units) | Mesh/source IoU |
 | --- | ---: | ---: | ---: | ---: | ---: |
+| `outer` | 1 | 98,788 | 32,834 (13.13%) | — | — |
 | `narrow` | 1 | 750 | 522 (0.21%) | 747.69 | 0.7146 |
 | `wedge` | 1 | 1,774 | 1,124 (0.45%) | 1,759.94 | 0.7451 |
 | `core` | 5 | 263,230 | 9,514 (3.81%) | 262,213.01 | 0.9746 |
@@ -68,15 +342,17 @@ source-grid IoU require a validated fill.
 
 ### TTK comparison on a 500 × 500 × 100 grid
 
-From the repository root, run both current Isabel cases with
+From the repository root, compare the outer ring with TTK using
 
 ```bash
 ./src/fiber_surface/experiment/run_hurricane_isabel_ttk.sh
 ```
 
-Pass `narrow` or `wedge` to run one case. The script uses the newest completed
-MFA run for each named preset and runs the existing MFA experiment if one is
-missing. To compare particular meshes, pass their run directories as arguments.
+Pass `both` to compare the earlier narrow and wedge cases together, or pass
+either name individually. For each named preset, the script uses a saved
+completed MFA fill when available, then a saved partial boundary. If neither
+exists it runs the MFA experiment first. To compare particular meshes, pass
+their run directories as arguments.
 For example, after running the `1200` and `1300` cases from `fiber_volume.sh`,
 use `./src/fiber_surface/experiment/run_hurricane_isabel_ttk.sh build/fiber-volume-results/hurricane_isabel_3d_full/{1200,1300}`.
 Each supplied mesh must come from the same time-30 pressure and temperature models.
@@ -84,7 +360,7 @@ Its `volume_report.json` supplies the three range vertices in order.
 
 The runner samples `Pf30_3d.mfa` and `TCf30_3d.mfa` once at all 25,000,000
 integer locations in `[0,499] × [0,499] × [0,99]`. The two float64 sample
-files take 400 MB combined. Both cases use the same samples. TTK processes
+files take 400 MB combined. All triangles in an invocation share these samples. TTK processes
 the full image with an implicit triangulation of 147,906,594 tetrahedra.
 The reference tests how well the continuous-model extraction agrees with the
 piecewise-linear interpolation of the **fitted MFA fields**. The source-grid
@@ -96,9 +372,14 @@ folders contain the following results.
 
 | File | Contents |
 | --- | --- |
-| `sides.vtp` | TTK triangles labeled `patch` 1 = AB, 2 = BC, 3 = CA. Open alongside the MFA run's `volume_tet_boundary.vtk` to overlay matching patches. |
+| `sides.vtp` | TTK triangles labeled `patch` 1 = AB, 2 = BC, 3 = CA. Overlay with the MFA boundary identified in `comparison.json`. |
 | `fibers.vtp` | TTK line segments labeled `corner_id` 0 = A, 1 = B, 2 = C, when corner fibers exist. |
-| `comparison.json` | Query, sample grid, model and mesh paths, counts, physical patch areas and seam lengths, and closest-point distances in both directions. |
+| `reference.json` | TTK query, grid, counts by patch and corner, edge incidence after welding, and extraction and welding time. |
+| `corner_traces.json` | For checkpointed runs, trace counts, lengths and distances to TTK for each corner before marching. |
+| `fit_vs_source.json` | Membership counts and fitted/source IoU over all 25 million grid points when original simulation fields are available. |
+| `comparison.json` | MFA fill and boundary status, compared mesh path, physical patch areas and seam lengths, and closest-point distances in both directions. On an open mesh, the seam measurement covers edges shared by the two labeled patches. |
+| `section.png`, `section.pdf` | Side-by-side cross sections of our mesh and TTK, colored by range edge, over the selected fitted-grid points on the level with the most hits. |
+| `side_footprints.png` | Separate horizontal projections of all TTK triangles on AB, BC and CA across all heights. |
 
 Distances use 10,000 seeded samples per patch or corner seam in each direction.
 Each domain axis is scaled to `[0,1]` before sampling by triangle area or line
@@ -108,15 +389,94 @@ experiment's reports supply the volume and membership measurements.
 
 | Case | MFA side triangles | TTK side triangles | TTK corner segments |
 | --- | ---: | ---: | ---: |
+| `outer` (50,000 per side, open boundary) | 143,894 | 675,857 | 14,245 |
+| `outer` (500,000 per side, open boundary) | 169,568 | 675,857 | 14,245 |
 | `narrow` | 5,234 | 23,632 | 2,001 |
 | `wedge` | 9,424 | 40,761 | 2,160 |
 
 The sampler builds in the repository's Spack environment. The TTK stage uses
 `TTK_PYTHON`, the active Python 3, or the Conda environment `mfa`, with TTK
-Python bindings, VTK, NumPy and SciPy. `TTK_THREADS` sets the thread count
+Python bindings, VTK, NumPy, SciPy and Matplotlib. `TTK_THREADS` sets the thread count
 for sampling and extraction (default 3). To reuse an existing sample pair,
 run `python ttk_hurricane_isabel.py SAMPLES_DIR MFA_RUN_DIR [MFA_RUN_DIR ...]`
 from this folder with that Python environment active.
+
+### Shared-grid surface recovery
+
+`fiber_grid_recovery` reads a triangle and model from an existing `stages/`
+directory. It evaluates the fitted fields on a lattice, splits each spatial
+cell into six tetrahedra, and clips their affine range maps against the three
+query sides. Neighboring tetrahedra reuse the same crossing on each grid edge.
+Adjacent range sides reuse the same corner-fiber vertex on each grid face.
+The result contains the side triangles, with patch labels 1 (AB), 2 (BC), and
+3 (CA). A cropped domain may have open edges on the crop faces.
+
+From the repository root, with the Spack environment active, the following
+commands reproduce the half-grid reconstruction and the B-loop refinement.
+`STAGES` identifies the candidate-2 run and `OUT` an existing output directory.
+
+```bash
+cmake --build build -j 3 --target fiber_grid_recovery
+bin=build/src/fiber_surface/fiber_grid_recovery
+"$bin" grid "$STAGES" 0.5 "$OUT/grid_half"
+"$bin" grid "$STAGES" 0.5 "$OUT/grid_refined" --refine 397.5,156.5,41.5 404.5,166.5,42.5 0.0625
+"$bin" recover-grid "$STAGES" 0.5 "$OUT/model_refined" --refine 397.5,156.5,41.5 404.5,166.5,42.5 0.0625
+```
+
+Refinement subdivides coordinate intervals on each axis. Those coordinate
+planes extend across the domain, so neighboring cells agree on every face.
+The grid spacing controls field sampling independently of the marcher's
+`--step` and triangle budget. A query that passes exactly through a grid
+vertex or has a corner exactly on a grid edge can require special handling.
+The experimental extractor reports those coincidences.
+
+`grid` retains the affine crossing positions. `carrier-grid` fits side points
+on their grid edges and corner points in their grid faces. `recover-grid`
+also tries a free corner solve when the fitted fiber misses that grid face.
+It restores linear positions around inverted, degenerate or intersecting
+triangles and rechecks the mesh. `fit-grid` is a comparison that fits both
+range coordinates independently at each vertex.
+
+The binary PLY contains double coordinates and a per-face patch label. The
+JSON reports topology, intersections, seam residuals against the continuous
+field, and field-projection distances from 20,000 area-weighted side samples
+in grid units. The reconstruction exports a surface. The production volume
+validator has its own orientation, corner and coverage tests.
+
+For the whole-domain Isabel candidate 2, the radius used to suppress duplicate
+seeds and the surface tolerance were both `h` in every native trial.
+Open length is the sum of one-sided mesh-edge lengths in physical grid units.
+The extra repair pass tried bridges between open edges, local changes of
+diagonal, and splits of a rim triangle. It allowed overlap in tangent-plane
+projection for repairs of a bounded three-edge hole. Each accepted edit
+passed the patch intersection tests and improved open-edge or nonmanifold
+vertex counts on the assembled surface.
+
+| Extraction | March step | Face normal limit | Triangles | Open edges | Open length | Nonmanifold vertices | Intersecting pairs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Native march | 1 | 55° | 177,328 | 350 | 291.53 | 27 | 18 |
+| Native march | 1 | 85° | 177,402 | 180 | 138.13 | 21 | 18 |
+| Native march and bounded-gap repair | 1 | 85° | 177,408 | 174 | 133.15 | 19 | 18 |
+| Native march | 0.8 | 85° | 269,913 | 137 | 94.25 | 8 | 18 |
+| Native march and bounded-gap repair | 0.8 | 85° | 269,921 | 113 | 75.88 | 8 | 18 |
+| Shared grid with guarded fits, 0.5 spacing and 1/16 through B | | | 4,596,808 | 0 | 0 | 0 | 0 |
+
+The recovered surface had 36 edge-connected shells. All 20,000 sampled
+points projected onto the continuous fitted sides, with a 95th-percentile
+displacement of 0.00468 grid units. Of 41,064 seam vertices, 2,059 exceeded
+the production corner residual tolerance of `1e-9`. The output is a surface
+mesh with measured field error. It has no validated tetrahedral fill.
+
+The small B loop distinguishes field accuracy from mesh closure. The uniform
+0.5 grid split it into two loops. Refinement followed by guarded vertex fits
+recovered one loop, with a 95th-percentile distance of 0.00019 grid units
+from the independent 1/64-spacing TTK loop to the assembled seam.
+At `h=1`, the native tracer represented this loop with 175 chords (median
+length 0.125), and both sides attached to every chord. At `h=0.8`, it closed
+the loop with 27 chords (median length 0.799). Both sides attached to 26 and
+the remaining chord was absent from the assembled mesh. The smaller nominal
+step improved the global defect counts while this loop received coarser
+local sampling.
 
 ### Original small-loop selection
 

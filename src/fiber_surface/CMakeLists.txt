@@ -1,4 +1,4 @@
-add_library(fiber_surface_core STATIC find_seeds.cpp trace_endpoint_fibers.cpp
+add_library(fiber_surface_core STATIC find_seeds.cpp trace_endpoint_fibers.cpp recover_fiber.cpp
     march_surface.cpp stitch_surface.cpp curve_surface.cpp evaluate_surface.cpp)
 target_link_libraries(fiber_surface_core PUBLIC Eigen3::Eigen TBB::tbb)
 target_compile_features(fiber_surface_core PUBLIC cxx_std_17)
@@ -37,6 +37,12 @@ if(FIBER_ENABLE_VOLUME)
     target_link_libraries(fiber_volume_coordnet PRIVATE fiber_volume_core fiber_coordnet_field)
     add_executable(fiber_volume_from_patches fiber_volume_from_patches.cpp)
     target_link_libraries(fiber_volume_from_patches PRIVATE fiber_volume_core fiber_surface_pipeline)
+    add_executable(fiber_refine_saved_patch experiment/refine_saved_patch.cpp)
+    target_link_libraries(fiber_refine_saved_patch PRIVATE fiber_volume_core fiber_surface_pipeline)
+    add_executable(fiber_repair_boundary experiment/repair_boundary.cpp)
+    target_link_libraries(fiber_repair_boundary PRIVATE fiber_volume_core fiber_surface_pipeline)
+    add_executable(fiber_grid_recovery experiment/grid_recovery.cpp)
+    target_link_libraries(fiber_grid_recovery PRIVATE fiber_volume_core fiber_surface_pipeline)
     install(TARGETS fiber_volume_explicit fiber_volume_mfa fiber_volume_coordnet fiber_volume_from_patches RUNTIME DESTINATION src/fiber_surface)
 endif()
 if(BUILD_TESTING)
@@ -57,6 +63,13 @@ if(BUILD_TESTING)
     endif()
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     if(FIBER_ENABLE_VOLUME)
+        add_test(NAME fiber_surface_boundary_repair COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/experiment/test_boundary_repair.py
+            $<TARGET_FILE:fiber_find_seeds> $<TARGET_FILE:fiber_grid_recovery> $<TARGET_FILE:fiber_repair_boundary>
+            $<TARGET_FILE:fiber_refine_saved_patch>)
+        add_test(NAME fiber_surface_grid_recovery COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/experiment/test_grid_recovery.py
+            $<TARGET_FILE:fiber_find_seeds> $<TARGET_FILE:fiber_grid_recovery>)
         add_test(NAME fiber_volume_cli COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/volume_cli_test.py
             --exe $<TARGET_FILE:fiber_volume_explicit>

@@ -8,13 +8,16 @@ int main(int argc, char** argv) {
     try {
         Arguments args(argc, argv);
         if (args.help()) {
-            std::cout << "fiber_volume_from_patches --run-dir DIRECTORY --output PREFIX\n"
-                      << "Assemble, validate and fill a saved counterclockwise three-segment loop.\n";
+            std::cout << "fiber_volume_from_patches --run-dir DIRECTORY --output PREFIX [--stage all|surface]\n"
+                      << "Assemble, validate and fill a saved counterclockwise three-segment loop.\n"
+                      << "The surface stage exports just the assembled PLY for an independent surface audit.\n";
             return 0;
         }
         const fs::path run=args.take("--run-dir");
         const auto prefix=args.take("--output");
+        const auto stage=args.take("--stage","all");
         args.finish();
+        if(stage!="all" && stage!="surface") throw std::invalid_argument("Expected --stage all or surface");
         if (run.empty() || prefix.empty()) throw std::invalid_argument("Supply --run-dir and --output");
         const auto config=read_config(run);
         const auto& curve=config.curve;
@@ -25,7 +28,19 @@ int main(int argc, char** argv) {
         std::vector<Result> patches;
         for (int i=0;i<curve.size();++i)
             patches.push_back(read_checkpoint(patch_directory(run,curve,i),config,Stage::stitching,i).result);
-        auto result=volume_from_patches(loaded.field,range,opts,join_curve_patches(curve,patches));
+        auto joined=join_curve_patches(curve,patches);
+        patches.clear();
+        if(stage=="surface") {
+            const auto boundary=assemble_volume_boundary(loaded.field,range,opts,std::move(joined));
+            if(!fs::path(prefix).parent_path().empty()) fs::create_directories(fs::path(prefix).parent_path());
+            write_boundary_ply(prefix+"_boundary.ply",boundary,false);
+            std::cout<<"Assembled "<<boundary.mesh.triangles.size()<<" triangles, "
+                     <<boundary.unresolved.size()<<" unresolved events.\n";
+            for(const auto& event:boundary.unresolved)
+                std::cout<<event.position.transpose()<<"  "<<event.reason<<'\n';
+            return 0;
+        }
+        auto result=volume_from_patches(loaded.field,range,opts,std::move(joined));
         write_volume(prefix,result,loaded.field,range,opts);
         std::cout << "Volume complete: " << result.complete() << ", boundary triangles: "
                   << result.boundary.mesh.triangles.size() << ", tetrahedra: " << result.mesh.cells.size() << '\n';

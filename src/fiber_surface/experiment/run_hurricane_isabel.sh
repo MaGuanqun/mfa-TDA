@@ -2,11 +2,36 @@
 set -eo pipefail
 
 usage() {
-    printf 'Usage: %s [narrow|wedge|core|storm|loop] (default: narrow)\nFIBER_RESULTS_ROOT sets the output parent. PYTHON selects the analysis interpreter.\n' "$0"
+    printf 'Usage: %s [outer|narrow|wedge|core|storm|loop] (default: outer)\nISABEL_OUTER_STEP sets h (default 0.5). ISABEL_OUTER_MAX_NORMAL_ANGLE sets the face-to-field normal limit in degrees (default 85, strictly between 0 and 90). ISABEL_OUTER_MAX_TRIANGLES sets the per-side budget (default 500000). ISABEL_OUTER_STAGE=surface exports and audits the assembled surface. FIBER_RESULTS_ROOT sets the output parent. PYTHON selects the analysis interpreter.\n' "$0"
 }
 if (( $# > 1 )); then usage >&2; exit 1; fi
 max_trace_steps=10000
-case "${1:-narrow}" in
+case "${1:-outer}" in
+    outer)
+        stage=${ISABEL_OUTER_STAGE:-all}
+        if [[ $stage != all && $stage != surface ]]; then
+            printf 'ISABEL_OUTER_STAGE must be all or surface.\n' >&2
+            exit 1
+        fi
+        step=${ISABEL_OUTER_STEP:-0.5}
+        if [[ ! $step =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)$ || ! $step =~ [1-9] ]]; then
+            printf 'ISABEL_OUTER_STEP must be a positive decimal step in grid units.\n' >&2
+            exit 1
+        fi
+        max_triangles=${ISABEL_OUTER_MAX_TRIANGLES:-500000}
+        if [[ ! $max_triangles =~ ^[1-9][0-9]*$ ]]; then
+            printf 'ISABEL_OUTER_MAX_TRIANGLES must be a positive integer per side.\n' >&2
+            exit 1
+        fi
+        name="outer_h${step}_budget${max_triangles}"
+        normal_angle=${ISABEL_OUTER_MAX_NORMAL_ANGLE:-85}
+        if ! awk -v a="$normal_angle" 'BEGIN { exit !(a ~ /^([0-9]+([.][0-9]*)?|[.][0-9]+)$/ && a+0 > 0 && a+0 < 90) }'; then
+            printf 'ISABEL_OUTER_MAX_NORMAL_ANGLE must be strictly between 0 and 90 degrees.\n' >&2
+            exit 1
+        fi
+        if [[ $normal_angle != 55 ]]; then name+="_normal${normal_angle}"; fi
+        triangle=(--q0 -25,-19 --q1 165,-22 --q2 165,-15)
+        spatial_tolerance="$step"; max_trace_steps=100000 ;;
     narrow)
         name=narrow_h1
         triangle=(--q0 -1000,-22 --q1 -900,-22 --q2 -950,-18)
@@ -41,13 +66,15 @@ cd "$repo_root"
 model_dir=build/src/hurricane_isabel_3d
 source_dir=build/examples/hurricane_isabel
 for field in Pf30 TCf30; do
-    for file in "$model_dir/${field}_3d.mfa" "$source_dir/${field}_3d.bin"; do
+    files=("$model_dir/${field}_3d.mfa")
+    if [[ ${stage:-all} != surface ]]; then files+=("$source_dir/${field}_3d.bin"); fi
+    for file in "${files[@]}"; do
         [[ -r "$file" ]] || { printf 'Missing Isabel input: %s\n' "$file" >&2; exit 1; }
     done
 done
 analysis=("${PYTHON:-python3}")
 imports='import numpy, vtkmodules.vtkIOLegacy, matplotlib.pyplot'
-if ! "${analysis[@]}" -c "$imports" 2>/dev/null; then
+if [[ ${stage:-all} != surface ]] && ! "${analysis[@]}" -c "$imports" 2>/dev/null; then
     if [[ -n ${PYTHON:-} ]] || ! command -v conda >/dev/null; then
         printf 'Set PYTHON to an interpreter with NumPy, VTK and Matplotlib.\n' >&2
         exit 1
@@ -66,7 +93,13 @@ printf 'Results: %s\n' "$run_dir"
     source ./load-env.sh || exit 1
     printf '1. Build the MFA volume extractor.\n'
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-flto=auto" -Dmfa_thread=tbb
-    cmake --build build --target fiber_volume_mfa -j 3
+    targets=(fiber_volume_mfa)
+    if [[ ${1:-outer} == outer ]]; then
+        targets+=(fiber_find_seeds fiber_trace_endpoint_fibers fiber_march_surface
+                  fiber_stitch_surface fiber_volume_from_patches)
+        if [[ $stage == surface ]]; then targets+=(fiber_grid_recovery); fi
+    fi
+    cmake --build build --target "${targets[@]}" -j 3
 
     extractor=(build/src/fiber_surface/fiber_volume_mfa
         --first "$model_dir/Pf30_3d.mfa" --second "$model_dir/TCf30_3d.mfa"
@@ -74,20 +107,84 @@ printf 'Results: %s\n' "$run_dir"
     printf '2. Inspect the models on the full 202 x 202 x 40 lattice.\n'
     "${extractor[@]}" --inspect 2>&1 | tee "$run_dir/inspect.log"
 
-    command=("${extractor[@]}" "${triangle[@]}" --step "$step"
-        --spatial-tolerance "$spatial_tolerance" --residual-tolerance 0.005
-        --max-triangles "$max_triangles" --max-trace-steps "$max_trace_steps"
-        --stage all --output "$run_dir/volume")
-    printf '%q ' "${command[@]}" > "$run_dir/run.txt"
-    printf '\n' >> "$run_dir/run.txt"
-    printf '3. Trace the corner fibers, assemble and validate the boundary, then tetrahedralize.\n'
-    "${command[@]}" 2>&1 | tee "$run_dir/extract.log" || {
-        status=("${PIPESTATUS[@]}")
-        # A partial mesh has a diagnostic report and can still be plotted.
-        if (( status[0] != 2 || status[1] != 0 )); then exit 1; fi
-    }
+    if [[ ${1:-outer} == outer ]]; then
+        bin=build/src/fiber_surface
+        stages="$run_dir/stages"
+        polyline="${triangle[1]};${triangle[3]};${triangle[5]};${triangle[1]}"
+        run_stage() {
+            # Exit 2 means the stage saved a partial result for the next stage.
+            local status=0
+            "$@" || status=$?
+            (( status == 0 || status == 2 )) || return "$status"
+        }
+        seed=("$bin/fiber_find_seeds" --run-dir "$stages" --model mfa
+              "${extractor[@]:1}" --polyline "$polyline" --step "$step" --fiber-seed-radius "$step"
+              --spatial-tolerance "$spatial_tolerance" --residual-tolerance 0.005
+              --max-normal-angle "$normal_angle"
+              --max-triangles "$max_triangles" --max-trace-steps "$max_trace_steps")
+        trace=("$bin/fiber_trace_endpoint_fibers" --run-dir "$stages")
+        march=("$bin/fiber_march_surface" --run-dir "$stages")
+        stitch=("$bin/fiber_stitch_surface" --run-dir "$stages")
+        assemble=("$bin/fiber_volume_from_patches" --run-dir "$stages" --output "$run_dir/volume")
+        if [[ $stage == surface ]]; then
+            assemble+=(--stage surface)
+            audit=("$bin/fiber_grid_recovery" audit "$stages" "$run_dir/volume_boundary.ply"
+                   "$run_dir/audit" --all-face-samples)
+        fi
+        record() { printf '%q ' "$@"; printf '\n'; }
+        {
+            record "${seed[@]}"
+            record "${trace[@]}"
+            for side in 0 1 2; do
+                record "${march[@]}" --segment "$side"
+                record "${stitch[@]}" --segment "$side"
+            done
+            record "${assemble[@]}"
+            if [[ $stage == surface ]]; then record "${audit[@]}"; fi
+        } > "$run_dir/run.txt"
+        {
+            "${seed[@]}"
+            run_stage "${trace[@]}"
+            printf '3. March and stitch AB, BC and CA with separate checkpoints.\n'
+            pids=()
+            labels=(AB BC CA)
+            for side in 0 1 2; do
+                (
+                    "${march[@]}" --segment "$side" &&
+                        run_stage "${stitch[@]}" --segment "$side"
+                ) 2>&1 | tee "$run_dir/${labels[side]}.log" | sed -u "s/^/[${labels[side]}] /" &
+                pids+=("$!")
+            done
+            failed=0
+            for pid in "${pids[@]}"; do
+                wait "$pid" || failed=1
+            done
+            (( failed == 0 )) || exit 1
+            run_stage "${assemble[@]}"
+            if [[ $stage == surface ]]; then
+                "${audit[@]}"
+            fi
+        } 2>&1 | tee "$run_dir/extract.log"
+    else
+        command=("${extractor[@]}" "${triangle[@]}" --step "$step"
+            --spatial-tolerance "$spatial_tolerance" --residual-tolerance 0.005
+            --max-triangles "$max_triangles" --max-trace-steps "$max_trace_steps"
+            --stage all --output "$run_dir/volume")
+        printf '%q ' "${command[@]}" > "$run_dir/run.txt"
+        printf '\n' >> "$run_dir/run.txt"
+        printf '3. Trace the corner fibers, assemble and validate the boundary, then tetrahedralize.\n'
+        "${command[@]}" 2>&1 | tee "$run_dir/extract.log" || {
+            status=("${PIPESTATUS[@]}")
+            # A partial mesh has a diagnostic report and can still be plotted.
+            if (( status[0] != 2 || status[1] != 0 )); then exit 1; fi
+        }
+    fi
 )
 
+if [[ ${1:-outer} == outer && $stage == surface ]]; then
+    printf 'Assembled boundary and surface audit: %s\n' "$run_dir"
+    exit 0
+fi
 printf '4. Measure the source footprint, render the boundary and compare any validated fill.\n'
 "${analysis[@]}" "$experiment_dir/evaluate_hurricane_isabel.py" "$run_dir" "$source_dir"
 printf 'Completed: %s\n' "$run_dir"

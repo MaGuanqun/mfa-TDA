@@ -11,21 +11,23 @@ public:
     using Mesh = marching_triangles::TriangleMesh<T>;
     using Triangle = marching_triangles::Triangle;
     using Insert = std::function<bool(const Triangle&)>;
+    using EligibleEdge = std::function<bool(int,int)>;
 
-    static void close_cracks(Mesh& mesh, const Insert& insert, size_t max_triangles) {
+    static void close_cracks(Mesh& mesh, const Insert& insert, size_t max_triangles,
+                             const EligibleEdge& eligible={}) {
         while (!mesh.boundary.empty() && mesh.triangles.size() < max_triangles) {
             const auto loops=mesh.boundary_loops();
             bool progress=false;
             // First split long contours at a facing, non-neighboring vertex.
             for (const auto& loop:loops) {
                 if(loop.size()<=6) continue;
-                if (try_contour(mesh,loop,insert,true)) {progress=true;break;}
+                if (try_contour(mesh,loop,insert,true,eligible)) {progress=true;break;}
             }
             if(progress) continue;
             // Mesh simple holes by validated ears; a blind fan may cross a
             // concave contour or introduce a third face on an existing edge.
             for(const auto& loop:loops) {
-                if(try_contour(mesh,loop,insert,false)) {progress=true;break;}
+                if(try_contour(mesh,loop,insert,false,eligible)) {progress=true;break;}
             }
             if(progress) continue;
             // Facing contours on tubular sections need joining, not capping.
@@ -34,6 +36,7 @@ public:
                     if(i==j) continue;
                     for(size_t k=0;k<loops[i].size()&&!progress;++k) {
                         const int a=loops[i][k],b=loops[i][(k+1)%loops[i].size()];
+                        if(eligible && !eligible(a,b)) continue;
                         for(int c:nearest(mesh,a,b,loops[j]))
                             if(insert({a,c,b})) {progress=true;break;}
                     }
@@ -53,11 +56,13 @@ private:
         for(const auto& c:candidates) result.push_back(c.second);
         return result;
     }
-    static bool try_contour(Mesh& mesh,const std::vector<int>& loop,const Insert& insert,bool split) {
+    static bool try_contour(Mesh& mesh,const std::vector<int>& loop,const Insert& insert,bool split,
+                            const EligibleEdge& eligible) {
         const size_t n=loop.size();
         if(n<3) return false;
         for(size_t k=0;k<n;++k) {
             const int a=loop[k],b=loop[(k+1)%n];
+            if(eligible && !eligible(a,b)) continue;
             std::vector<int> candidates;
             if(split) {
                 for(size_t j=0;j<n;++j)

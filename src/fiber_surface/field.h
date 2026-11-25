@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../isosurface/mesh_geometry.h"
+#include <optional>
 #include <string>
 
 namespace fiber_surface {
@@ -89,6 +90,7 @@ struct Options {
     static constexpr double fiber_field_tolerance = 1e-9;
     static constexpr int default_max_seed_starts = 1000000;
     double step = .15, min_step = step/8, spatial_tolerance = .075*step;
+    std::optional<double> fiber_seed_radius;
     double residual_tolerance = 1e-9, derivative_tolerance = 1e-10;
     // Optional tighter residual tolerance for surface roots on adjacent patches.
     double surface_solve_tolerance = 0;
@@ -97,9 +99,10 @@ struct Options {
     int seed_grid = 7, iterations = 40, max_trace_steps = 10000;
     int max_seed_starts = default_max_seed_starts;
     size_t max_triangles = 30000;
+    double seed_coverage_radius() const { return fiber_seed_radius.value_or(spatial_tolerance); }
     double fiber_plane_tolerance() const { return 1e-6 * step; }
     void validate(const Field& f, const Segment& segment) const {
-        for (double x : {step, min_step, spatial_tolerance, residual_tolerance, derivative_tolerance})
+        for (double x : {step, min_step, spatial_tolerance, seed_coverage_radius(), residual_tolerance, derivative_tolerance})
             if (!std::isfinite(x) || x <= 0) throw std::invalid_argument("Steps and tolerances must be positive and finite");
         if (!std::isfinite(surface_solve_tolerance) || surface_solve_tolerance<0 ||
             min_step > step || seed_grid < 0 || seed_grid == 1 || iterations < 1 || max_trace_steps < 4 ||

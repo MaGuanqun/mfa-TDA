@@ -56,6 +56,28 @@ def extract_triangle(domain, names, query, threads, range_octree):
             np.asarray(labels, dtype=int), int((~good).sum()))
 
 
+def original_curves(trace):
+    result = []
+    for i in range(3):
+        records = (trace / f"segment_{i}/fibers.state").read_text().splitlines()
+        n = int(records[1].split()[1])
+        xyz = np.array([row.split()[:3] for row in records[2:n+2]], dtype=float)
+        start = next(k for k, row in enumerate(records) if row.startswith("fibers "))
+        count = int(records[start].split()[1])
+        corner = []
+        # Every corner is copied to both incident patches. Use its owning
+        # patch's first endpoint once and keep the original trace connectivity.
+        for record in records[start+1:start+1+count]:
+            endpoint, closed, complete, length, *ids = map(int, record.split())
+            if endpoint == 0:
+                if length != len(ids):
+                    raise ValueError("Invalid fiber checkpoint")
+                curve = xyz[ids+[ids[0]]] if closed else xyz[ids]
+                corner.append((curve, bool(closed), bool(complete)))
+        result.append(corner)
+    return result
+
+
 def sizes(cells):
     v = cells[:, 1:] - cells[:, :1]
     if cells.shape[1] == 2:

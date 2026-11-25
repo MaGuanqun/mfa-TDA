@@ -155,10 +155,14 @@ def main():
         stage(2, anisotropic)
         for name in ["sphere", "closed-sphere", "strip", "disconnected"]:
             run = args.work / name
-            mesh, report = pipeline(run, ["--model", "analytical", "--example", name])
+            options = ["--example", name]
+            if name == "strip":
+                options += ["--fiber-seed-radius", "0.12"]
+            mesh, report = pipeline(run, ["--model", "analytical", *options])
+            assert report["fiber_seed_radius"] == (0.12 if name == "strip" else report["spatial_tolerance"])
             assert report["components"] == (2 if name == "disconnected" else 1)
             prefix = args.work / (name + "_reference")
-            invoke("fiber_surface_explicit", ["--example", name, "--output", prefix])
+            invoke("fiber_surface_explicit", [*options, "--output", prefix])
             assert mesh == prefix.with_suffix(".obj").read_bytes(), f"Staged {name} changed geometry"
         run = args.work / "triangle loop"
         options = ["--example", "strip", "--polyline", "0,0;1,0;0,1;0,0"]

@@ -46,6 +46,15 @@ static void box_sliver() {
 }
 
 static void contacts() {
+    // Two parallel faces lie in disjoint x intervals within
+    // the predicate's contact tolerance. A third face is outside it.
+    std::vector<Vec> nearby;
+    for(double x:{0.,0.75e-9,4e-9})
+        for(const auto& yz:std::array<Range,3>{Range(0,0),Range(1,0),Range(0,1)})
+            nearby.emplace_back(x,yz.x(),yz.y());
+    const std::vector<Triangle> planes{{6,7,8},{3,4,5},{0,1,2}};
+    require(marching_triangles::validate_mesh(nearby,planes,1e-9).intersections==1,
+            "Intersection bounds must include near-coplanar contacts within epsilon");
     auto check=[](const std::vector<Vec>& vertices,Triangle a,Triangle b,bool expected) {
         std::sort(a.begin(),a.end());
         do {
@@ -309,6 +318,59 @@ static void fiber_seed_coverage() {
     }
 }
 
+static void stalled_fiber_recovery() {
+    const Vec origin=Vec::Zero(), unit=Vec::UnitX();
+    const std::vector<Vec> reference={origin,.4*unit,unit};
+    require(agrees_over_arclength({-.2*unit,.7*unit,unit},0,origin,reference,1,.01),
+            "Exactly one step of shared arclength must qualify with different sample spacing");
+    require(!agrees_over_arclength({origin,.999*unit},0,origin,reference,1,.01) &&
+            !agrees_over_arclength(reference,0,origin,{origin,.999*unit},1,.01),
+            "A short overlap must not qualify in either direction");
+    require(!agrees_over_arclength({origin,Vec(.5,.02,0),unit},0,origin,reference,1,.01),
+            "The entire overlap must agree, including a deviation between aligned endpoints");
+    // At z=0 the fiber is the unit circle. Away from it the tangent field
+    // turns sharply enough for a nominal RK4 advance to return to its start.
+    Field field=analytical_field("sphere").field;
+    const double frequency=2*std::acos(-1.)/.005;
+    field.value=[frequency](const Vec& p) {
+        const double r2=p.head<2>().squaredNorm();
+        return Range(r2,std::sin(frequency*p.z())/frequency*(1+200*p.y()*(r2-1)));
+    };
+    field.jacobian=[frequency](const Vec& p) {
+        const double r2=p.head<2>().squaredNorm();
+        const double z=std::sin(frequency*p.z())/frequency;
+        Jacobian j;
+        j << 2*p.x(),2*p.y(),0, 400*p.x()*p.y()*z,200*(r2-1+2*p.y()*p.y())*z,
+             std::cos(frequency*p.z())*(1+200*p.y()*(r2-1));
+        return j;
+    };
+    Options options; options.step=.4; options.min_step=options.step/8;
+    options.fiber_seed_radius=options.step; options.max_trace_steps=400;
+    const Segment segment(Range(1,0),Range(2,0));
+    const Vec seed(1,0,0), later(std::cos(.3),-std::sin(.3),0);
+    Seeds seeds; seeds.endpoints[0]={seed};
+    auto stalled=trace_endpoint_fibers(field,segment,options,seeds);
+    require(!stalled.unresolved.empty() && stalled.unresolved.front().reason=="Fiber trace made insufficient progress",
+            "Fixture must stall at the nominal step");
+    seeds.endpoints[0].push_back(later+Vec(0,0,.005));
+    auto other=trace_endpoint_fibers(field,segment,options,seeds);
+    for (const auto& event:stalled.unresolved)
+        require(std::any_of(other.unresolved.begin(),other.unresolved.end(),[&](const Event& e) {
+                    return e.position==event.position && e.reason==event.reason;
+                }),"A nearby separate circle cannot resolve the original stall");
+    seeds.endpoints[0]={seed,later};
+    auto fixed=trace_endpoint_fibers(field,segment,options,seeds);
+    require(fixed.unresolved.empty() && fixed.fibers.size()==1 && fixed.fibers.front().closed,
+            "A later seed on the stalled circle must produce one complete fiber");
+    double length=0;
+    for (const auto& e:fixed.fiber_edges) {
+        const auto [a,b]=e.first;
+        require(std::abs(fixed.mesh.vertices[a].z())<1e-9,"Recovery switched between close fibers");
+        length+=(fixed.mesh.vertices[a]-fixed.mesh.vertices[b]).norm();
+    }
+    require(std::abs(length-2*std::acos(-1.))<.01,"Recovery must keep one complete lap");
+}
+
 static void derivatives() {
     const auto e=analytical_field("sphere"); const Vec p(.2,-.4,.7); const Segment s(Range(.1,.2),Range(2,.6));
     const auto j=e.field.jacobian(p); const auto h=e.field.hessians(p); const double delta=1e-5;
@@ -346,7 +408,7 @@ int main(int argc,char** argv) {
         if (name=="derivatives") { derivatives(); return 0; }
         if (name=="segment-sampling") { segment_sampling(); return 0; }
         if (name=="fiber-tolerances") { fiber_tolerances(); return 0; }
-        if (name=="seed-coverage") { fiber_seed_coverage(); return 0; }
+        if (name=="seed-coverage") { fiber_seed_coverage(); stalled_fiber_recovery(); return 0; }
         if (name=="seeds") { seeds(); return 0; }
         if (name=="polylines") { polylines(); return 0; }
         if (name=="contacts") { contacts(); return 0; }

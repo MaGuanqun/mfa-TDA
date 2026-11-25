@@ -10,6 +10,21 @@ class Extractor {
     Result result_;
     std::map<Edge,int> pending_; // oriented virtual front uses of unfilled fiber edges
     std::map<Edge,int> fiber_uses_;
+    // During append-only marching, index each face's entire bounding box.
+    // Finishing can move vertices or replace faces and uses the full scan.
+    using Bin=std::array<int,3>;
+    mutable std::map<Bin,std::vector<size_t>> face_bins_;
+    mutable size_t indexed_faces_=0;
+    bool index_growth_=false;
+    bool nearby_face(const Vec& lo,const Vec& hi,const std::function<bool(const Triangle&)>& match) const;
+    std::map<Bin,std::vector<int>> vertex_bins_;
+    std::vector<std::vector<Edge>> vertex_fronts_;
+    std::vector<bool> fiber_vertex_;
+    Bin vertex_bin(const Vec& point) const;
+    void index_vertices_and_fronts();
+    void update_front(const Edge& edge);
+    std::vector<Edge> incident_fronts(const Edge& edge) const;
+    std::vector<int> vertex_candidates(const Vec& point,double radius) const;
 
     bool intended(const Edge& e) const;
     bool active(const Edge& e) const;

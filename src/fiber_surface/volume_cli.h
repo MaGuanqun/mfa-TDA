@@ -12,14 +12,16 @@ inline VolumeFiles volume_files(Arguments& args, const std::string& default_pref
     VolumeFiles files{args.take("--output",default_prefix), VolumeStage::all, {}};
     const bool has_input=args.has("--boundary-input");
     const auto stage=args.take("--stage",has_input?"fill":"all");
-    if (stage=="fill") {
-        files.stage=VolumeStage::fill;
+    if (stage=="fill" || stage=="fill-repaired") {
+        if (stage=="fill-repaired" && !has_input)
+            throw std::invalid_argument("Supply the repaired PLY explicitly with --boundary-input");
+        files.stage=stage=="fill" ? VolumeStage::fill : VolumeStage::fill_repaired;
         files.boundary_input=args.take("--boundary-input",files.prefix+"_boundary.ply");
         if (files.boundary_input.empty()) throw std::invalid_argument("Expected a PLY path for --boundary-input");
     } else {
         if (has_input) throw std::invalid_argument("--boundary-input requires the fill stage");
         if (stage=="boundary") files.stage=VolumeStage::boundary;
-        else if (stage!="all") throw std::invalid_argument("Expected --stage all, boundary, or fill");
+        else if (stage!="all") throw std::invalid_argument("Expected --stage all, boundary, fill, or fill-repaired");
     }
     return files;
 }
@@ -62,9 +64,11 @@ inline void volume_help() {
         <<"  --min x,y,z --max x,y,z      spatial sub-box\n"
         <<"  --step H                  shared fiber tracing and surface marching step\n"
         <<"  --spatial-tolerance E --residual-tolerance E\n"
+        <<"  --fiber-seed-radius R        endpoint seed duplicate-check radius (defaults to spatial tolerance)\n"
         <<"  --seed-grid N --max-triangles N (per side)\n"
         <<"  --max-seed-starts N          seed lattice allocation limit (default 1000000)\n"
         <<"  --stage all|boundary|fill    full extraction (default), export boundary, or fill from PLY\n"
+        <<"  --stage fill-repaired      revalidate an explicitly supplied repaired surface, then fill it\n"
         <<"  --boundary-input FILE        fill a saved boundary (default for fill: PREFIX_boundary.ply)\n"
         <<"  --output PREFIX              prefix for boundary meshes, tetrahedral VTK and JSON report\n"
         <<"Exit 0: requested stage passed; 1: input/runtime error; 2: unresolved partial result.\n";

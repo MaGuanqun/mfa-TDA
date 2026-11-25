@@ -57,6 +57,15 @@ for key in ['boundary_triangles', 'corner_fiber_components', 'box_contact_triang
 assert filled['tetrahedra'] > 0 and abs(filled['volume'] - 0.5) < 1e-10
 run(['--boundary-input', str(ply), '--stage', 'boundary'], 1)
 bad = a.work / 'bad.ply'
+# A repaired export starts unvalidated. Only an explicit repair import may
+# re-evaluate it, and it must pass the same field and topology checks.
+unvalidated = header.replace(b'comment fiber_volume_boundary 1 ', b'comment fiber_volume_boundary 0 ')
+assert unvalidated != header
+bad.write_bytes(unvalidated + b'end_header\n' + payload)
+repair = ['--stage', 'fill-repaired', '--boundary-input', str(bad), '--output', resumed]
+run(['--boundary-input', str(bad), '--output', resumed], 2)
+run(repair, 0)
+assert json.loads(Path(resumed + '_report.json').read_text())['complete']
 bad.write_bytes(header + b'end_header\n' + payload[:-1])
 run(['--boundary-input', str(bad), '--output', resumed], 1)
 bad.write_bytes(header + b'end_header\n' + payload[:vertices_end+1] +
@@ -67,6 +76,7 @@ offset = vertices_end + 13
 bad.write_bytes(header + b'end_header\n' + payload[:offset] +
                 bytes([faces[0][-1] % 9 + 1]) + payload[offset+1:])
 run(['--boundary-input', str(bad), '--output', resumed], 2)
+run(repair, 2)
 invalid = json.loads(Path(resumed + '_report.json').read_text())
 assert invalid['failed_stage'] == 'boundary_validation' and invalid['tetrahedra'] == 0
 

@@ -257,9 +257,20 @@ be smaller. Rerun from the seeds stage to apply a change.
 TBB processes the independent endpoint and surface seed corrections in parallel.
 Each worker has separate MFA decoder buffers, and accepted seeds are collected
 in grid order for reproducibility. The tracer skips an endpoint seed within
-`--spatial-tolerance` of any polyline segment already traced for the same
-range point. `seeds_report.json` and the final report include the
+`--fiber-seed-radius` of any polyline segment already traced for the same
+range point. This radius defaults to `--spatial-tolerance`. `seeds_report.json` and the final report include the
 actual `discovery_grid_shape`; seed files save this shape for restart validation.
+
+When the corrected advance is shorter than `0.1 * step`, tracing saves the
+last accepted point. A second pass tries later corrected seeds within one
+nominal step of that tip, including seeds skipped by the duplicate check.
+It traces back toward the tip using spacing `max(min_step, step/8)`. A match
+requires agreement over **one full nominal step of arclength**. The two paths
+must cross the same plane at the same corrected fiber point, have compatible
+tangents, and stay within one quarter of the recovery spacing over the overlap.
+Recovery publishes a component after verifying its return to the seed or both
+domain contacts and accounting for the original seed and every stalled tip.
+Ambiguous or incomplete matches retain their diagnostic events.
 
 ## Outputs and interpretation
 
@@ -299,8 +310,7 @@ between the field value and the assigned range endpoint, with tolerance
 midpoints. A straight chord of a curved fiber can have an out-of-range
 midpoint even when both ends map to the assigned endpoint. This midpoint
 value is diagnostic. The residual tolerance controls surface root accuracy.
-The spatial tolerance still controls the curvature-based predictor and seed
-coverage. All field backends use an
+The spatial tolerance controls the curvature-based surface predictor. All field backends use an
 absolute field tolerance of `1e-9` for fiber seeds, traced samples, and box
 contacts. Interior fiber corrections also require the distance to the correction
 plane to be at most `1e-6 * step`.

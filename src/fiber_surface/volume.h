@@ -57,9 +57,12 @@ struct VolumeResult {
     bool complete() const { return failed_stage.empty() && boundary_report.valid && report.valid; }
 };
 
-enum class VolumeStage { all, boundary, fill };
+enum class VolumeStage { all, boundary, fill, fill_repaired };
+inline bool uses_saved_boundary(VolumeStage stage) {
+    return stage==VolumeStage::fill || stage==VolumeStage::fill_repaired;
+}
 void write_boundary_ply(const std::string& path, const VolumeBoundary&, bool valid);
-VolumeBoundary read_boundary_ply(const std::string& path);
+VolumeBoundary read_boundary_ply(const std::string& path, bool revalidate_repair=false);
 VolumeBoundary assemble_volume_boundary(const Field&, const RangeTriangle&, const Options&);
 VolumeBoundary assemble_volume_boundary(const Field&, const RangeTriangle&, const Options&, Result sides);
 BoundaryAssessment validate_volume_boundary(VolumeBoundary&, const Field&, const RangeTriangle&, const Options&);

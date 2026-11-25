@@ -142,6 +142,7 @@ void write_outputs(const std::string& prefix, const Result& r, const Report& rep
         <<"\n  \"step\": "<<options.step<<",\n  \"fiber_step\": "<<options.step
         <<",\n  \"fiber_field_tolerance\": "<<Options::fiber_field_tolerance
         <<",\n  \"fiber_plane_tolerance\": "<<options.fiber_plane_tolerance()
+        <<",\n  \"fiber_seed_radius\": "<<options.seed_coverage_radius()
         <<",\n  \"spatial_tolerance\": "<<options.spatial_tolerance<<",\n  \"range_tolerance\": "<<options.residual_tolerance
         <<",\n  \"discovery_grid\": "<<options.seed_grid
         <<",\n  \"discovery_grid_shape\": ["<<shape[0]<<','<<shape[1]<<','<<shape[2]<<']'

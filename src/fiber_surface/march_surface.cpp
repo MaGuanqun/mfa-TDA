@@ -13,6 +13,9 @@ Extractor::Extractor(Field field, Segment segment, Options options)
 Checkpoint Extractor::march(const Seeds& seeds, Result fibers) {
     const auto start=std::chrono::steady_clock::now();
     result_=std::move(fibers); pending_.clear(); fiber_uses_.clear();
+    face_bins_.clear(); indexed_faces_=0;
+    index_growth_=result_.mesh.triangles.empty() &&
+        ((field_.box.max-field_.box.min)/options_.step).maxCoeff()<1e8;
     for (const auto& entry:result_.fiber_edges) {
         if (!result_.fibers[entry.second].complete) continue;
         int a=entry.first.first,b=entry.first.second;
@@ -27,6 +30,7 @@ Checkpoint Extractor::march(const Seeds& seeds, Result fibers) {
         pending_[{a,b}]=entry.second;
     }
     fiber_uses_=pending_;
+    if(index_growth_) index_vertices_and_fronts();
     grow(); stitch();
     for (const Vec& seed:seeds.surface) {
         if (result_.mesh.triangles.size()>=options_.max_triangles) break;
@@ -34,6 +38,8 @@ Checkpoint Extractor::march(const Seeds& seeds, Result fibers) {
         if (covered(seed)) continue;
         if (seed_triangle(seed)) { grow(); stitch(); }
     }
+    index_growth_=false; face_bins_.clear(); indexed_faces_=0;
+    vertex_bins_.clear();vertex_fronts_.clear();fiber_vertex_.clear();
     result_.seconds+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     return {std::move(result_),std::move(pending_),std::move(fiber_uses_)};
 }
@@ -60,9 +66,104 @@ std::vector<Edge> Extractor::fronts() const {
     return out;
 }
 
+Extractor::Bin Extractor::vertex_bin(const Vec& point) const {
+    Bin bin;
+    for(int d=0;d<3;++d)
+        bin[d]=int(std::floor((point[d]-field_.box.min[d])/(2*options_.step)));
+    return bin;
+}
+
+void Extractor::index_vertices_and_fronts() {
+    vertex_bins_.clear();
+    vertex_fronts_.assign(result_.mesh.vertices.size(),{});
+    fiber_vertex_.assign(result_.mesh.vertices.size(),false);
+    for(size_t i=0;i<result_.mesh.vertices.size();++i)
+        vertex_bins_[vertex_bin(result_.mesh.vertices[i])].push_back(int(i));
+    for(const auto& [edge,id]:result_.fiber_edges)
+        fiber_vertex_[edge.first]=fiber_vertex_[edge.second]=true;
+    for(const Edge& edge:fronts()) {
+        vertex_fronts_[edge.first].push_back(edge);
+        vertex_fronts_[edge.second].push_back(edge);
+    }
+}
+
+void Extractor::update_front(const Edge& edge) {
+    const bool live=active(edge);
+    for(int id:{edge.first,edge.second}) {
+        auto& edges=vertex_fronts_[id];
+        auto it=std::find(edges.begin(),edges.end(),edge);
+        if(live && it==edges.end()) edges.push_back(edge);
+        else if(!live && it!=edges.end()) edges.erase(it);
+    }
+}
+
+std::vector<Edge> Extractor::incident_fronts(const Edge& edge) const {
+    if(!index_growth_) return fronts();
+    auto edges=vertex_fronts_[edge.first];
+    const auto& end=vertex_fronts_[edge.second];
+    edges.insert(edges.end(),end.begin(),end.end());
+    // Match fronts(): ordered virtual edges first, then ordered mesh edges.
+    std::sort(edges.begin(),edges.end(),[&](const Edge& a,const Edge& b) {
+        return std::make_pair(!pending_.count(a),a)<std::make_pair(!pending_.count(b),b);
+    });
+    edges.erase(std::unique(edges.begin(),edges.end()),edges.end());
+    return edges;
+}
+
+std::vector<int> Extractor::vertex_candidates(const Vec& point,double radius) const {
+    std::vector<int> ids;
+    const auto mid=vertex_bin(point);
+    // Include one cell beyond the nominal radius so roundoff at a bin wall
+    // cannot exclude a point. The caller applies the original distance test.
+    const int pad=int(std::floor(radius/(2*options_.step)))+1;
+    for(int x=mid[0]-pad;x<=mid[0]+pad;++x)
+        for(int y=mid[1]-pad;y<=mid[1]+pad;++y)
+            for(int z=mid[2]-pad;z<=mid[2]+pad;++z) {
+                const auto it=vertex_bins_.find({x,y,z});
+                if(it!=vertex_bins_.end()) ids.insert(ids.end(),it->second.begin(),it->second.end());
+            }
+    return ids;
+}
+
 Vec Extractor::gradient(const Vec& x) const { return segment_.gradient(field_.jacobian(x)); }
 
 double Extractor::epsilon() const { return options_.step*1e-9; }
+
+bool Extractor::nearby_face(const Vec& lo,const Vec& hi,const std::function<bool(const Triangle&)>& match) const {
+    const auto& mesh=result_.mesh;
+    auto full_scan=[&] {return std::any_of(mesh.triangles.begin(),mesh.triangles.end(),match);};
+    const double width=4*options_.step;
+    if(!index_growth_ || !lo.allFinite() || !hi.allFinite() || (hi-lo).maxCoeff()>12*width) return full_scan();
+    auto bin=[&](const Vec& p) {
+        Bin key{};
+        for(int k=0;k<3;++k) key[k]=int(std::floor((p[k]-field_.box.min[k])/width));
+        return key;
+    };
+    auto visit=[&](const Vec& a,const Vec& b,const auto& callback) {
+        const Bin low=bin(a),high=bin(b);
+        for(int x=low[0];x<=high[0];++x) for(int y=low[1];y<=high[1];++y)
+            for(int z=low[2];z<=high[2];++z) if(callback(Bin{x,y,z})) return true;
+        return false;
+    };
+    for(;indexed_faces_<mesh.triangles.size();++indexed_faces_) {
+        const auto& t=mesh.triangles[indexed_faces_];
+        const Vec &a=mesh.vertices[t[0]],&b=mesh.vertices[t[1]],&c=mesh.vertices[t[2]];
+        visit(a.cwiseMin(b).cwiseMin(c),a.cwiseMax(b).cwiseMax(c),[&](const Bin& key) {
+            face_bins_[key].push_back(indexed_faces_);return false;
+        });
+    }
+    // Round the query outward at bin boundaries. The original predicates add
+    // their tolerances to the opposite operand in some of their comparisons.
+    const double inf=std::numeric_limits<double>::infinity();
+    const Vec lower=lo.unaryExpr([&](double x){return std::nextafter(x,-inf);});
+    const Vec upper=hi.unaryExpr([&](double x){return std::nextafter(x,inf);});
+    if(!lower.allFinite() || !upper.allFinite() || (upper-lower).maxCoeff()>12*width) return full_scan();
+    return visit(lower,upper,[&](const Bin& key) {
+        const auto it=face_bins_.find(key);
+        if(it!=face_bins_.end()) for(size_t i:it->second) if(match(mesh.triangles[i])) return true;
+        return false;
+    });
+}
 
 bool Extractor::geometry(const Triangle& t, bool delaunay, bool overlap) const {
     const auto& mesh=result_.mesh;
@@ -95,23 +196,28 @@ bool Extractor::geometry(const Triangle& t, bool delaunay, bool overlap) const {
     }
     Vec center; double radius2=0;
     if (delaunay && !marching_triangles::circumcircle(a,b,c,center,radius2)) return false;
-    for (const auto& old:mesh.triangles) {
-        if (&old==&t) continue; // Rechecking an existing face after a vertex move.
+    const Vec pad=Vec::Constant(overlap ? std::max(epsilon(),longest*.5) : epsilon());
+    Vec lo=a.cwiseMin(b).cwiseMin(c)-pad, hi=a.cwiseMax(b).cwiseMax(c)+pad;
+    if(delaunay) {
+        const Vec radius=Vec::Constant(std::sqrt(radius2)+epsilon());
+        lo=lo.cwiseMin(center-radius); hi=hi.cwiseMax(center+radius);
+    }
+    return !nearby_face(lo,hi,[&](const Triangle& old) {
+        if (&old==&t) return false; // Rechecking an existing face after a vertex move.
         if (marching_triangles::triangles_conflict(mesh.vertices,t,old,epsilon()) ||
-            marching_triangles::triangles_conflict(mesh.vertices,old,t,epsilon())) return false;
-        if (overlap && marching_triangles::surface_overlap(mesh.vertices,t,old,epsilon(),normal)) return false;
-        if (!delaunay) continue;
+            marching_triangles::triangles_conflict(mesh.vertices,old,t,epsilon())) return true;
+        if (overlap && marching_triangles::surface_overlap(mesh.vertices,t,old,epsilon(),normal)) return true;
+        if (!delaunay) return false;
         const Vec old_normal=(mesh.vertices[old[1]]-mesh.vertices[old[0]]).cross(mesh.vertices[old[2]]-mesh.vertices[old[0]]);
-        if (old_normal.dot(normal)<=0) continue;
+        if (old_normal.dot(normal)<=0) return false;
         bool shared=false;
         for (int i:old) {
             if (std::find(t.begin(),t.end(),i)!=t.end()) shared=true;
-            else if ((mesh.vertices[i]-center).squaredNorm()<radius2*(1-1e-9)) return false;
+            else if ((mesh.vertices[i]-center).squaredNorm()<radius2*(1-1e-9)) return true;
         }
-        if (!shared &&
-            (marching_triangles::closest_on_triangle(center,mesh.vertices[old[0]],mesh.vertices[old[1]],mesh.vertices[old[2]])-center).squaredNorm()<radius2*(1-1e-9)) return false;
-    }
-    return true;
+        return !shared &&
+            (marching_triangles::closest_on_triangle(center,mesh.vertices[old[0]],mesh.vertices[old[1]],mesh.vertices[old[2]])-center).squaredNorm()<radius2*(1-1e-9);
+    });
 }
 
 bool Extractor::insert(const Triangle& t, bool delaunay, bool overlap) {
@@ -131,23 +237,46 @@ bool Extractor::insert(const Triangle& t, bool delaunay, bool overlap) {
         const int a=t[k],b=t[(k+1)%3]; pending_.erase({b,a});
         if ((result_.info[a].faces & result_.info[b].faces) && !result_.fiber_edges.count(edge_key(a,b)))
             result_.box_edges.insert(edge_key(a,b));
+        if(index_growth_) {update_front({a,b});update_front({b,a});}
     }
     return true;
 }
 
 int Extractor::vertex(const Vec& x, VertexInfo info) {
-    const int id=int(result_.mesh.vertices.size()); result_.mesh.vertices.push_back(x); result_.info.push_back(info); return id;
+    const int id=int(result_.mesh.vertices.size());
+    result_.mesh.vertices.push_back(x);result_.info.push_back(info);
+    if(index_growth_) {
+        vertex_bins_[vertex_bin(x)].push_back(id);vertex_fronts_.emplace_back();fiber_vertex_.push_back(false);
+    }
+    return id;
 }
 
-void Extractor::rollback_vertices(size_t n) { result_.mesh.vertices.resize(n); result_.info.resize(n); }
+void Extractor::rollback_vertices(size_t n) {
+    if(index_growth_) {
+        for(size_t i=result_.mesh.vertices.size();i>n;--i) {
+            auto it=vertex_bins_.find(vertex_bin(result_.mesh.vertices[i-1]));
+            it->second.pop_back();
+            if(it->second.empty()) vertex_bins_.erase(it);
+        }
+        vertex_fronts_.resize(n);fiber_vertex_.resize(n);
+    }
+    result_.mesh.vertices.resize(n); result_.info.resize(n);
+}
 
 bool Extractor::new_triangle(const Edge& e, const Vec& x) {
     // Join a nearby compatible front instead of creating almost coincident
     // vertices and leaving a strip too thin to triangulate later.
     bool too_close=false;
     std::set<int> nearby;
-    for (const auto& f:fronts()) for (int id:{f.first,f.second})
-        if (id!=e.first && id!=e.second && (result_.mesh.vertices[id]-x).norm()<options_.step*.45) nearby.insert(id);
+    const double radius=options_.step*.45;
+    auto consider=[&](int id) {
+        if(id!=e.first && id!=e.second && (result_.mesh.vertices[id]-x).norm()<radius) nearby.insert(id);
+    };
+    if(index_growth_) {
+        for(int id:vertex_candidates(x,radius)) if(!vertex_fronts_[id].empty()) consider(id);
+    } else {
+        for(const auto& f:fronts()) {consider(f.first);consider(f.second);}
+    }
     std::vector<std::pair<double,int>> ordered;
     for (int id:nearby) ordered.emplace_back((result_.mesh.vertices[id]-x).squaredNorm(),id);
     std::sort(ordered.begin(),ordered.end());
@@ -156,7 +285,11 @@ bool Extractor::new_triangle(const Edge& e, const Vec& x) {
         if (candidate.first<.04*options_.step*options_.step) too_close=true;
     }
     if (too_close) return false;
-    for (const auto& old:result_.mesh.vertices) if ((old-x).norm()<epsilon()) return false;
+    if(index_growth_) {
+        for(int id:vertex_candidates(x,epsilon())) if((result_.mesh.vertices[id]-x).norm()<epsilon()) return false;
+    } else {
+        for(const auto& old:result_.mesh.vertices) if((old-x).norm()<epsilon()) return false;
+    }
     const size_t n=result_.mesh.vertices.size();
     const int id=vertex(x,{-1,-1,field_.box.faces(x,epsilon())});
     if (insert({e.second,e.first,id},true)) return true;
@@ -219,7 +352,10 @@ bool Extractor::clip(const Edge& e, const Vec& outside) {
     const Mesh original=result_.mesh; const auto pending=pending_; const auto box=result_.box_edges;
     for (size_t i=1; i+1<ids.size(); ++i) {
         if (!insert({ids[0],ids[i],ids[i+1]},false)) {
-            result_.mesh=original; pending_=pending; result_.box_edges=box; rollback_vertices(n); return false;
+            if(indexed_faces_>original.triangles.size()) {face_bins_.clear();indexed_faces_=0;}
+            result_.mesh=original; pending_=pending; result_.box_edges=box; rollback_vertices(n);
+            if(index_growth_) index_vertices_and_fronts();
+            return false;
         }
     }
     return true;
@@ -227,14 +363,22 @@ bool Extractor::clip(const Edge& e, const Vec& outside) {
 
 bool Extractor::existing(const Edge& e, const Vec& target, bool boundary_only) {
     std::set<int> candidates;
-    for (const auto& f:fronts()) { candidates.insert(f.first); candidates.insert(f.second); }
-    for (const auto& f:result_.fiber_edges) { candidates.insert(f.first.first); candidates.insert(f.first.second); }
+    auto consider=[&](int id) {
+        if(id!=e.first && id!=e.second && (!boundary_only || result_.info[id].endpoint>=0) &&
+           (result_.mesh.vertices[id]-target).squaredNorm()<=4*options_.step*options_.step) candidates.insert(id);
+    };
+    if(index_growth_) {
+        for(int id:vertex_candidates(target,2*options_.step))
+            if(fiber_vertex_[id] || !vertex_fronts_[id].empty()) consider(id);
+    } else {
+        for(const auto& f:fronts()) {consider(f.first);consider(f.second);}
+        for(const auto& f:result_.fiber_edges) {consider(f.first.first);consider(f.first.second);}
+    }
     std::vector<std::pair<double,int>> ordered;
-    for (int id:candidates) if (id!=e.first && id!=e.second && (!boundary_only || result_.info[id].endpoint>=0))
+    for (int id:candidates)
         ordered.emplace_back((result_.mesh.vertices[id]-target).squaredNorm(),id);
     std::sort(ordered.begin(),ordered.end());
     for (const auto& pair:ordered) {
-        if (pair.first>4*options_.step*options_.step) break;
         if (insert({e.second,e.first,pair.second},false)) return true;
     }
     return false;
@@ -253,7 +397,8 @@ bool Extractor::advance(const Edge& e) {
     if (tangent.norm()<options_.derivative_tolerance*edge.norm()) return false;
     tangent.normalize();
     double previous=edge.norm(),next=edge.norm();
-    for (const auto& f:fronts()) {
+    const auto incident=incident_fronts(e);
+    for (const auto& f:incident) {
         if (f.second==e.first) previous=(result_.mesh.vertices[f.first]-a).norm();
         if (f.first==e.second) next=(result_.mesh.vertices[f.second]-b).norm();
     }
@@ -274,7 +419,7 @@ bool Extractor::advance(const Edge& e) {
             if (new_triangle(e,trial)) return true;
         } else if (!field_.box.contains(trial)) { if (clip(e,trial)) return true; }
     }
-    for (const auto& f:fronts()) {
+    for (const auto& f:incident) {
         int id=-1;
         if (f.second==e.first) id=f.first;
         if (f.first==e.second) id=f.second;
@@ -301,14 +446,14 @@ void Extractor::grow() {
 
 bool Extractor::covered(const Vec& seed) const {
     const Vec g=gradient(seed);
-    for (const auto& t:result_.mesh.triangles) {
+    const Vec pad=Vec::Constant(options_.step*.6+epsilon());
+    return nearby_face(seed-pad,seed+pad,[&](const Triangle& t) {
         const Vec &a=result_.mesh.vertices[t[0]],&b=result_.mesh.vertices[t[1]],&c=result_.mesh.vertices[t[2]];
-        if ((b-a).cross(c-a).dot(g)<=0) continue;
+        if ((b-a).cross(c-a).dot(g)<=0) return false;
         Vec nearest=marching_triangles::closest_on_triangle(seed,a,b,c);
-        if ((nearest-seed).norm()>options_.step*.6) continue;
-        if (corrector_.surface(nearest,options_.spatial_tolerance*2) && (nearest-seed).norm()<options_.step*.2) return true;
-    }
-    return false;
+        if ((nearest-seed).norm()>options_.step*.6) return false;
+        return corrector_.surface(nearest,options_.spatial_tolerance*2) && (nearest-seed).norm()<options_.step*.2;
+    });
 }
 
 bool Extractor::seed_triangle(const Vec& p) {

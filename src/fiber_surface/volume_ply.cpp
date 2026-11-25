@@ -58,7 +58,7 @@ void write_boundary_ply(const std::string& path, const VolumeBoundary& b, bool v
     out.close();
 }
 
-VolumeBoundary read_boundary_ply(const std::string& path) {
+VolumeBoundary read_boundary_ply(const std::string& path, bool revalidate_repair) {
     std::ifstream in(path,std::ios::binary);
     if (!in) throw std::runtime_error("Cannot open boundary PLY: "+path);
     VolumeBoundary b;
@@ -126,7 +126,7 @@ VolumeBoundary read_boundary_ply(const std::string& path) {
         if (patch<1 || patch>9) throw std::runtime_error("Invalid patch ID in "+path);
         b.patches.push_back(patch);
     }
-    if (!validated)
+    if (!validated && !revalidate_repair)
         b.unresolved.push_back({Vec::Zero(),"The saved boundary failed validation during extraction"});
     return b;
 }

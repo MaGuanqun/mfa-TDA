@@ -20,6 +20,31 @@ struct MeshValidation {
         return out.str();
     }
 };
+// Input faces must have valid indices and finite, nondegenerate vertices.
+template<class T,class Hit> void visit_triangle_intersections(const std::vector<Point<T>>& v,
+        const std::vector<Triangle>& t,T eps,Hit hit) {
+    struct Bounds {Point<T> lo,hi; size_t face;};
+    std::vector<Bounds> boxes;
+    boxes.reserve(t.size());
+    for(size_t i=0;i<t.size();++i) {
+        const auto& f=t[i];
+        boxes.push_back({v[f[0]].cwiseMin(v[f[1]]).cwiseMin(v[f[2]]),
+                         v[f[0]].cwiseMax(v[f[1]]).cwiseMax(v[f[2]]),i});
+    }
+    std::sort(boxes.begin(),boxes.end(),[](const Bounds& a,const Bounds& b){return a.lo.x()<b.lo.x();});
+    for(size_t i=0;i<boxes.size();++i) {
+        const auto& a=boxes[i];
+        for(size_t j=i+1;j<boxes.size();++j) {
+            const auto& b=boxes[j];
+            // Same inclusive, epsilon-padded bounds as triangles_conflict.
+            if(b.lo.x()>a.hi.x()+eps) break;
+            if(a.lo.y()>b.hi.y()+eps || b.lo.y()>a.hi.y()+eps ||
+               a.lo.z()>b.hi.z()+eps || b.lo.z()>a.hi.z()+eps) continue;
+            const auto first=std::min(a.face,b.face), second=std::max(a.face,b.face);
+            if(triangles_conflict(v,t[first],t[second],eps)) hit(first,second);
+        }
+    }
+}
 // Reconstruct adjacency from the exported arrays, independently of growth state.
 template<class T> MeshValidation validate_mesh(const std::vector<Point<T>>& v,const std::vector<Triangle>& t,
                                                T eps,bool check_intersections=true) {
@@ -57,9 +82,9 @@ template<class T> MeshValidation validate_mesh(const std::vector<Point<T>>& v,co
         if(seen.size()!=graph.size())bad=true;
         if(bad)++result.nonmanifold_vertices;
     }
-    if(check_intersections&&!result.invalid_indices&&!result.degenerate_faces)
-        for(size_t i=0;i<t.size();++i)for(size_t j=i+1;j<t.size();++j)
-            if(triangles_conflict(v,t[i],t[j],eps))++result.intersections;
+    if(check_intersections && !result.invalid_indices && !result.degenerate_faces) {
+        visit_triangle_intersections(v,t,eps,[&](size_t,size_t){++result.intersections;});
+    }
     result.euler_characteristic=static_cast<long>(v.size())-static_cast<long>(edges.size())+static_cast<long>(t.size());
     return result;
 }
