@@ -1,6 +1,7 @@
 #include "coordnet_field.h"
 #include <torch/script.h>
 #include <torch/csrc/autograd/autograd.h>
+#include <mutex>
 
 namespace fiber_surface {
 namespace {
@@ -45,6 +46,37 @@ Vec vector_from_tensor(const torch::Tensor& tensor) {
     auto data = tensor.contiguous();
     return Eigen::Map<const Vec>(data.data_ptr<double>());
 }
+
+// Adjacent triangles, Newton corrections and prospective front edges often
+// visit identical points. Cache numerical results only, scoped to one model
+// pair and training box. Concurrent misses may compute the same sample.
+class SampleCache {
+    struct Entry {
+        Vec point;
+        std::optional<FirstOrderSample> sample;
+    };
+    std::array<Entry,65536> entries_;
+    std::array<std::mutex,256> locks_;
+    size_t slot(const Vec& point) const {
+        size_t h=0;
+        for (int d=0; d<3; ++d)
+            h ^= std::hash<double>{}(point[d])+0x9e3779b9+(h<<6)+(h>>2);
+        return h % entries_.size();
+    }
+public:
+    std::optional<FirstOrderSample> find(const Vec& point) {
+        const size_t i=slot(point);
+        std::lock_guard<std::mutex> lock(locks_[i % locks_.size()]);
+        const auto& entry=entries_[i];
+        if (entry.sample && entry.point==point) return entry.sample;
+        return {};
+    }
+    void save(const Vec& point,const FirstOrderSample& sample) {
+        const size_t i=slot(point);
+        std::lock_guard<std::mutex> lock(locks_[i % locks_.size()]);
+        entries_[i]={point,sample};
+    }
+};
 } // namespace
 
 Field coordnet_field(const std::string& first, const std::string& second, const Box& training_box) {
@@ -52,25 +84,31 @@ Field coordnet_field(const std::string& first, const std::string& second, const 
         (training_box.max.array() <= training_box.min.array()).any())
         throw std::invalid_argument("CoordNet requires a finite training domain with positive extents");
     auto models = std::make_shared<CoordNetPair>(first, second, training_box);
+    auto cache = std::make_shared<SampleCache>();
     Field field;
     field.box = training_box;
-    field.value = [models](const Vec& x) {
+    field.value = [models,cache](const Vec& x) {
+        if (auto cached=cache->find(x)) return cached->value;
         torch::NoGradGuard guard;
         auto input = models->normalized(point_tensor(x));
         return Range(models->scalar(0, input).item<double>(), models->scalar(1, input).item<double>());
     };
     // Differentiate through normalization and axis reversal with respect to
     // physical (x,y,t). Each call owns its input and autograd graph.
-    field.jacobian = [models](const Vec& x) {
+    field.value_jacobian = [models,cache](const Vec& x) {
+        if (auto cached=cache->find(x)) return *cached;
         torch::AutoGradMode guard(true);
         auto point = point_tensor(x).requires_grad_(true);
-        Jacobian result;
+        FirstOrderSample result;
         for (int i = 0; i < 2; ++i) {
             auto value = models->scalar(i, models->normalized(point));
-            result.row(i) = vector_from_tensor(gradient(value, point)).transpose();
+            result.value[i] = value.item<double>();
+            result.jacobian.row(i) = vector_from_tensor(gradient(value, point)).transpose();
         }
+        cache->save(x,result);
         return result;
     };
+    field.jacobian = [sample=field.value_jacobian](const Vec& x) { return sample(x).jacobian; };
     field.hessians = [models](const Vec& x) {
         torch::AutoGradMode guard(true);
         auto point = point_tensor(x).requires_grad_(true);

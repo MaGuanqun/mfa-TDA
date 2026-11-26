@@ -5,6 +5,7 @@
 #include "../cli.h"
 #include "../corrector.h"
 #include <tbb/parallel_for.h>
+#include <tbb/enumerable_thread_specific.h>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -392,32 +393,64 @@ void audit(const VolumeBoundary& surface,const Field& field,const RangeTriangle&
         report<<"  \"seam_chord_sites\": "<<chord_sites<<", \"seam_chord_failures\": "<<chord_failures
               <<", \"seam_chord_free_projections\": "<<chord_free_projections
               <<", \"max_seam_chord_projection\": "<<max_chord_projection<<",\n";
-        size_t checked=0,failed_sites=0,faces_over_55=0;
-        double max_angle=0,max_distance=0;
-        for(size_t i=0;i<faces.size();++i) {
+        struct FaceChecks {
+            size_t checked=0,failed=0,over_55=0;
+            double max_angle=0,max_distance=0;
+            size_t cap_sites=0,cap_failed=0,cap_wrong_plane=0;
+            double cap_distance=0;
+        };
+        tbb::enumerable_thread_specific<FaceChecks> workers;
+        tbb::parallel_for(size_t(0),faces.size(),[&](size_t i) {
             const int label=surface.patches[i];
-            if(label>3) continue;
+            auto& checks=workers.local();
             const auto& t=faces[i];
             const Vec a=vertices[t[0]],b=vertices[t[1]],c=vertices[t[2]];
+            if(label>3) {
+                const int face=label-4,axis=face/2;
+                const double plane=face%2?field.box.max[axis]:field.box.min[axis];
+                if(a[axis]!=plane || b[axis]!=plane || c[axis]!=plane) ++checks.cap_wrong_plane;
+                for(const Vec& x:volume_triangle_samples(a,b,c)) {
+                    ++checks.cap_sites;
+                    Vec p=x;
+                    if(correct_volume_sample(p,label,field,query,options))
+                        checks.cap_distance=std::max(checks.cap_distance,(p-x).norm());
+                    else ++checks.cap_failed;
+                }
+                return;
+            }
             const Vec normal=(b-a).cross(c-a).normalized();
             double worst=0;
             for(const Vec& x:volume_triangle_samples(a,b,c)) {
                 const Vec g=-query.sides[label-1].gradient(field.jacobian(x));
                 const double cosine=normal.dot(g.normalized());
                 if(!std::isfinite(cosine)) throw std::runtime_error("Undefined field normal");
-                ++checked;
+                ++checks.checked;
                 worst=std::max(worst,std::acos(std::clamp(cosine,-1.,1.))*180/std::acos(-1.));
                 Vec point=x;
                 if(correct_volume_sample(point,label,field,query,options))
-                    max_distance=std::max(max_distance,(point-x).norm());
-                else ++failed_sites;
+                    checks.max_distance=std::max(checks.max_distance,(point-x).norm());
+                else ++checks.failed;
             }
-            max_angle=std::max(worst,max_angle);
-            if(worst>55) ++faces_over_55;
+            checks.max_angle=std::max(worst,checks.max_angle);
+            if(worst>55) ++checks.over_55;
+        });
+        FaceChecks total;
+        for(const auto& checks:workers) {
+            total.checked+=checks.checked;
+            total.failed+=checks.failed;
+            total.over_55+=checks.over_55;
+            total.max_angle=std::max(total.max_angle,checks.max_angle);
+            total.max_distance=std::max(total.max_distance,checks.max_distance);
+            total.cap_sites+=checks.cap_sites;
+            total.cap_failed+=checks.cap_failed;
+            total.cap_wrong_plane+=checks.cap_wrong_plane;
+            total.cap_distance=std::max(total.cap_distance,checks.cap_distance);
         }
-        report<<"  \"face_sites_checked\": "<<checked<<", \"face_sites_projection_failed\": "<<failed_sites
-              <<", \"faces_over_55_degrees\": "<<faces_over_55<<", \"face_sites_max_angle\": "<<max_angle
-              <<", \"face_sites_max_projection\": "<<max_distance<<",\n";
+        report<<"  \"face_sites_checked\": "<<total.checked<<", \"face_sites_projection_failed\": "<<total.failed
+              <<", \"faces_over_55_degrees\": "<<total.over_55<<", \"face_sites_max_angle\": "<<total.max_angle
+              <<", \"face_sites_max_projection\": "<<total.max_distance<<",\n";
+        report<<"  \"cap_sites_checked\": "<<total.cap_sites<<", \"cap_sites_projection_failed\": "<<total.cap_failed
+              <<", \"cap_faces_off_plane\": "<<total.cap_wrong_plane<<", \"cap_max_projection\": "<<total.cap_distance<<",\n";
     }
     report<<"  \"triangles\": "<<faces.size()<<", \"vertices\": "<<vertices.size()
           <<", \"topology\": \""<<topology.summary()<<"\",\n  \"intersections_checked\": "
@@ -436,13 +469,35 @@ void audit(const VolumeBoundary& surface,const Field& field,const RangeTriangle&
 int main(int argc,char** argv) {
     try {
         if(argc!=5 && argc!=6 && argc!=9)
-            throw std::invalid_argument("Use: grid|fit-grid|carrier-grid|recover-grid STAGES SPACING PREFIX [--refine LO HI SPACING] or audit STAGES INPUT.ply PREFIX [--all-face-samples]");
+            throw std::invalid_argument("Use: grid|fit-grid|carrier-grid|recover-grid STAGES SPACING PREFIX [--refine LO HI SPACING], cap-sides STAGES SIDES.ply PREFIX, project-samples STAGES SAMPLES.txt PREFIX, or audit STAGES INPUT.ply PREFIX [--all-face-samples]");
         const auto config=read_config(argv[2]);
         if(config.curve.size()!=3 || !config.curve.closed()) throw std::invalid_argument("Expected a closed range triangle");
         const auto field=load_field(config,true);
         RangeTriangle range(config.curve.point(0),config.curve.point(1),config.curve.point(2));
         const std::string mode=argv[1],prefix=argv[4];
         VolumeBoundary boundary;
+        if(mode=="project-samples" && argc==5) {
+            std::ifstream input(argv[3]);
+            if(!input) throw std::runtime_error("Cannot open sample list");
+            std::ofstream out(prefix+".csv");
+            out.exceptions(std::ios::badbit | std::ios::failbit);
+            out<<"patch,x,y,z,success,corrected_x,corrected_y,corrected_z,distance\n"<<std::setprecision(17);
+            size_t count=0,failed=0;
+            while(input>>std::ws && !input.eof()) {
+                int patch;
+                Vec point;
+                if(!(input>>patch>>point[0]>>point[1]>>point[2]) || patch<1 || patch>9 || !point.allFinite())
+                    throw std::runtime_error("Expected patch and three finite sample coordinates");
+                Vec projected=point;
+                const bool ok=correct_volume_sample(projected,patch,field.field,range,config.options);
+                out<<patch<<','<<point[0]<<','<<point[1]<<','<<point[2]<<','<<ok<<','
+                   <<projected[0]<<','<<projected[1]<<','<<projected[2]<<','<<(projected-point).norm()<<'\n';
+                ++count;
+                if(!ok) ++failed;
+            }
+            std::cout<<"Checked "<<count<<" supplied samples, failed "<<failed<<std::endl;
+            return failed?2:0;
+        }
         const bool all_samples=argc==6 && std::string(argv[5])=="--all-face-samples";
         if((mode=="grid" || mode=="fit-grid" || mode=="carrier-grid" || mode=="recover-grid") && (argc==5 || argc==9)) {
             std::optional<Refinement> refinement;
@@ -454,6 +509,25 @@ int main(int argc,char** argv) {
             boundary=GridSurface(range,solver,mode).run(field.field,config.options,positive_spacing(argv[3]),refinement);
             // Side patches only. A closed surrogate alone does not validate a fitted-field volume.
             write_boundary_ply(prefix+".ply",boundary,false);
+        } else if(mode=="cap-sides" && argc==5) {
+            auto input=read_boundary_ply(argv[3],true);
+            Result sides;
+            sides.box_contact_triangles=input.box_contact_triangles;
+            sides.mesh.vertices=std::move(input.mesh.vertices);
+            sides.mesh.triangles=std::move(input.mesh.triangles);
+            for(size_t i=0;i<sides.mesh.triangles.size();++i) {
+                const int label=input.patches.at(i);
+                if(label<1 || label>3) throw std::invalid_argument("cap-sides expects only side patches");
+                sides.face_segments.push_back(label-1);
+                std::swap(sides.mesh.triangles[i][1],sides.mesh.triangles[i][2]);
+            }
+            boundary=assemble_volume_boundary(field.field,range,config.options,std::move(sides));
+            boundary.corner_components=input.corner_components;
+            for(const auto& event:boundary.unresolved)
+                std::cerr<<event.position.transpose()<<"  "<<event.reason<<'\n';
+            write_boundary_ply(prefix+".ply",boundary,false);
+            std::cout<<"Assembly events: "<<boundary.unresolved.size()<<std::endl;
+            return boundary.unresolved.empty()?0:2;
         } else if(mode=="audit" && (argc==5 || all_samples)) boundary=read_boundary_ply(argv[3]);
         else throw std::invalid_argument("Unknown mode: "+mode);
         audit(boundary,field.field,range,config.options,prefix,all_samples);

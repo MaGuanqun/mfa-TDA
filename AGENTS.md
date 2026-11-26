@@ -2,6 +2,12 @@
 
 These instructions apply to the entire repository.
 
+## Run computations on a compute node
+
+Use a Slurm compute-node allocation for builds, tests, training, sampling,
+numerical probes, TTK extraction, rendering, and result validation. Use the
+login host for editing, job submission, and checking job status or logs.
+
 ## Activate the environment
 
 Run build commands from the repository root in Bash. Before configuring,

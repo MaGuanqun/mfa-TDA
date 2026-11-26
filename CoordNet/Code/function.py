@@ -1,6 +1,10 @@
 import torch
 
 VORTEX_STREET_3D_DATASETS = ('vortex_street_3d', 'vortex_street_3d_u', 'vortex_street_3d_v')
+GRAY_SCOTT_BUBBLES_DATASETS = {
+    'gray_scott_bubbles_A': 128, 'gray_scott_bubbles_B': 128,
+    'gray_scott_bubbles_first64_A': 64, 'gray_scott_bubbles_first64_B': 64,
+}
 
 
 def range(function_name='expotential'):
@@ -23,6 +27,8 @@ def sample_size(function_name='expotential'):
         return (50, 80, 100)
     elif function_name in VORTEX_STREET_3D_DATASETS:
         return (640, 80, 150)
+    elif function_name in GRAY_SCOTT_BUBBLES_DATASETS:
+        return (128, 128, GRAY_SCOTT_BUBBLES_DATASETS[function_name])
     elif function_name == 'hurricane_isabel':
         return (500, 500, 100)
     elif function_name == 'boussinesq_3d':

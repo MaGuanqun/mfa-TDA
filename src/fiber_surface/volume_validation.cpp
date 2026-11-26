@@ -35,7 +35,30 @@ bool correct_volume_sample(Vec& x,int patch,const Field& f,const RangeTriangle& 
         if(solve.rank()!=rows)return false;
         const Eigen::VectorXd delta=solve.solve(residual);
         if(!delta.allFinite())return false;
-        for(size_t d=0;d<free.size();++d)x[free[d]]+=delta[d];f.box.fix(x,faces);
+        Vec step=Vec::Zero();
+        for(size_t d=0;d<free.size();++d)step[free[d]]=delta[d];
+        const Vec proposed=x+step;
+        if(f.box.contains(proposed)) {
+            x=proposed;
+        } else {
+            // Follow the Newton direction to its first box contact. Recompute
+            // the residual and solve in that plane on the next iteration.
+            double fraction=1.;
+            unsigned contact=0;
+            for(int d:free) {
+                const bool lower=proposed[d]<f.box.min[d];
+                if(!lower && proposed[d]<=f.box.max[d])continue;
+                const double wall=lower?f.box.min[d]:f.box.max[d];
+                const double t=(wall-x[d])/step[d];
+                const unsigned face=1u<<(2*d+(lower?0:1));
+                if(t<fraction) {fraction=t;contact=face;}
+                else if(t==fraction)contact|=face;
+            }
+            if(!contact || fraction<0)return false;
+            x=(x+fraction*step).cwiseMax(f.box.min).cwiseMin(f.box.max);
+            faces|=contact;
+        }
+        f.box.fix(x,faces);
     }
     return false;
 }

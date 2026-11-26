@@ -10,7 +10,7 @@ public:
     Arguments(int argc,char** argv) {
         for (int i=1; i<argc; ++i) {
             std::string key=argv[i];
-            if (key=="--help" || key=="-h" || key=="--inspect") { values_[key]="true"; continue; }
+            if (key=="--help" || key=="-h" || key=="--inspect" || key=="--prepare-only") { values_[key]="true"; continue; }
             if (key.rfind("--",0)!=0 || i+1==argc) throw std::invalid_argument("Expected --option value: "+key);
             if (values_.count(key)) throw std::invalid_argument("Repeated option: "+key);
             values_[key]=argv[++i];

@@ -4,6 +4,83 @@ To fill the paper's **Ours** and **TTK** rows for a new CoordNet model, use the
 [CoordNet table runbook](COORDNET_TABLE.md). It includes a known-answer test,
 the required model inputs, and the commands that write both rows to CSV.
 
+## Gray–Scott Bubbles over time
+
+The two CoordNets fit concentrations A and B from test trajectory 1
+(zero-based) of [The Well's Bubbles experiment](https://polymathic-ai.org/the_well/datasets/gray_scott_reaction_diffusion/).
+The window covers frames 2 through 129 inclusive at the native 128 × 128
+spatial resolution. The last mesh coordinate is simulation time, from 20 to
+1290. In ParaView a Z scale of `2/1270` (about `0.001575`) gives the time
+axis the same displayed length as either spatial axis.
+
+With the project's CUDA-enabled `siren` environment, run from the repository root
+
+```bash
+archive=gray_scott_reaction_diffusion_bubbles_F_0.098_k_0.057.hdf5
+mkdir -p CoordNet/Data/gray_scott_bubbles
+curl -fL -o "CoordNet/Data/gray_scott_bubbles/$archive" \
+  "https://huggingface.co/datasets/polymathic-ai/gray_scott_reaction_diffusion/resolve/main/data/test/$archive"
+python CoordNet/Code/prepare_gray_scott_bubbles.py "CoordNet/Data/gray_scott_bubbles/$archive"
+bash CoordNet/Code/fit_vortex_street_components.sh gray_scott_bubbles_A gray_scott_bubbles_B
+python src/fiber_surface/experiment/gray_scott_bubbles.py sample --device cuda
+```
+
+The sampler reads the float64 TorchScript exports, converts the predictions
+back to concentration units and compares triangle membership on all 2,097,152
+original grid points. The counterclockwise triangle in (A, B) has vertices
+(0.32, 0.35), (0.77, 0.13) and (0.32, 0.56).
+
+Run the following with a Python environment containing conda-forge
+`topologytoolkit`, `vtk`, `scipy`, `numpy` and `meshoptimizer` (shared library).
+
+```bash
+out=build/gray-scott-bubbles
+python src/fiber_surface/experiment/gray_scott_bubbles.py extract --size 128 --times 128 --output "$out/native"
+python src/fiber_surface/experiment/reduce_gray_scott_surface.py "$out/native" "$out/budget80k" --budget 80000
+```
+
+The native output contains TTK side patches and endpoint fibers. The reduced
+output keeps the patch IDs and measures the distance to the native mesh on
+each patch in both directions. To obtain a smaller mesh directly from TTK,
+use fewer spatial samples and time slices with `extract`. It selects time
+slices according to the concentration interpolation error, includes both
+endpoints and records all sampled indices in `surface.json`.
+
+In this run the native TTK surface had 1,322,222 triangles. The reduced
+mesh had 79,995 triangles, all three patch labels, zero nonmanifold edges
+and 16 open edges in the interior of the domain. Only the (0.77, 0.13)
+range corner produced an endpoint fiber on the sampled models. Native-grid
+source versus CoordNet membership IoU was 0.8818. For the direct TTK
+alternative, `--size 61 --times 13` produced 79,644 triangles. The
+full-resolution reduction tracked the native surface more closely on all
+three sides in the sampled 95th-percentile distance check.
+
+### Direct TTK output for a 200³ grid with time from 0 to 2
+
+The run under `build/gray-scott-bubbles/t0-2-grid200` uses the same 128
+training frames and concentration triangle. The new time coordinate is
+`(simulation_time - 20) / 635`. The trainer normalizes each axis to
+[-1, 1], so frame `i` in the window has network time `2*i/127 - 1`.
+The fresh 300-epoch checkpoints are under the run's `models/` directory.
+
+From the repository root, use the training Python environment to evaluate
+the models, then use the TTK Python environment to extract the surface.
+
+```bash
+run=build/gray-scott-bubbles/t0-2-grid200
+experiment=src/fiber_surface/experiment/gray_scott_uniform_ttk.py
+python "$experiment" "$run" sample A --device cuda
+python "$experiment" "$run" sample B --device cuda
+# In the TTK environment
+python "$experiment" "$run" extract
+```
+
+`sampled_coordnet.vti` contains the two concentration fields at eight
+million uniformly spaced coordinates on [-1, 1] × [-1, 1] × [0, 2].
+The XML writer takes its input directly from the `ttkFiberSurface` output
+port. The extraction reads back `fiber_surface.vtp` and compares its
+points, cell connectivity and attributes with the in-memory output.
+
 ## Hurricane Isabel and vortex-street metrics
 
 For the Hurricane Isabel outer ring, both vertex metrics use the continuous pressure and temperature MFA fields evaluated at the vertices of each mesh.
@@ -500,6 +577,83 @@ JSON reports topology, intersections, seam residuals against the continuous
 field, and field-projection distances from 20,000 area-weighted side samples
 in grid units. The reconstruction exports a surface. The production volume
 validator has its own orientation, corner and coverage tests.
+
+### Recovering box caps on the Gray–Scott CoordNet mesh
+
+For a saved uncapped run whose range sides have no shared corner fibers,
+`repair_coordnet_caps.py` closes two-edge excursions and compares the remaining
+side components and their box edges with independently sampled field contours.
+It substitutes fitted components where the native mesh has interior openings
+or misses a contact. The cap assembler triangulates the resulting boundary
+loops, preserving their vertex IDs across seams.
+
+Run from the repository root on a compute node. Set `RUN` to the saved run,
+`OUT` to an existing output directory and `PYTHON` to the environment with
+PyTorch, NumPy, SciPy and scikit-image. The example uses the Gray–Scott box
+and a 0.005 recovery lattice for the 0.01 marching result.
+
+```bash
+source ./load-env.sh
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+scripts=src/fiber_surface/experiment
+workers=${SLURM_CPUS_PER_TASK:-8}
+"$PYTHON" "$scripts/repair_coordnet_caps.py" "$RUN" "$OUT/sides-grid.npy" \
+  --sample 401 401 201 --workers "$workers" --output "$OUT/sides.ply"
+bin=build/src/fiber_surface/fiber_grid_recovery
+"$bin" cap-sides "$RUN/stages" "$OUT/sides.ply" "$OUT/capped"
+"$bin" audit "$RUN/stages" "$OUT/capped.ply" "$OUT/audit" --all-face-samples
+"$PYTHON" "$scripts/audit_coordnet_caps.py" "$RUN" "$OUT/capped.ply" \
+  "$OUT/coverage.json" --spacing .0025 --workers "$workers"
+```
+
+Omit `--sample` to reuse a completed grid. The audit reports edge incidence,
+triangle intersections and bounded projections for seven sites per triangle.
+The face comparison measures the distance of each membership disagreement
+from the side rim. The PLY keeps its volume-validation flag clear pending the
+separate volume validator.
+
+Add `--fine-run "$FINE_RUN"` to prefer matching components from a saved finer
+march. The command checks the model digests, query, spatial coverage and all
+six face contacts before substituting a component. It uses
+`fiber_repair_boundary` for interior holes and fits missing corner contacts
+on the shared box edge. Both the Python environment and the Spack runtime
+must be active for this option.
+
+### Repairing side geometry on the capped Gray–Scott mesh
+
+`refine_coordnet_sides.py` checks the three vertices, three edge midpoints and
+centroid of every side triangle against the saved field. For this run, five
+thin components had reversed normals at their triangle centers. The repair
+fits those components in time slices, locating their terminal points and
+fitting each ring to its range edge. This method requires an isolated,
+star-shaped cross section around a tracked extremum. On the other components,
+each vertex adjustment is checked against every incident side triangle.
+
+Use the same compute-node environment and variables as above. Set `INPUT` to
+the capped PLY from the first repair. The normal-angle target defaults to the
+value in `stages/run.conf`. The optional rim pass subdivides chords according to
+the displacement between their midpoint and the fitted box contour.
+
+The volume sample corrector follows an outgoing Newton step up to the first
+box face it reaches and continues the solve in that plane. Acceptance requires
+an in-domain point that meets the original range and distance tolerances.
+To replay particular samples, put one `patch x y z` record per line in a
+text file and run `fiber_grid_recovery project-samples STAGES SAMPLES.txt PREFIX`.
+The CSV records the corrected position, solve status and displacement for
+each input point.
+
+```bash
+"$PYTHON" "$scripts/refine_coordnet_sides.py" "$RUN" "$INPUT" "$OUT/side-sites.npz" \
+  --diagnose --workers "$workers"
+"$PYTHON" "$scripts/refine_coordnet_sides.py" "$RUN" "$INPUT" "$OUT/refitted-sides.ply" \
+  --repair --use-diagnostic "$OUT/side-sites.npz" --workers "$workers"
+"$PYTHON" "$scripts/refine_coordnet_sides.py" "$RUN" "$OUT/refitted-sides.ply" \
+  "$OUT/refined-rims.ply" --rim-tolerance 0.00001 --workers "$workers"
+"$bin" cap-sides "$RUN/stages" "$OUT/refined-rims.ply" "$OUT/refitted-boundary"
+"$bin" audit "$RUN/stages" "$OUT/refitted-boundary.ply" "$OUT/refitted-audit" --all-face-samples
+"$PYTHON" "$scripts/audit_coordnet_caps.py" "$RUN" "$OUT/refitted-boundary.ply" \
+  "$OUT/refitted-coverage.json" --spacing .0025 --workers "$workers"
+```
 
 For the whole-domain Isabel candidate 2, the radius used to suppress duplicate
 seeds and the surface tolerance were both `h` in every native trial.

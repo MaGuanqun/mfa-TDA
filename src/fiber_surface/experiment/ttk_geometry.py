@@ -5,7 +5,7 @@ import vtk
 from vtk.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray, vtk_to_numpy
 
 
-def ttk_triangle_mesh(domain, names, query, threads, range_octree, merge_distance=None):
+def triangle_filter(domain, names, query, threads, range_octree, merge_distance=None):
     from topologytoolkit import ttkFiberSurface
 
     pts = vtk.vtkPoints()
@@ -31,6 +31,11 @@ def ttk_triangle_mesh(domain, names, query, threads, range_octree, merge_distanc
     filt.SetPointMerge(merge_distance is not None)
     if merge_distance is not None:
         filt.SetPointMergeDistanceThreshold(merge_distance)
+    return filt
+
+
+def ttk_triangle_mesh(domain, names, query, threads, range_octree, merge_distance=None):
+    filt = triangle_filter(domain, names, query, threads, range_octree, merge_distance)
     if not filt.GetExecutive().Update():
         raise RuntimeError("ttkFiberSurface failed to extract the range triangle")
     return filt.GetOutput()

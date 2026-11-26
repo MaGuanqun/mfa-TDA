@@ -39,6 +39,40 @@ void evaluation_manifest(const fs::path& run,const RunConfig& config) {
     out<<"\nEND\n";
     out.close(); if (!out) throw std::runtime_error("Cannot write "+target.string());
 }
+
+// Allow separate Slurm jobs to discover sides of a prepared curve. The second
+// run may change tracing and marching distances, while using the same roots.
+void discover_segment(const fs::path& run, int side, const std::string& also_run) {
+    const auto config=read_config(run);
+    if (side<0 || side>=config.curve.size()) throw std::invalid_argument("Segment index outside the saved range curve");
+    const auto options=curve_options(config.curve,config.options);
+    std::optional<RunConfig> other;
+    if (!also_run.empty()) {
+        other=read_config(also_run);
+        auto comparable=*other;
+        // Permit only these downstream controls to differ. The residual also
+        // participates in Newton, so compare its effective seed threshold.
+        const auto target=curve_options(other->curve,other->options);
+        auto seed_tolerance=[](const Options& o) {
+            return o.surface_solve_tolerance>0 ? std::min(o.surface_solve_tolerance,o.residual_tolerance) : o.residual_tolerance;
+        };
+        auto& o=comparable.options;
+        o.step=config.options.step;
+        o.min_step=config.options.min_step;
+        o.spatial_tolerance=config.options.spatial_tolerance;
+        o.fiber_seed_radius=config.options.fiber_seed_radius;
+        o.residual_tolerance=config.options.residual_tolerance;
+        if (seed_tolerance(options)!=seed_tolerance(target) || config_signature(comparable)!=config_signature(config))
+            throw std::invalid_argument("Seed discovery settings differ between the two run directories");
+    }
+    auto loaded=load_field(config,true);
+    const bool last=!config.curve.closed() && side+1==config.curve.size();
+    const auto seeds=find_seeds(loaded.field,config.curve.segments[side],options,last);
+    write_seeds(patch_directory(run,config.curve,side),config,seeds);
+    if (other) write_seeds(patch_directory(also_run,other->curve,side),*other,seeds);
+    std::cout<<"Segment "<<side<<" surface candidates="<<seeds.surface.size()
+             <<" endpoint candidates="<<seeds.endpoints[0].size()<<','<<seeds.endpoints[1].size()<<'\n';
+}
 }
 
 int stage_main(Stage stage,int argc,char** argv) {
@@ -55,6 +89,8 @@ int stage_main(Stage stage,int argc,char** argv) {
                     <<"    Use float64 scalar exports and range endpoints in model-output units.\n"
                     <<"  All resolved parameters are saved in run.conf.\n";
                 std::cout<<"  --max-seed-starts N  seed lattice allocation limit (default 1000000)\n";
+                std::cout<<"  --prepare-only  save run.conf for parallel discovery, then run this executable\n"
+                         <<"    with --run-dir DIRECTORY --segment I [--also-run-dir COMPATIBLE_DIRECTORY]\n";
                 common_help();
             } else {
                 std::cout<<"Reads run.conf and preceding stage files. To change parameters, restart at find_seeds.\n";
@@ -67,6 +103,14 @@ int stage_main(Stage stage,int argc,char** argv) {
         if (directory.empty()) throw std::invalid_argument("--run-dir is required");
         const fs::path run=fs::absolute(directory).lexically_normal();
         if (stage==Stage::seeds) {
+            if (args.has("--segment")) {
+                const int side=args.integer("--segment",0);
+                const auto other=args.take("--also-run-dir");
+                args.finish();
+                discover_segment(run,side,other);
+                return 0;
+            }
+            const bool prepare=!args.take("--prepare-only").empty();
             auto config=initial_config(args);
             config.options.max_seed_starts=args.integer("--max-seed-starts",config.options.max_seed_starts);
             if (config.options.max_seed_starts<1 || config.options.max_seed_starts>10000000)
@@ -77,6 +121,10 @@ int stage_main(Stage stage,int argc,char** argv) {
             args.finish();
             config.box=loaded.field.box;
             if (config.options.max_triangles>10000000) throw std::invalid_argument("Staged runs support at most 10000000 triangles per segment");
+            if (prepare) {
+                write_config(run,config);
+                return 0;
+            }
             const auto seeds=find_curve_seeds(loaded.field,config.curve,curve_options(config.curve,config.options));
             write_config(run,config);
             for (int i=0; i<config.curve.size(); ++i) {

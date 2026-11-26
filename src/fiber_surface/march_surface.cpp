@@ -3,6 +3,8 @@
 #include <chrono>
 #include <deque>
 #include <iostream>
+#include <tbb/parallel_for.h>
+#include <tbb/task_arena.h>
 
 namespace fiber_surface {
 Extractor::Extractor(Field field, Segment segment, Options options)
@@ -26,7 +28,7 @@ Checkpoint Extractor::march(const Seeds& seeds, Result fibers) {
         const Jacobian j=field_.jacobian(mid);
         const Range inward=(endpoint ? -1. : 1.)*segment_.d/segment_.length;
         const Vec lift=j.transpose()*(j*j.transpose()).ldlt().solve(inward);
-        if ((result_.mesh.vertices[b]-result_.mesh.vertices[a]).cross(gradient(mid)).dot(lift)<0) std::swap(a,b);
+        if ((result_.mesh.vertices[b]-result_.mesh.vertices[a]).cross(segment_.gradient(j)).dot(lift)<0) std::swap(a,b);
         pending_[{a,b}]=entry.second;
     }
     fiber_uses_=pending_;
@@ -133,7 +135,7 @@ bool Extractor::nearby_face(const Vec& lo,const Vec& hi,const std::function<bool
     const auto& mesh=result_.mesh;
     auto full_scan=[&] {return std::any_of(mesh.triangles.begin(),mesh.triangles.end(),match);};
     const double width=4*options_.step;
-    if(!index_growth_ || !lo.allFinite() || !hi.allFinite() || (hi-lo).maxCoeff()>12*width) return full_scan();
+    if((!index_growth_ && !index_stitch_faces_) || !lo.allFinite() || !hi.allFinite() || (hi-lo).maxCoeff()>12*width) return full_scan();
     auto bin=[&](const Vec& p) {
         Bin key{};
         for(int k=0;k<3;++k) key[k]=int(std::floor((p[k]-field_.box.min[k])/width));
@@ -182,8 +184,10 @@ bool Extractor::geometry(const Triangle& t, bool delaunay, bool overlap) const {
     const double min_cos=std::cos(options_.max_normal_degrees*std::acos(-1.)/180);
     for (const int id:t) {
         const Vec& x=mesh.vertices[id];
-        if (!corrector_.member(x,result_.info[id].endpoint) || std::abs(segment_.phi(field_.value(x)))>options_.residual_tolerance*1.01) return false;
-        const Vec g=gradient(x);
+        if (!field_.box.contains(x)) return false;
+        const auto sample=field_.sample(x);
+        if (!corrector_.member_value(sample.value,result_.info[id].endpoint) || std::abs(segment_.phi(sample.value))>options_.residual_tolerance*1.01) return false;
+        const Vec g=segment_.gradient(sample.jacobian);
         if (!g.allFinite() || g.norm()<=options_.derivative_tolerance || normal.dot(g.normalized())<min_cos) return false;
     }
     // Sample the planar triangle itself. Projection would change the point being tested.
@@ -325,16 +329,23 @@ bool Extractor::clip(const Edge& e, const Vec& outside) {
             p.faces |= field_.box.faces(p.x,epsilon()); field_.box.fix(p.x,p.faces);
             // Combined range/box events reuse the pretraced contact only.
             int existing=-1;
-            for (size_t i=0; i<n; ++i) {
+            auto try_vertex=[&](size_t i) {
+                if (i>=n) return false;
                 const auto& info=result_.info[i];
-                if ((info.faces & p.faces)!=p.faces || (result_.mesh.vertices[i]-p.x).norm()>options_.step*.4) continue;
+                if ((info.faces & p.faces)!=p.faces || (result_.mesh.vertices[i]-p.x).norm()>options_.step*.4) return false;
                 Vec test=p.x;
                 if (info.endpoint>=0) {
                     const Vec delta=result_.mesh.vertices[i]-p.x;
-                    if (delta.norm()>options_.step*.25) continue;
-                    existing=int(i); break;
+                    return delta.norm()<=options_.step*.25;
                 }
-                if (corrector_.surface(test,options_.step,p.faces) && (test-result_.mesh.vertices[i]).norm()<epsilon()) { existing=int(i); break; }
+                return corrector_.surface(test,options_.step,p.faces) && (test-result_.mesh.vertices[i]).norm()<epsilon();
+            };
+            if (index_growth_) {
+                auto candidates=vertex_candidates(p.x,options_.step*.4);
+                std::sort(candidates.begin(),candidates.end());
+                for (int i:candidates) if (try_vertex(i)) { existing=i; break; }
+            } else {
+                for (size_t i=0; i<n; ++i) if (try_vertex(i)) { existing=int(i); break; }
             }
             if (existing>=0) p.id=existing;
             else {
@@ -349,12 +360,32 @@ bool Extractor::clip(const Edge& e, const Vec& outside) {
     if (ids.size()>1 && ids.front()==ids.back()) ids.pop_back();
     if (ids.size()<3) { rollback_vertices(n); return false; }
     // Atomic polygon commit: rejected triangulations cannot leave half a clip.
-    const Mesh original=result_.mesh; const auto pending=pending_; const auto box=result_.box_edges;
+    const size_t before=result_.mesh.triangles.size();
+    std::map<Edge,int> consumed;
+    std::set<Edge> new_box_edges;
     for (size_t i=1; i+1<ids.size(); ++i) {
-        if (!insert({ids[0],ids[i],ids[i+1]},false)) {
-            if(indexed_faces_>original.triangles.size()) {face_bins_.clear();indexed_faces_=0;}
-            result_.mesh=original; pending_=pending; result_.box_edges=box; rollback_vertices(n);
-            if(index_growth_) index_vertices_and_fronts();
+        const Triangle triangle{ids[0],ids[i],ids[i+1]};
+        // Only edges of earlier fan triangles can require rollback.
+        if (i+2<ids.size()) for (int j=0; j<3; ++j) {
+            const int a=triangle[j],b=triangle[(j+1)%3];
+            const auto pending=pending_.find({b,a});
+            if (pending!=pending_.end()) consumed.insert(*pending);
+            const Edge key=edge_key(a,b);
+            if (!result_.box_edges.count(key)) new_box_edges.insert(key);
+        }
+        if (!insert(triangle,false)) {
+            if (indexed_faces_>before) {face_bins_.clear();indexed_faces_=0;}
+            pending_.insert(consumed.begin(),consumed.end());
+            for (const auto& key:new_box_edges) result_.box_edges.erase(key);
+            while (result_.mesh.triangles.size()>before) {
+                const Triangle last=result_.mesh.triangles.back();
+                result_.mesh.pop_face();
+                if (index_growth_) for (int j=0;j<3;++j) {
+                    const int a=last[j],b=last[(j+1)%3];
+                    update_front({a,b}); update_front({b,a});
+                }
+            }
+            rollback_vertices(n);
             return false;
         }
     }
@@ -384,20 +415,36 @@ bool Extractor::existing(const Edge& e, const Vec& target, bool boundary_only) {
     return false;
 }
 
-bool Extractor::advance(const Edge& e) {
+std::optional<Extractor::Prediction> Extractor::predict(const Edge& e, bool prefetch) const {
     const Vec a=result_.mesh.vertices[e.first],b=result_.mesh.vertices[e.second], edge=b-a;
     Vec mid=(a+b)/2;
     auto pending=pending_.find(e);
     if (pending!=pending_.end()) {
-        Vec tangent; if (!corrector_.tangent(a,tangent)) return false;
+        Vec tangent; if (!corrector_.tangent(a,tangent)) return {};
         const auto& fiber=result_.fibers[pending->second];
-        if (!corrector_.fiber(mid,fiber.endpoint ? segment_.b : segment_.a,tangent,mid,options_.step)) return false;
-    } else if (!corrector_.surface(mid,options_.step,0,false)) return false;
+        if (!corrector_.fiber(mid,fiber.endpoint ? segment_.b : segment_.a,tangent,mid,options_.step)) return {};
+    } else if (!corrector_.surface(mid,options_.step,0,false)) return {};
     const Vec g=gradient(mid); Vec tangent=edge.cross(g);
-    if (tangent.norm()<options_.derivative_tolerance*edge.norm()) return false;
+    if (tangent.norm()<options_.derivative_tolerance*edge.norm()) return {};
     tangent.normalize();
+    const Hessian h=segment_.hessian(field_.hessians(mid));
+    if (!h.allFinite()) return {};
+    const double curvature=std::abs(tangent.dot(h*tangent))/g.norm();
+    Prediction p{mid,tangent,Vec::Zero(),curvature,-1,false};
+    if (prefetch) project_trial(p,prediction_height(e,incident_fronts(e),curvature));
+    if (prefetch && p.projected) {
+        // Most edges add (b,a,trial). Warm the exact queries geometry() will
+        // use, including its vertex-ID ordering for edge midpoints.
+        for (const Vec& x:std::array<Vec,7>{a,b,p.trial,edge_midpoint(result_.mesh,e.first,e.second),
+                 a+(p.trial-a)/2,b+(p.trial-b)/2,b+((a-b)+(p.trial-b))/3})
+            if (field_.box.contains(x)) field_.sample(x);
+    }
+    return p;
+}
+
+double Extractor::prediction_height(const Edge& e, const std::vector<Edge>& incident, double curvature) const {
+    const Vec a=result_.mesh.vertices[e.first],b=result_.mesh.vertices[e.second],edge=b-a;
     double previous=edge.norm(),next=edge.norm();
-    const auto incident=incident_fronts(e);
     for (const auto& f:incident) {
         if (f.second==e.first) previous=(result_.mesh.vertices[f.first]-a).norm();
         if (f.first==e.second) next=(result_.mesh.vertices[f.second]-b).norm();
@@ -405,19 +452,27 @@ bool Extractor::advance(const Edge& e) {
     double height=std::sqrt(3.)/2*(previous+edge.norm()+next)/3;
     if (height<options_.min_step) height=.75*height+.25*options_.min_step;
     // Curvature limits prediction; chord checks remain the acceptance test.
-    const Hessian h=segment_.hessian(field_.hessians(mid));
-    if (!h.allFinite()) return false;
-    const double curvature=std::abs(tangent.dot(h*tangent))/g.norm();
     if (curvature>0) height=std::min(height,std::sqrt(6*options_.spatial_tolerance/curvature));
-    height=std::min(height,options_.step*1.3);
+    return std::min(height,options_.step*1.3);
+}
+
+void Extractor::project_trial(Prediction& p, double height) const {
+    p.height=height;
+    p.trial=p.mid+height*p.tangent;
+    p.projected=height>=options_.min_step*.5 && field_.box.contains(p.trial) &&
+                corrector_.surface(p.trial,height);
+}
+
+bool Extractor::advance(const Edge& e, Prediction p) {
+    const auto incident=incident_fronts(e);
+    const double height=prediction_height(e,incident,p.curvature);
     // Give existing feature samples first use before growing into their strip.
-    if (existing(e,Vec(mid+height*tangent),true)) return true;
-    for (int attempt=0; attempt<1 && height>=options_.min_step*.5; ++attempt,height*=.65) {
-        Vec trial=mid+height*tangent;
-        if (!field_.box.contains(trial)) { if (clip(e,trial)) return true; }
-        else if (corrector_.surface(trial,height)) {
-            if (new_triangle(e,trial)) return true;
-        } else if (!field_.box.contains(trial)) { if (clip(e,trial)) return true; }
+    if (existing(e,Vec(p.mid+height*p.tangent),true)) return true;
+    if (height>=options_.min_step*.5) {
+        // Earlier commits can change the neighboring edge lengths.
+        if (height!=p.height) project_trial(p,height);
+        if (p.projected) { if (new_triangle(e,p.trial)) return true; }
+        else if (!field_.box.contains(p.trial) && clip(e,p.trial)) return true;
     }
     for (const auto& f:incident) {
         int id=-1;
@@ -430,16 +485,33 @@ bool Extractor::advance(const Edge& e) {
 
 void Extractor::grow() {
     std::deque<Edge> queue; for (const auto& e:fronts()) queue.push_back(e);
+    const size_t width=field_.value_jacobian ?
+        std::clamp(tbb::this_task_arena::max_concurrency(),1,64) : 1;
+    std::vector<Edge> edges;
+    std::vector<std::optional<Prediction>> proposals;
     while (!queue.empty() && result_.mesh.triangles.size()<options_.max_triangles) {
-        const Edge e=queue.front(); queue.pop_front(); if (!active(e)) continue;
-        const size_t before=result_.mesh.triangles.size();
-        if (!advance(e)) continue;
-        const size_t after=result_.mesh.triangles.size();
-        if (after/1000>before/1000)
-            std::clog<<"Marching: "<<after<<" triangles (limit "<<options_.max_triangles<<")"<<std::endl;
-        for (size_t i=before; i<result_.mesh.triangles.size(); ++i) {
-            const auto t=result_.mesh.triangles[i];
-            for (int k=0; k<3; ++k) if (active({t[k],t[(k+1)%3]})) queue.emplace_back(t[k],t[(k+1)%3]);
+        edges.clear();
+        while (!queue.empty() && edges.size()<width) {
+            const Edge e=queue.front(); queue.pop_front();
+            if (active(e)) edges.push_back(e);
+        }
+        proposals.resize(edges.size());
+        auto prepare=[&](size_t i) { proposals[i]=predict(edges[i],edges.size()>1); };
+        if (edges.size()==1) prepare(0);
+        else tbb::parallel_for(size_t(0),edges.size(),prepare);
+        // Only the ordered commit mutates the mesh or the advancing front.
+        for (size_t k=0; k<edges.size() && result_.mesh.triangles.size()<options_.max_triangles; ++k) {
+            const Edge e=edges[k];
+            if (!proposals[k] || !active(e)) continue;
+            const size_t before=result_.mesh.triangles.size();
+            if (!advance(e,*proposals[k])) continue;
+            const size_t after=result_.mesh.triangles.size();
+            if (after/1000>before/1000)
+                std::clog<<"Marching: "<<after<<" triangles (limit "<<options_.max_triangles<<")"<<std::endl;
+            for (size_t i=before; i<after; ++i) {
+                const auto t=result_.mesh.triangles[i];
+                for (int j=0; j<3; ++j) if (active({t[j],t[(j+1)%3]})) queue.emplace_back(t[j],t[(j+1)%3]);
+            }
         }
     }
 }

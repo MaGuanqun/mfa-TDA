@@ -68,6 +68,14 @@ int main(int argc,char** argv) {
             field.jacobian=[](const Vec&) {Jacobian j;j<<1,1,0,0,0,1;return j;};
             field.hessians=example.field.hessians;
             const RangeTriangle selected(Range(.01,0),Range(1.01,0),Range(.01,1));
+            Vec near_wall(.001,.013,.5);
+            require(correct_volume_sample(near_wall,3,field,selected,options) &&
+                    (near_wall-Vec(0,.01,.5)).norm()<1e-10,
+                    "A bounded side projection did not recover the root on the first box wall");
+            Vec beyond(.001,.013,.5);
+            const RangeTriangle outside(Range(-.01,0),Range(.99,0),Range(-.01,1));
+            require(!correct_volume_sample(beyond,3,field,outside,options),
+                    "An unattainable side equality was accepted at a box corner");
             Vec edge(0,0,.5);
             require(!correct_volume_sample(edge,4,field,selected,options),
                     "Cap correction left a second active box face to satisfy a range constraint");

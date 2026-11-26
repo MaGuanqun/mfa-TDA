@@ -35,6 +35,15 @@ with tempfile.TemporaryDirectory() as tmp:
         assert 0 <= report['max_vertex_overshoot'] < 1e-12
         assert report['projection_max'] < 1e-12 and report['reversed_sample_normals'] == 0
 
+    capped = Path(tmp) / 'capped'
+    subprocess.run([recover, 'cap-sides', stages, prefix.with_suffix('.ply'), capped], check=True)
+    subprocess.run([recover, 'audit', stages, capped.with_suffix('.ply'), capped, '--all-face-samples'], check=True)
+    report = json.loads(capped.with_suffix('.json').read_text())
+    topology = {k: int(v) for k, v in re.findall(r'(\w+)=(-?\d+)', report['topology'])}
+    assert topology['boundary_edges'] == topology['intersections'] == 0
+    assert topology['Euler'] == 2 and report['cap_sites_checked'] > 0
+    assert report['cap_sites_projection_failed'] == report['cap_faces_off_plane'] == 0
+
     # F(x,y,z)=(x,y). Move the shared A edge 0.2 of the way beyond A on CA.
     # Its AB overshoot is smaller, so checking only the first incident label would fail.
     a, b, c = corners

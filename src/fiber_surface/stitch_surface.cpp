@@ -2,6 +2,8 @@
 #include "../isosurface/crack_closing.h"
 #include <chrono>
 #include <deque>
+#include <tbb/parallel_for.h>
+#include <tbb/task_arena.h>
 
 namespace fiber_surface {
 namespace {
@@ -53,7 +55,13 @@ Checkpoint Extractor::finish(Checkpoint state, bool curve_patch) {
     const auto start=std::chrono::steady_clock::now();
     index_growth_=false;face_bins_.clear();indexed_faces_=0;
     result_=std::move(state.result); pending_=std::move(state.pending); fiber_uses_=std::move(state.fiber_uses);
+    index_stitch_faces_=((field_.box.max-field_.box.min)/options_.step).maxCoeff()<1e8 &&
+        std::all_of(result_.mesh.triangles.begin(),result_.mesh.triangles.end(),[&](const Triangle& t) {
+            const auto& v=result_.mesh.vertices;
+            return (v[t[1]]-v[t[0]]).norm()<=2*options_.step && (v[t[2]]-v[t[0]]).norm()<=2*options_.step;
+        });
     stitch(); repair();
+    index_stitch_faces_=false;face_bins_.clear();indexed_faces_=0;
     if (curve_patch) result_.box_contact_triangles=finish_box_contacts(result_,field_,segment_,options_);
     snap_box_slivers();
     for (const auto& e:fronts()) result_.unresolved.push_back({(result_.mesh.vertices[e.first]+result_.mesh.vertices[e.second])/2,
@@ -77,7 +85,7 @@ void Extractor::stitch() {
         existing(e,Vec((result_.mesh.vertices[e.first]+result_.mesh.vertices[e.second])/2));
     crack_closing::CrackCloser<double>::close_cracks(result_.mesh,[&](const Triangle& t) {
         return insert(t,false);
-    },options_.max_triangles,[&](int a,int b){return !intended({a,b});});
+    },options_.max_triangles,[&](int a,int b){return !intended({a,b});},2*options_.step);
 }
 
 void Extractor::snap_box_slivers() {
@@ -139,12 +147,39 @@ void Extractor::snap_box_slivers() {
     }
 }
 
+std::optional<Extractor::CavityRepair> Extractor::try_cavity(const std::set<int>& removed,size_t before) const {
+    Extractor trial(field_,segment_,options_);
+    trial.index_stitch_faces_=index_stitch_faces_;
+    auto& r=trial.result_;
+    r.info=result_.info;
+    r.fiber_edges=result_.fiber_edges;
+    r.mesh.vertices=result_.mesh.vertices;
+    std::set<Triangle> forbidden;
+    for (size_t i=0;i<result_.mesh.triangles.size();++i) {
+        const auto& t=result_.mesh.triangles[i];
+        if (!removed.count(int(i))) r.mesh.add(t);
+        else forbidden.insert(marching_triangles::make_triangle_key(t[0],t[1],t[2]));
+    }
+    // Crack closure can only use vertices still present on the mesh.
+    if (!all_vertices_used(r.mesh)) return {};
+    for (const auto& e:r.mesh.boundary)
+        if ((r.info[e.first.first].faces & r.info[e.first.second].faces) && !r.fiber_edges.count(edge_key(e.first.first,e.first.second)))
+            r.box_edges.insert(edge_key(e.first.first,e.first.second));
+    trial.pending_=pending_;
+    for (const auto& e:fiber_uses_) if (!r.mesh.edges.count(edge_key(e.first.first,e.first.second))) trial.pending_[e.first]=e.second;
+    crack_closing::CrackCloser<double>::close_cracks(r.mesh,[&](const Triangle& t) {
+        if (forbidden.count(marching_triangles::make_triangle_key(t[0],t[1],t[2]))) return false;
+        return trial.insert(t,false);
+    },options_.max_triangles,[&](int a,int b){return !trial.intended({a,b});},2*options_.step);
+    if (trial.fronts().size()>=before) return {};
+    return CavityRepair{std::move(r.mesh),std::move(r.box_edges),std::move(trial.pending_)};
+}
+
 void Extractor::repair() {
     // Removing faces and closing their boundary loops can only reuse vertices of
     // existing faces. An initially unused vertex would invalidate every trial.
     const bool can_repair_cavities=all_vertices_used(result_.mesh);
     while (can_repair_cavities && !fronts().empty() && result_.mesh.triangles.size()<options_.max_triangles) {
-        const auto saved=result_; const auto saved_pending=pending_;
         std::set<int> adjacent;
         for (const auto& e:result_.mesh.boundary) if (!intended(e.first)) adjacent.insert(e.second);
         std::vector<std::set<int>> cavities;
@@ -158,27 +193,25 @@ void Extractor::repair() {
             for (int a:ring) for (int b:ring) if (a<b) cavities.push_back({a,b});
             if (ring.size()>2) cavities.push_back(ring);
         }
-        const size_t before=fronts().size(); bool improved=false;
-        for (const auto& removed:cavities) {
-            result_=saved; pending_=saved_pending;
-            Mesh trial; trial.vertices=saved.mesh.vertices;
-            std::set<Triangle> forbidden;
-            for (size_t i=0; i<saved.mesh.triangles.size(); ++i) {
-                const auto t=saved.mesh.triangles[i];
-                if (!removed.count(int(i))) trial.add(t);
-                else forbidden.insert(marching_triangles::make_triangle_key(t[0],t[1],t[2]));
-            }
-            result_.mesh=std::move(trial); result_.box_edges.clear();
-            for (const auto& e:result_.mesh.boundary) if ((result_.info[e.first.first].faces & result_.info[e.first.second].faces) && !result_.fiber_edges.count(edge_key(e.first.first,e.first.second)))
-                result_.box_edges.insert(edge_key(e.first.first,e.first.second));
-            for (const auto& e:fiber_uses_) if (!result_.mesh.edges.count(edge_key(e.first.first,e.first.second))) pending_[e.first]=e.second;
-            crack_closing::CrackCloser<double>::close_cracks(result_.mesh,[&](const Triangle& t) {
-                if (forbidden.count(marching_triangles::make_triangle_key(t[0],t[1],t[2]))) return false;
-                return insert(t,false);
-            },options_.max_triangles,[&](int a,int b){return !intended({a,b});});
-            if (fronts().size()<before && all_vertices_used(result_.mesh)) { improved=true; break; }
+        const size_t before=fronts().size();
+        // Each concurrent trial owns a mesh. Bound the total face count and
+        // commit the first improvement in the original cavity order.
+        if (cavities.empty()) break;
+        const size_t face_budget=std::max<size_t>(1,2000000 / result_.mesh.triangles.size());
+        const size_t workers=field_.value_jacobian ? std::min<size_t>(tbb::this_task_arena::max_concurrency(),face_budget) : 1;
+        std::optional<CavityRepair> winner;
+        for (size_t first=0;first<cavities.size() && !winner;first+=workers) {
+            std::vector<std::optional<CavityRepair>> trials(std::min(workers,cavities.size()-first));
+            auto attempt=[&](size_t i) { trials[i]=try_cavity(cavities[first+i],before); };
+            if (trials.size()==1) attempt(0);
+            else tbb::parallel_for(size_t(0),trials.size(),attempt);
+            for (auto& trial:trials) if (trial) { winner=std::move(trial);break; }
         }
-        if (!improved) { result_=saved; pending_=saved_pending; break; }
+        if (!winner) break;
+        result_.mesh=std::move(winner->mesh);
+        result_.box_edges=std::move(winner->box_edges);
+        pending_=std::move(winner->pending);
+        face_bins_.clear();indexed_faces_=0;
     }
     // A remaining triangular contour has a uniquely prescribed cap. Keep
     // the true 3D intersection and function checks; avoid a redundant plane

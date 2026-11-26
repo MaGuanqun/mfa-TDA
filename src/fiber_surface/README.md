@@ -261,6 +261,12 @@ in grid order for reproducibility. The tracer skips an endpoint seed within
 range point. This radius defaults to `--spatial-tolerance`. `seeds_report.json` and the final report include the
 actual `discovery_grid_shape`; seed files save this shape for restart validation.
 
+The CoordNet marcher also uses TBB to predict several front edges concurrently.
+It checks each prediction against the current front and inserts triangles in
+queue order. For a Slurm run, allocate multiple CPUs per segment, launch each
+segment with `srun --cpu-bind=cores`, and set `OMP_NUM_THREADS=1`,
+`MKL_NUM_THREADS=1`, and `OPENBLAS_NUM_THREADS=1` for the scalar network queries.
+
 When the corrected advance is shorter than `0.1 * step`, tracing saves the
 last accepted point. A second pass tries later corrected seeds within one
 nominal step of that tip, including seeds skipped by the duplicate check.

@@ -10,12 +10,12 @@ class Extractor {
     Result result_;
     std::map<Edge,int> pending_; // oriented virtual front uses of unfilled fiber edges
     std::map<Edge,int> fiber_uses_;
-    // During append-only marching, index each face's entire bounding box.
-    // Finishing can move vertices or replace faces and uses the full scan.
+    // Index face bounding boxes while a mesh is fixed or append-only.
     using Bin=std::array<int,3>;
     mutable std::map<Bin,std::vector<size_t>> face_bins_;
     mutable size_t indexed_faces_=0;
     bool index_growth_=false;
+    bool index_stitch_faces_=false;
     bool nearby_face(const Vec& lo,const Vec& hi,const std::function<bool(const Triangle&)>& match) const;
     std::map<Bin,std::vector<int>> vertex_bins_;
     std::vector<std::vector<Edge>> vertex_fronts_;
@@ -38,10 +38,24 @@ class Extractor {
     bool new_triangle(const Edge& e, const Vec& x);
     bool clip(const Edge& e, const Vec& outside);
     bool existing(const Edge& e, const Vec& target, bool boundary_only=false);
-    bool advance(const Edge& e);
+    struct Prediction {
+        Vec mid, tangent, trial;
+        double curvature, height;
+        bool projected;
+    };
+    double prediction_height(const Edge& e, const std::vector<Edge>& incident, double curvature) const;
+    void project_trial(Prediction& p, double height) const;
+    std::optional<Prediction> predict(const Edge& e, bool prefetch) const;
+    bool advance(const Edge& e, Prediction p);
     void grow();
     void stitch();
     void repair();
+    struct CavityRepair {
+        Mesh mesh;
+        std::set<Edge> box_edges;
+        std::map<Edge,int> pending;
+    };
+    std::optional<CavityRepair> try_cavity(const std::set<int>& removed,size_t before) const;
     void snap_box_slivers();
     bool covered(const Vec& seed) const;
     bool seed_triangle(const Vec& p);

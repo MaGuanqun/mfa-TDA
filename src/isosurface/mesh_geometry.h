@@ -179,6 +179,10 @@ template<class T> struct TriangleMesh {
         triangles.push_back(t);
         register_face(t,face);
     }
+    void pop_face() {
+        unregister_face(triangles.back(),static_cast<int>(triangles.size()-1));
+        triangles.pop_back();
+    }
     // Replace a checked two-face patch without changing face IDs. The caller
     // must first verify the new diagonal, winding, and geometric intersections.
     void replace_pair(int first,int second,const Triangle& a,const Triangle& b) {

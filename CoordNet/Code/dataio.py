@@ -133,7 +133,7 @@ class ScalarDataSet():
 			self.dim = [100,80]
 			self.total_samples = 50
 			self.data_path = '../Data/vortex_street.bin'
-		elif self.dataset in function.VORTEX_STREET_3D_DATASETS:
+		elif self.dataset in (*function.VORTEX_STREET_3D_DATASETS, *function.GRAY_SCOTT_BUBBLES_DATASETS):
 			nx, ny, self.total_samples = function.sample_size(self.dataset)
 			self.dim = [nx, ny]
 			self.data_path = f'../Data/{self.dataset}.bin'
@@ -264,7 +264,8 @@ class ScalarDataSet():
 			return
 
 		if self.application == 'super-spatial-temporal' and self.dataset in (
-			*function.VORTEX_STREET_3D_DATASETS, 'vortex_street', 'hurricane_isabel',
+			*function.VORTEX_STREET_3D_DATASETS, *function.GRAY_SCOTT_BUBBLES_DATASETS,
+			'vortex_street', 'hurricane_isabel',
 			'fluid', 'boussinesq_3d', 'cylinder', 'cylinder2', 'cylinder3'
 		):
 			# Load entire dataset from single binary file
@@ -438,6 +439,9 @@ class ScalarDataSet():
 	def span_num(self):
 		if self.dataset in function.VORTEX_STREET_3D_DATASETS:
 			return np.array([80,10,15])
+		elif self.dataset in function.GRAY_SCOTT_BUBBLES_DATASETS:
+			# The default inference ratio of two samples the original grid.
+			return np.array(function.sample_size(self.dataset)) // 2
 		elif self.dataset == "boussinesq_3d":
 			return np.array([10,30,15])
 		elif self.dataset == "fluid":

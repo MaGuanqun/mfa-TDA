@@ -2,8 +2,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-for component in u v; do
-    dataset="vortex_street_3d_${component}"
+datasets=("$@")
+if (( ${#datasets[@]} == 0 )); then
+    datasets=(vortex_street_3d_u vortex_street_3d_v)
+fi
+for dataset in "${datasets[@]}"; do
     mkdir -p "../Exp/$dataset"
     python -u main.py --train train --dataset "$dataset" \
         --application super-spatial-temporal --num_res 5 --active sine \

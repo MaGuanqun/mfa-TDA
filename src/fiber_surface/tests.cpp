@@ -2,6 +2,7 @@
 #include "output.h"
 #include "extract.h"
 #include <tbb/global_control.h>
+#include <tbb/task_arena.h>
 
 using namespace fiber_surface;
 static void require(bool ok,const std::string& message) { if (!ok) throw std::runtime_error(message); }
@@ -405,11 +406,34 @@ static void derivatives() {
     require(traced.fibers.size()==1 && traced.fibers.front().closed && traced.unresolved.empty(),
             "A loose surface root tolerance must not create duplicate endpoint components");
 }
+static void parallel_march() {
+    auto example=analytical_field("strip");
+    Options options;
+    const auto seeds=find_seeds(example.field,example.segment,options);
+    const auto fibers=trace_endpoint_fibers(example.field,example.segment,options,seeds);
+    const auto serial=Extractor(example.field,example.segment,options).march(seeds,fibers);
+    // Exercise the same lookahead as the CoordNet adapter with nonempty
+    // endpoint fibers, including edges clipped to the domain boundary.
+    example.field.value_jacobian=[field=example.field](const Vec& x) {
+        return FirstOrderSample{field.value(x),field.jacobian(x)};
+    };
+    tbb::task_arena arena(4);
+    const auto parallel=arena.execute([&] {
+        return Extractor(example.field,example.segment,options).march(seeds,fibers);
+    });
+    require(!fibers.fibers.empty() && !serial.result.box_edges.empty(),"Expected fibers and box contacts");
+    require(serial.result.mesh.vertices==parallel.result.mesh.vertices &&
+            serial.result.mesh.triangles==parallel.result.mesh.triangles &&
+            serial.result.box_edges==parallel.result.box_edges && serial.pending==parallel.pending &&
+            serial.fiber_uses==parallel.fiber_uses,"Parallel edge proposals changed the march");
+}
+
 int main(int argc,char** argv) {
     try {
         const std::string name=argc>1?argv[1]:"sphere";
         if (name=="derivatives") { derivatives(); return 0; }
         if (name=="segment-sampling") { segment_sampling(); return 0; }
+        if (name=="parallel-march") { parallel_march(); return 0; }
         if (name=="fiber-tolerances") { fiber_tolerances(); return 0; }
         if (name=="seed-coverage") { fiber_seed_coverage(); stalled_fiber_recovery(); return 0; }
         if (name=="seeds") { seeds(); return 0; }

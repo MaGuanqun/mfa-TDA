@@ -10,7 +10,9 @@ public:
     Corrector(const Field& f, const Segment& s, const Options& o) : field(f), segment(s), options(o) {}
     bool member(const Vec& x, int traced_endpoint=-1) const {
         if (!field.box.contains(x)) return false;
-        const Range value=field.value(x);
+        return member_value(field.value(x),traced_endpoint);
+    }
+    bool member_value(const Range& value, int traced_endpoint=-1) const {
         if (traced_endpoint==0 || traced_endpoint==1) {
             const Range& q=traced_endpoint==0 ? segment.a : segment.b;
             return (value-q).norm()<=options.corner_residual_tolerance;
@@ -37,13 +39,14 @@ public:
             std::min(options.residual_tolerance,options.surface_solve_tolerance) : options.residual_tolerance;
         for (int it=0; it<options.iterations; ++it) {
             if (!field.box.contains(x) || (x-origin).norm()>bound) return false;
-            const Range f=field.value(x); const Vec g=segment.gradient(field.jacobian(x));
+            const auto sample=field.sample(x);
+            const Range& f=sample.value; const Vec g=segment.gradient(sample.jacobian);
             if (!f.allFinite() || !g.allFinite() || g.norm()<=options.derivative_tolerance) return false;
             const double phi=segment.phi(f);
             Vec free=g; int free_coordinates=3;
             for (int d=0; d<3; ++d) if (faces & (3u<<(2*d))) { free[d]=0; --free_coordinates; }
             if (faces && free_coordinates && free.norm()<=options.derivative_tolerance) return false;
-            if (std::abs(phi)<=solve_tolerance) return !membership || member(x);
+            if (std::abs(phi)<=solve_tolerance) return !membership || member_value(f);
             if (free.norm()<=options.derivative_tolerance) return false;
             x -= phi/free.squaredNorm()*free;
             field.box.fix(x,faces);
@@ -73,7 +76,8 @@ public:
         const Vec origin=x, fixed_anchor=anchor; field.box.fix(x,faces);
         for (int it=0; it<options.iterations; ++it) {
             if (!field.box.contains(x) || (x-origin).norm()>bound) return false;
-            const Range r=field.value(x)-q; const Jacobian j=field.jacobian(x);
+            const auto sample=field.sample(x);
+            const Range r=sample.value-q; const Jacobian& j=sample.jacobian;
             if (!r.allFinite() || !regular(j)) return false;
             if (!faces) {
                 const double p=phase.dot(x-fixed_anchor);

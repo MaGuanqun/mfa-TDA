@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <tbb/parallel_for.h>
 
 namespace fiber_surface {
 namespace {
@@ -252,9 +253,13 @@ Seeds read_seeds(const fs::path& run,const RunConfig& config) {
 }
 void validate_seeds(const Seeds& seeds,const Field& field,const Segment& segment,const Options& options) {
     Corrector corrector(field,segment,options);
-    for (const auto& p:seeds.surface)
-        if (!corrector.member(p) || std::abs(segment.phi(field.value(p)))>options.residual_tolerance*1.01 ||
-            segment.gradient(field.jacobian(p)).norm()<=options.derivative_tolerance) throw std::runtime_error("Invalid saved surface seed");
+    tbb::parallel_for(size_t(0),seeds.surface.size(),[&](size_t i) {
+        const Vec& p=seeds.surface[i];
+        if (!field.box.contains(p)) throw std::runtime_error("Invalid saved surface seed");
+        const auto sample=field.sample(p);
+        if (!corrector.member_value(sample.value) || std::abs(segment.phi(sample.value))>options.residual_tolerance*1.01 ||
+            segment.gradient(sample.jacobian).norm()<=options.derivative_tolerance) throw std::runtime_error("Invalid saved surface seed");
+    });
     for (int endpoint=0; endpoint<2; ++endpoint) for (const auto& p:seeds.endpoints[endpoint])
         if (!field.box.contains(p) || !corrector.regular(field.jacobian(p)) ||
             !((field.value(p)-(endpoint?segment.b:segment.a)).norm()<=options.corner_residual_tolerance))

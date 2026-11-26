@@ -167,6 +167,26 @@ def main():
         run = args.work / "triangle loop"
         options = ["--example", "strip", "--polyline", "0,0;1,0;0,1;0,0"]
         curve_pipeline(run, "fiber_surface_explicit", "analytical", options, closed=True)
+        shared = args.work / "shared discovery"
+        other = args.work / "other step"
+        baseline = args.work / "other independent"
+        coarse = [*options, "--step", ".2", "--residual-tolerance", "1e-5"]
+        stage(1, shared, [*options, "--prepare-only"])
+        stage(1, other, [*coarse, "--prepare-only"])
+        stage(1, baseline, coarse)
+        for side in range(3):
+            stage(1, shared, ["--segment", side, "--also-run-dir", other])
+            for name in ("endpoint_seeds.dat", "surface_seeds.dat"):
+                for reused, full in ((shared, run), (other, baseline)):
+                    path = Path(f"segment_{side}") / name
+                    def seed_data(folder):
+                        header, *points = (folder / path).read_text().splitlines()
+                        fields = header.split()
+                        return fields[:4], fields[5:], points  # exclude elapsed seconds
+                    assert seed_data(reused) == seed_data(full)
+        stage(2, other)
+        stage(1, other, [*coarse, "--seed-grid", "4", "--prepare-only"])
+        assert "settings differ" in stage(1, shared, ["--segment", 0, "--also-run-dir", other], expected=1)
         # Patch zero must detect changed corner seeds owned by patch one.
         neighbor = run / "segment_1" / "endpoint_seeds.dat"
         original = neighbor.read_bytes()

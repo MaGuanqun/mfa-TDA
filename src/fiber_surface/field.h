@@ -49,11 +49,21 @@ struct Box {
 
 // Derivatives are with respect to shared physical coordinates, never MFA parameters.
 // Evaluation callbacks must support concurrent calls during seed discovery.
+struct FirstOrderSample {
+    Range value;
+    Jacobian jacobian;
+};
+
 struct Field {
     std::function<Range(const Vec&)> value;
     std::function<Jacobian(const Vec&)> jacobian;
     std::function<std::array<Hessian, 2>(const Vec&)> hessians;
     Box box;
+    // CoordNet can return both from the same forward pass.
+    std::function<FirstOrderSample(const Vec&)> value_jacobian;
+    FirstOrderSample sample(const Vec& x) const {
+        return value_jacobian ? value_jacobian(x) : FirstOrderSample{value(x),jacobian(x)};
+    }
 };
 
 struct Segment {
