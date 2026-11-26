@@ -6,6 +6,15 @@ the required model inputs, and the commands that write both rows to CSV.
 
 ## Hurricane Isabel and vortex-street metrics
 
+For the Hurricane Isabel outer ring, both vertex metrics use the continuous pressure and temperature MFA fields evaluated at the vertices of each mesh.
+
+| Method | Side vertices checked | Max vertex residual (model-output units) | Max vertex overshoot (fraction of side length) |
+| --- | ---: | ---: | ---: |
+| Ours, reconnect and fit | 325,275 | $9.99\times10^{-10}$ | $1.15\times10^{-10}$ |
+| TTK, native point merging | 1,321,085 | 1.66 | 0.00509 |
+
+Residual measures the distance from the field value to its labeled range segment or shared corner. Overshoot measures how far the projection along an incident segment extends past an endpoint. TTK's largest overshoot was 0.509% of that segment's length. The runbook gives the formulas and a worked example for Isabel. [Vertex residual and overshoot](COORDNET_TABLE.md#how-vertex-residual-and-overshoot-are-measured)
+
 [Open the comparison table (CSV)](model_metrics.csv). Each column is a run.
 The first rows give closure, mesh size, volume, and membership IoU. Filter
 the metric group for corner fibers, side patches, TTK distances in both
