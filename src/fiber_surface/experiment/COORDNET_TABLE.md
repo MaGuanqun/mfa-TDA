@@ -4,10 +4,12 @@ Use one full-domain run to produce two rows, **Ours** and **TTK**, for the same 
 
 The saved Hurricane Isabel control helps identify the intended table and units.
 
-| Model and method | Triangles | Open edges | Pinches | Intersections | $d_{95}$ | IoU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Isabel MFA, Ours (reconnect and fit) | 650,490 | 0 | 0 | 0 | 0.00891 | 0.998 |
-| Isabel MFA, TTK (native point merging) | 2,642,087 | 57 | 0 | 411 | 0.0118 | — |
+| Model and method | Triangles | Open edges | Pinches | Intersections | Max vertex residual | Max vertex overshoot | $d_{95}$ | IoU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Isabel MFA, Ours (reconnect and fit) | 650,490 | 0 | 0 | 0 | $9.99\times10^{-10}$ | $1.15\times10^{-10}$ | 0.00891 | 0.998 |
+| Isabel MFA, TTK (native point merging) | 2,642,087 | 57 | 0 | 411 | 1.66 | 0.00509 | 0.0118 | — |
+
+The fitted pressure and temperature fields were evaluated at all 325,275 vertices of the repaired mesh and all 1,321,085 vertices of the full TTK mesh. The largest TTK overshoot extended 0.509% of the corresponding range side's length beyond an endpoint.
 
 On Isabel's `1000 × 1000 × 200` evaluation grid, the native mesh and the fitted field both selected 785,376 nodes. Another 728 were field-only and 693 were mesh-only, giving IoU $785376/786797$. For TTK, 87 degenerate faces were excluded from the intersection test. The 57 open edges are counted on the full mesh.
 
@@ -76,7 +78,7 @@ run_triangle_stages "$RUN" surface "$H" --model coordnet --first "$FIRST" --seco
 MESH="$RUN/volume_boundary.ply"
 ```
 
-The helper records the commands in `run.txt`, seed/trace/march/stitch checkpoints in `stages/`, per-side logs, and the assembled surface audit in `audit.json`. Check `extract.log` for unresolved events. A partial surface can still supply the geometry columns. For a row with the paper's final reconnect-and-fit repair, run the following against the original checkpoints and use the resulting candidate for **all six** columns.
+The helper records the commands in `run.txt`, seed/trace/march/stitch checkpoints in `stages/`, per-side logs, and the assembled surface audit in `audit.json`. Check `extract.log` for unresolved events. A partial surface can still supply the geometry columns. For a row with the paper's final reconnect-and-fit repair, run the following against the original checkpoints and use the resulting candidate for every column.
 
 ```bash
 source ./load-env.sh
@@ -107,8 +109,19 @@ The sampler writes two float64 fields (16 bytes per grid node) to `grid/fields.n
 | Open edges | `open_edges` counts distinct undirected edges incident to exactly one face, including domain-boundary edges. |
 | Pinches | `pinches` counts nonmanifold vertices from their incident triangle fans. Read `nonmanifold_vertices` in the full mesh audit. |
 | Intersections | `intersections` counts conflicting triangle pairs. If degeneracies prevent the full intersection test, the evaluator reruns it on nondegenerate faces and records the excluded count. Use the **full** mesh for triangle, edge and pinch counts and projection. An unchecked intersection count is blank. |
+| Max vertex residual | `max_vertex_range_residual` is the maximum Euclidean distance between $F(x)$ and its target $q_x$, in the fitted model's two output coordinates. For a vertex incident to one range side, $q_x$ is the closest point on that closed segment to $F(x)$. For a vertex shared by two sides, $q_x$ is their common triangle corner. Both methods evaluate the **same continuous model** at the original mesh vertices. `side_vertices_checked` counts each vertex incident to AB, BC or CA once, including open rims. Cap-only and unused points have no range-side target. |
+| Max vertex overshoot | For a side from $a$ to $b$, compute the unclamped projection parameter $\tau=(F(x)-a)\cdot(b-a)/\lVert b-a\rVert_2^2$. The column `max_vertex_overshoot` gives the largest $\max(0,-\tau,\tau-1)$ over every side vertex and each of its incident range sides. A seam vertex is tested against both sides. An overshoot of 0.01 means the projection extends 1% of that side's length beyond an endpoint. |
 | $d_{95}$ | `d95` is the 95th percentile of Euclidean displacement after projecting 20,000 points onto their corresponding **continuous CoordNet** sides. The audit uses seed 331 and samples across AB/BC/CA in proportion to physical area, excluding caps. Distances use the native $(x,y,t)$ coordinates. Isabel's units are grid units; state the coordinate units used for the new model. If any projection fails, the CSV leaves the all-sample percentile blank and records the failure count. |
 | IoU | `iou` compares membership inside a closed surface (VTK stencil, tolerance 0) with membership in the closed range triangle at **every node of the TTK grid**. Read `both / (both + fitted_only + mesh_only)`. The four counts including `neither` must sum to `nx × ny × nt`. An open, nonmanifold, degenerate, or intersecting surface, an unchecked intersection test, or an empty union gets a blank and an `iou_note`. |
+
+To recompute the vertex columns from a saved Isabel or CoordNet mesh, use the audit directly. Set `STAGES` to the matching run's `stages/` directory and `MESH` to the full labeled PLY. For the published Isabel rows, these were the reconnect-and-fit `half_fitted/final.ply` and the full native-merge TTK `validator_full.ply`.
+
+```bash
+source ./load-env.sh
+OUT=$(mktemp -d "$PWD/build/vertex-audit.XXXXXXXX")
+build/src/fiber_surface/fiber_grid_recovery audit "$STAGES" "$MESH" "$OUT/audit"
+cat "$OUT/audit.json"
+```
 
 Use the same grid and query for both rows. A measured zero stays zero. Render an unavailable value as an em dash and keep the reason with the results. Per-patch nearest distances to TTK and random-point comparisons with a piecewise-linear field answer different questions from these two table columns.
 

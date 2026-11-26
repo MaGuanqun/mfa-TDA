@@ -53,7 +53,9 @@ def audit(stages, mesh, prefix):
 def measure(method, path, run, dest, grid, image, target):
     xyz, faces, labels, _ = read_ply(path)
     row = dict(method=method, mesh=str(path.resolve()), triangles=len(faces),
-               open_edges=0, pinches=0, intersections=0, d95=None, iou=None,
+               open_edges=0, pinches=0, intersections=0, max_vertex_range_residual=None,
+               max_vertex_overshoot=None, d95=None, iou=None,
+               side_vertices_checked=0,
                projection_samples=0, failed_projections=0, excluded_degenerate_faces=0,
                both=None, fitted_only=None, mesh_only=None, neither=None, iou_note="")
     if not len(faces):
@@ -63,6 +65,9 @@ def measure(method, path, run, dest, grid, image, target):
     prefix = dest / method.lower()
     report, counts = audit(run / "stages", path, prefix)
     row.update(open_edges=counts["boundary_edges"], pinches=counts["nonmanifold_vertices"],
+               max_vertex_range_residual=report["max_vertex_range_residual"],
+               max_vertex_overshoot=report["max_vertex_overshoot"],
+               side_vertices_checked=report["side_vertices_checked"],
                projection_samples=report["samples"], failed_projections=report["failed_projections"])
     if report["samples"] == 20000 and report["failed_projections"] == 0:
         row["d95"] = report["projection_p95"]

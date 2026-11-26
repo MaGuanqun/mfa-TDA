@@ -38,6 +38,8 @@ with Path(sys.argv[1]).open() as stream:
 assert [ours["method"], ttk["method"]] == ["Ours", "TTK"]
 for row in (ours, ttk):
     assert int(row["triangles"]) > 0 and int(row["projection_samples"]) == 20000
+    assert int(row["side_vertices_checked"]) > 0 and float(row["max_vertex_range_residual"]) < 1e-6
+    assert 0 <= float(row["max_vertex_overshoot"]) < 1e-6
     assert int(row["failed_projections"]) == 0 and float(row["d95"]) < 1e-6
 assert all(int(ours[k]) == 0 for k in ("open_edges", "pinches", "intersections"))
 both, missed, excess, neither = [int(ours[k]) for k in ("both", "fitted_only", "mesh_only", "neither")]

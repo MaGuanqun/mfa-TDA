@@ -294,17 +294,35 @@ void audit(const VolumeBoundary& surface,const Field& field,const RangeTriangle&
         cumulative.push_back(area);
     }
     if(!(area>0)) throw std::runtime_error("Empty side surface");
-    size_t seam_tests=0,seam_failures=0;
-    double max_seam_residual=0;
-    for(size_t i=0;i<vertices.size();++i) for(int k=0;k<3;++k) {
-        const unsigned mask=(1u<<k)|(1u<<((k+2)%3));
-        if((side_mask[i]&mask)!=mask) continue;
-        const double residual=(field.value(vertices[i])-query.corners[k]).norm();
-        if(!std::isfinite(residual)) throw std::runtime_error("Nonfinite seam residual");
-        ++seam_tests;
-        if(residual>options.corner_residual_tolerance) ++seam_failures;
-        max_seam_residual=std::max(max_seam_residual,residual);
+    size_t side_vertices=0,seam_tests=0,seam_failures=0;
+    double max_vertex_residual=0,max_seam_residual=0,max_vertex_overshoot=0;
+    for(size_t i=0;i<vertices.size();++i) {
+        const unsigned mask=side_mask[i];
+        if(!mask) continue;  // Cap-only and unused vertices have no range-side target.
+        ++side_vertices;
+        const Range value=field.value(vertices[i]);
+        if(!value.allFinite()) throw std::runtime_error("Nonfinite field at a side vertex");
+        for(int k=0;k<3;++k) {
+            const unsigned side_bit=1u<<k;
+            if(!(mask&side_bit)) continue;
+            const auto& side=query.sides[k];
+            const double tau=side.parameter(value);
+            const double bounded=std::clamp(tau,0.,1.);
+            max_vertex_overshoot=std::max(max_vertex_overshoot,std::abs(tau-bounded));
+            if(mask==side_bit) {
+                const Range q=side.a+bounded*side.d;
+                max_vertex_residual=std::max(max_vertex_residual,(value-q).norm());
+                break;
+            }
+            const unsigned corner_mask=(1u<<k)|(1u<<((k+2)%3));
+            if((mask&corner_mask)!=corner_mask) continue;
+            const double residual=(value-query.corners[k]).norm();
+            ++seam_tests;
+            if(residual>options.corner_residual_tolerance) ++seam_failures;
+            max_seam_residual=std::max(max_seam_residual,residual);
+        }
     }
+    max_vertex_residual=std::max(max_vertex_residual,max_seam_residual);
     std::vector<double> distance,angle;
     std::mt19937 rng(331);
     std::uniform_real_distribution<double> uniform(0,1);
@@ -404,6 +422,8 @@ void audit(const VolumeBoundary& surface,const Field& field,const RangeTriangle&
     report<<"  \"triangles\": "<<faces.size()<<", \"vertices\": "<<vertices.size()
           <<", \"topology\": \""<<topology.summary()<<"\",\n  \"intersections_checked\": "
           <<(!topology.invalid_indices && !topology.degenerate_faces?"true":"false")
+          <<", \"side_vertices_checked\": "<<side_vertices<<", \"max_vertex_range_residual\": "<<max_vertex_residual
+          <<", \"max_vertex_overshoot\": "<<max_vertex_overshoot
           <<", \"seam_tests\": "<<seam_tests<<", \"seam_failures\": "<<seam_failures
           <<", \"max_seam_range_residual\": "<<max_seam_residual
           <<", \"side_area\": "<<area<<", \"samples\": "<<samples<<", \"failed_projections\": "<<failed
