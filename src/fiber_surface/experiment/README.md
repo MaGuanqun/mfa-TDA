@@ -1,5 +1,9 @@
 # Fiber volume experiments
 
+To fill the paper's **Ours** and **TTK** rows for a new CoordNet model, use the
+[CoordNet table runbook](COORDNET_TABLE.md). It includes a known-answer test,
+the required model inputs, and the commands that write both rows to CSV.
+
 ## Hurricane Isabel and vortex-street metrics
 
 [Open the comparison table (CSV)](model_metrics.csv). Each column is a run.

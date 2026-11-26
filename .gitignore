@@ -13,6 +13,7 @@
 !/src/fiber_surface/experiment/run_hurricane_isabel.sh
 !/src/fiber_surface/experiment/run_triangle_stages.sh
 !/src/fiber_surface/experiment/run_vortex_street.sh
+!/src/fiber_surface/experiment/test_coordnet_table.sh
 !/src/fiber_surface/experiment/run_hurricane_isabel_ttk.sh
 !/src/fiber_surface/experiment/repair_hurricane_isabel_outer.sh
 !/src/fiber_surface/model_experiments.sh
